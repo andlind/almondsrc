@@ -1,0 +1,243 @@
+<html>
+<head>
+<meta http-equiv="refresh" content="60" />
+<title>Almond admin</title>
+<style>
+body {font-family: Arial, Helvetica, sans-serif;}
+
+/* Full-width input fields */
+input[type=text], input[type=password] {
+	width: 100%;
+	padding: 12px 20px;
+	margin: 8px 0;
+	display: inline-block;
+	border: 1px solid #ccc;
+	box-sizing: border-box;
+}
+
+/* Set a style for all buttons */
+button {
+	background-color: #491c0f;
+	color: white;
+	padding: 14px 20px;
+	margin: 8px 0;
+	border: none;
+	cursor: pointer;
+	width: 100%;
+}
+.top-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  background: #5a2e1f;
+  padding: 12px 20px;
+}
+
+.top-nav a {
+  display: inline-block;
+  padding: 8px 14px;
+  background: #ffffff10;
+  color: #fff;
+  border: 1px solid #ffffff30;
+  border-radius: 6px;
+  text-decoration: none;
+  font-family: "Inter", "Segoe UI", sans-serif;
+  white-space: nowrap;   /* prevents stretching */
+  transition: background 0.2s, transform 0.1s;
+}
+
+.top-nav a:hover {
+  background: #ffffff25;
+  transform: translateY(-1px);
+}
+
+.logout-btn {
+  background: #b33a3a;
+  border-color: #b33a3a;
+}
+
+.logout-btn:hover {
+  background: #d14a4a;
+}
+button:hover {
+	opacity: 0.8;
+}
+			
+.cancelbtn {
+	width: auto;
+	padding: 10px 18px;
+	background-color: #f44336;
+}
+
+.imgcontainer {
+	text-align: center;
+	margin: 24px 0 12px 0;
+	position: relative;
+}
+
+img.avatar {
+	width: 15%;
+	border-radius: 50%;
+}
+
+.container {
+	padding: 16px;
+}
+
+span.psw {
+	float: right;
+	padding-top: 16px;
+}
+
+.modal {
+	display: none; /* Hidden by default */
+	position: fixed; /* Stay in place */
+	z-index: 1; /* Sit on top */
+	left: 0;
+	top: 0;
+	width: 100%; /* Full width */
+	height: 100%; /* Full height */
+	overflow: auto; /* Enable scroll if needed */
+	background-color: rgb(0,0,0); /* Fallback color */
+	background-color: rgba(0,0,0,0.4); /* Black w/ opacity */
+	padding-top: 60px;
+}
+
+/* Modal Content/Box */
+.modal-content {
+	background-color: #fefefe;
+	margin: 5% auto 15% auto; /* 5% from the top, 15% from the bottom and centered */
+	border: 1px solid #888;
+	width: 80%; /* Could be more or less, depending on screen size */
+}
+
+/* The Close Button (x) */
+.close {
+	position: absolute;
+	right: 25px;
+	top: 0;
+	color: #000;
+	font-size: 35px;
+	font-weight: bold;
+}
+
+.close:hover,
+.close:focus {
+	color: red;
+	cursor: pointer;
+}
+
+/* Add Zoom Animation */
+.animate {
+	-webkit-animation: animatezoom 0.6s;
+	animation: animatezoom 0.6s
+}
+
+@-webkit-keyframes animatezoom {
+	from {-webkit-transform: scale(0)}
+	to {-webkit-transform: scale(1)}
+}
+
+@keyframes animatezoom {
+	from {transform: scale(0)}
+	to {transform: scale(1)}
+}
+
+@media screen and (max-width: 300px) {
+	span.psw {
+		display: block;
+		float: none;
+	}
+	.cancelbtn {
+		width: 100%;
+	}
+}
+
+.styled-table {
+	border-collapse: collapse;
+        margin-left:auto;
+        margin-right:auto;
+        font-size: 0.9em;
+        font-family: sans-serif;
+        min-width: 400px;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
+}
+
+.styled-table thead tr {
+	background-color: #491c0f;
+	color: #ffffff;
+	text-align: left;
+}
+
+.styled-table th,
+.styled-table td {
+	padding: 12px 15px;
+}
+
+.styled-table tbody tr {
+	border-bottom: 1px solid #dddddd;
+}
+
+.styled-table tbody tr:nth-of-type(even) {
+	background-color: #f3f3f3;
+}
+
+.styled-table tbody tr:last-of-type {
+	border-bottom: 2px solid #491c0f;
+}
+
+.styled-table tbody tr.active-row {
+	font-weight: bold;
+	color: #009879;
+}
+</style>
+</head>
+<body>
+<nav class="top-nav">
+  <a href="/almond/admin">Home</a>
+  <a href="/almond/admin?page=status">Status</a>
+  <a href="/almond/admin?page=metrics">Metrics</a>
+  <a href="/almond/admin?page=plugins">Plugins</a>
+  <a href="/almond/admin?page=api">API</a>
+  <a href="/almond/admin?page=almond">Almond</a>
+  <a href="/almond/admin?page=howru">Howru</a>
+  <a href="/almond/admin?page=logs">Logs</a>
+  <a href="/almond/admin?page=docs">Documentation</a>
+
+  <!-- Credentials button rewritten as a link -->
+  <a href="javascript:void(0)" onclick="document.getElementById('id01').style.display='block'">
+    Credentials
+  </a>
+
+  <!-- Logout stays a link -->
+  <a href="/almond/admin?page=logout" class="logout-btn">Log out</a>
+</nav>
+<p class="info-text">{{ info }}</p>
+<div id="id01" class="modal">
+<form class="modal-content animate" action="/almond/admin" method="post">
+<input type="hidden" name="action_type" value="change_credentials">
+<div class="imgcontainer">
+<span onclick="document.getElementById('id01').style.display='none'" class="close" title="Close Modal">&times;</span>
+<img src="{{ avatar }}" alt="Avatar" class="avatar">
+</div>
+<div class="container">
+<label for="uname"><b>username</b></label>
+<input type="text" placeholder="{{ username }}" name="username"" required>
+<label for="psw"><b>password</b></label>
+<input type="password" placeholder="{{ passwd }}" name="password" required>
+<button type="submit">Update</button>
+</div>
+<div class="container" style="background-color:#f1f1f1">
+<button type="button" onclick="document.getElementById('id01').style.display='none'" class="cancelbtn">Cancel</button>
+</div>
+</form>
+</div>
+<script>
+	var modal = document.getElementById('id01');
+	window.onclick = function(event) {
+		if (event.target == modal) {
+       			modal.style.display = "none";
+    		}		
+	}	
+</script>

@@ -1,0 +1,71 @@
+{% include 'head.html' %}
+<div class="container">
+<img src="{{ logo_image }}" alt="Logo Image"></>
+<hr size=1">
+<p>&nbsp;</p>
+<div class="container">
+<img src="{{ logo }}" alt="Almond Logo" class="brown-frame"></p>
+<style>
+  .brown-frame {
+ 	border: 6px solid #5a2e1f;
+  	padding: 10px;
+  	background-color: #fff;
+  	border-radius: 12px;
+  	box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  }
+</style>
+<p>&nbsp;</p></>
+<table class="status-table">
+<caption>SERVICE STATUS</caption>
+<tr style="border-bottom: 1px solid #cdcdcd">
+<td width="35%">Version:</td>
+<td width="65%">{{version}}</td>
+</tr>
+<tr style="border-bottom: 1px solid #cdcdcd">
+<td width="35%">Almond state:</td>
+<td width="65%">{{ almond_state[1] }}</td>
+</tr>
+<tr style="border-bottom: 1px solid #cdcdcd">
+<td width="35%">HowRU state:</td>
+<td width="65%">{{ howru_state[1] }} </td>
+</tr>
+<tr style="border-bottom: 1px solid #cdcdcd">
+<td width="35%">Status:</td>
+<td width="65%">{{ status }} </td>
+</tr>
+</table>
+<table class="status-table">
+<caption>ENVIRONMENT STATUS</caption>
+<tr style="border-bottom: 1px solid #cdcdcd">
+<td width="35%">Uptime:</td>
+<td width="65%">{{ sys_info.uptime }}</td>
+</tr>
+<tr style="border-bottom: 1px solid #cdcdcd">
+<td width="35%">Python version:</td>
+<td width="65%">{{ sys_info.python_version }}</td>
+</tr>
+<tr style="border-bottom: 1px solid #cdcdcd">
+<td width="35%">Processor:</td>
+<td width="65%">{{ sys_info.processor }} </td>
+</tr>
+<tr style="border-bottom: 1px solid #cdcdcd">
+<td width="35%">Node:</td>
+<td width="65%">{{ sys_info.node }} </td>
+</tr>
+<tr style="border-bottom: 1px solid #cdcdcd">
+<td width="35%">System:</td>
+<td width="65%">{{ sys_info.system }}</td>
+</tr>
+<tr style="border-bottom: 1px solid #cdcdcd">
+<td width="35%">Release:</td>
+<td width="65%">{{ sys_info.release }}</td>
+</tr>
+<tr style="border-bottom: 1px solid #cdcdcd">
+<td width="35%">Version:</td>
+<td width="65%">{{ sys_info.version }} </td>
+</tr>
+</table>
+
+<p>&nbsp;</p>
+</body>
+</html>

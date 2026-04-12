@@ -1,0 +1,242 @@
+{% include 'head.html' %}
+	<p align="center"><img src="{{ logo_image }}" alt="Logo Image"></p>
+	<hr size="1">
+  <!-- API Query -->
+  <script>
+  const apiSelect = document.getElementById('apiSelect');
+  const params = document.getElementById('params');
+  const submitBtn = document.getElementById('submitBtn');
+  const runBtn = document.getElementById('runBtn');
+
+  apiSelect.addEventListener('change', () => {
+    const value = apiSelect.value;
+
+    if (value !== "0") {
+      runBtn.disabled = false;
+      submitBtn.disabled = false;
+
+      // Only show parameters if "plugin" is selected
+      if (value === "7") {   // "plugin" option has value="7"
+        params.style.display = 'block';
+      } else {
+        params.style.display = 'none';
+      }
+    } else {
+      runBtn.disabled = true;
+      submitBtn.disabled = true;
+      params.style.display = 'none';
+    }
+  });
+
+  runBtn.addEventListener('click', () => {
+    const url = `admin?page=query&aid=${apiSelect.value}`;
+    window.location.href = url;
+  });
+</script>
+
+  <div class="apicontainer">
+    <h2>HowRU API Query</h2>
+    <form id="apiForm">
+      <label for="apiSelect">Choose API</label>
+      <select class="apiselect" id="apiSelect" name="selection">
+        <option value="0">Choose API</option>
+        <option value="1">howareyou</option>
+        <option value="2">warnings</option>
+        <option value="3">criticals</option>
+        <option value="4">oks</option>
+        <option value="5">notok</option>
+        <option value="6">changes</option>
+        <option value="7">plugin</option>
+        <option value="25">monitor</option>
+        <option value="8">all</option>
+        <option value="" disabled>──────────</option>
+        <option value="9">unixupdatetime</option>
+        <option value="10">unixdeploytime</option>
+        <option value="11">lastpluginrun</option>
+        <option value="12">elderpluginrun</option>
+        <option value="13">countservers</option>
+        <option value="14">listservers</option>
+        <option value="15">countjobs</option>
+        <option value="16">listjobs</option>
+        <option value="17">listjobnames</option>
+        <option value="18">getmaintenance</option>
+        <option value="19">getmaintenancelist</option>
+        <option value="" disabled>──────────</option>
+        <option value="20">settings</option>
+        <option value="21">plugin settings</option>
+      </select>
+
+      <div id="params" style="display:none">
+        <label for="plugin_name">Choose plugin by name</label>
+        <select id="plugin_name" name="plugins">
+          <option value="">Choose plugin</option>
+          <!-- {% for plugin in plugins %} -->
+          <option value="{{plugin}}">{{plugin}}</option>
+          <!-- {% endfor %} -->
+        </select>
+
+        <label for="plugin_id">Choose plugin by ID</label>
+        <select id="plugin_id" name="plugin_id">
+          <option value="-1">Choose plugin ID</option>
+          <!-- {% for n in range(amount) %} -->
+          <option value="{{n}}">{{n+1}}</option>
+          <!-- {% endfor %} -->
+        </select>
+        <script>
+            const pluginNameSelect = document.getElementById('plugin_name');
+            const pluginIdSelect = document.getElementById('plugin_id');
+
+            pluginNameSelect.addEventListener('change', () => {
+                if (pluginNameSelect.value) {
+                    pluginIdSelect.disabled = true;
+                } else {
+                    pluginIdSelect.disabled = false;
+                }
+            });
+
+           pluginIdSelect.addEventListener('change', () => {
+               if (pluginIdSelect.value !== "-1") {
+                   pluginNameSelect.disabled = true;
+               } else {
+                   pluginNameSelect.disabled = false;
+               }
+           });
+        </script>
+      </div>
+
+      <button class="apibutton" type="button" id="runBtn" disabled>Run query</button>
+    </form>
+  </div>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    // --- API Query logic ---
+    const apiSelect = document.getElementById('apiSelect');
+    const params = document.getElementById('params');
+    const runBtn = document.getElementById('runBtn');
+
+    function updateUI() {
+       const value = apiSelect.value;
+       if (value !== "0" && value !== "") {
+         runBtn.disabled = false;
+         // Only show parameters for "plugin"
+         params.style.display = (value === "7") ? 'block' : 'none';
+       } else {
+          runBtn.disabled = true;
+          params.style.display = 'none';
+       }
+    }
+
+   updateUI();
+
+    apiSelect.addEventListener('change', () => {
+      const value = apiSelect.value;
+      if (value !== "0" && value !== "") {
+        runBtn.disabled = false;
+        // Only show parameters for "plugin"
+        params.style.display = (value === "7") ? 'block' : 'none';
+      } else {
+        runBtn.disabled = true;
+        params.style.display = 'none';
+      }
+    });
+
+    runBtn.addEventListener('click', () => {
+      let url = `admin?page=query&aid=${apiSelect.value}`;
+      if (apiSelect.value === "7") {
+        const pluginName = document.getElementById('plugin_name').value;
+        const pluginId = document.getElementById('plugin_id').value;
+        if (pluginName) {
+          url += `&plugin_name=${pluginName}`;
+        } else if (pluginId !== "-1") {
+          url += `&plugin_id=${pluginId}`;
+        }
+      }
+      window.location.href = url;
+    });
+
+    // --- API Action logic ---
+    const actionSelect = document.getElementById('actionSelect');
+    const actionBtn = document.getElementById('actionBtn');
+
+    actionSelect.addEventListener('change', () => {
+      actionBtn.disabled = (actionSelect.value === "0");
+    });
+
+    actionBtn.addEventListener('click', () => {
+      const url = `admin?page=action&aid=${actionSelect.value}`;
+      window.location.href = url;
+    });
+  });
+</script>
+
+  <!-- API Action -->
+  <div class="apicontainer">
+    <h2>Almond API Action</h2>
+    <form id="actionForm">
+      <label for="actionSelect">Choose Action</label>
+      <select class="apiselect" id="actionSelect" name="selection">
+        <option value="0">Choose Action</option>
+        <option value="12">almond</option>
+        <option value="13">check</option>
+        <option value="7">disable</option>
+        <option value="6">enable</option>
+        <option value="2" name="execute">execute</option>
+        <option value="3" name="exread">exread</option>
+        <option value="1" name="get">get</option>
+        <option value="4" name="getm">getm</option>
+        <option value="5" name="getvar">getvar</option>
+        <option value="11" name="maintenance">maintenance</option>
+        <option value="4" name="metrics">metrics</option>
+        <option value="15" name="monitor">monitor</option>
+        <option value="1" name="read">read</option>
+        <option value="14" name="reload">reload</option>
+        <option value="10" name="read_all">read_all</option>
+        <option value="2" name="run">run</option>
+        <option value="3" name="runread">runread</option>
+        <option value="8" name="set">set</option>
+        <option value="8" name="runex">setvar</option>
+      </select>
+
+      <button class="apibutton" type="button" id="actionBtn" disabled>Continue</button>
+    </form>
+  </div>
+
+  <script>
+    // API Query logic
+    const apiSelect = document.getElementById('apiSelect');
+    const params = document.getElementById('params');
+    const submitBtn = document.getElementById('submitBtn');
+    const runBtn = document.getElementById('runBtn');
+
+    apiSelect.addEventListener('change', () => {
+      if (apiSelect.value !== "0") {
+        params.style.display = 'block';
+        submitBtn.disabled = false;
+        runBtn.disabled = false;
+      } else {
+        params.style.display = 'none';
+        submitBtn.disabled = true;
+        runBtn.disabled = true;
+      }
+    });
+
+   runBtn.addEventListener('click', () => {
+      const url = `admin?page=query&aid=${apiSelect.value}`;
+      window.location.href = url;
+    });
+
+    // API Action logic
+    const actionSelect = document.getElementById('actionSelect');
+    const actionBtn = document.getElementById('actionBtn');
+
+    actionSelect.addEventListener('change', () => {
+      actionBtn.disabled = (actionSelect.value === "0");
+    });
+
+    actionBtn.addEventListener('click', () => {
+      const url = `admin?page=action&aid=${actionSelect.value}`;
+      window.location.href = url;
+    });
+  </script>
+	<p>&nbsp;</p>
+{% include 'foot.html' %}

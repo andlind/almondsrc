@@ -1,0 +1,27 @@
+{% include 'head.html' %}	
+<p align="center"><img src="{{ user_image }}" alt="User Image"></p>
+	<hr size="1">
+        <h1>Availabe metrics</h1>
+	<table style="margin-left:auto;margin-right:auto;border=1px solid green; text-align:center" width="75%">
+		<form name="metricSelection" method="post" action="/almond/admin">
+			<input type="hidden" name="page" value="metrics">
+			<input type="hidden" name="action_type" value="show_metrics">
+		<tr style="text-align:center">
+                        <td>
+				<select name="metric" width="300px">
+					<option value="-1" SELECTED>Metrics</option>
+				{% for m in metrics_list %}
+    					<option value="{{ m }}">{{ m }}</option>
+				{% endfor %}
+				</select>
+			</td>
+		</tr>
+		<tr style="text-align:center">
+			<td>
+				<input type="submit" value=" Select ">
+			</td>
+                </tr>
+		</form>
+	</table>
+	<p>&nbsp;</p>
+{% include 'foot.html' %}

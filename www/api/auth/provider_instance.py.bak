@@ -1,0 +1,27 @@
+#from .oauth_code import OAuthCodeFlow
+from .keycloak import KeycloakProvider
+from api import auth_config as config 
+import os
+
+#provider = OAuthCodeFlow(
+#    auth_url=config.PROVIDER_AUTH_URL,
+#    token_url=config.PROVIDER_TOKEN_URL,
+#    client_id=config.PROVIDER_CLIENT_ID,
+#    client_secret=config.PROVIDER_CLIENT_SECRET,
+#    redirect_uri=config.PROVIDER_REDIRECT_URI
+#    #auth_url=os.getenv("PROVIDER_AUTH_URL"),
+#    #token_url=os.getenv("PROVIDER_TOKEN_URL"),
+#    #client_id=os.getenv("KEYCLOAK_CLIENT_ID"),
+#    #client_secret=os.getenv("KEYCLOAK_CLIENT_SECRET"),
+#    #redirect_uri=os.getenv("PROVIDER_REDIRECT_URI")
+#)
+
+provider = KeycloakProvider(
+    frontend_base_url=config.PROVIDER_FRONTEND_BASE_URL,
+    backend_base_url=config.PROVIDER_BACKEND_BASE_URL,
+    realm=config.PROVIDER_REALM,
+    client_id=config.PROVIDER_CLIENT_ID,
+    client_secret=config.PROVIDER_CLIENT_SECRET,
+    redirect_uri=config.PROVIDER_REDIRECT_URI
+)
+

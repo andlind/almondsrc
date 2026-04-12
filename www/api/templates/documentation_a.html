@@ -1,0 +1,615 @@
+{% include 'head.html' %}
+<div class="doc-page">
+<style>
+.doc-page { max-width: 1060px; margin: 28px auto 40px; padding: 0 18px; }
+.doc-header { margin-bottom: 24px; padding: 24px 24px 22px; background: #ffffff; border-radius: 18px; box-shadow: 0 18px 50px rgba(0,0,0,0.08); text-align: center; }
+.doc-logo { max-width: 200px; border-radius: 16px; margin-bottom: 18px; box-shadow: 0 12px 28px rgba(0,0,0,0.12); }
+.doc-header h1 { margin: 0; font-size: 2.15rem; letter-spacing: -0.03em; color: #491c0f; }
+.doc-subtitle { margin: 8px auto 0; max-width: 760px; color: #5c4a41; font-size: 0.99rem; line-height: 1.7; }
+.doc-page h2 { margin: 32px 0 16px; font-size: 1.5rem; color: #491c0f; border-bottom: 2px solid rgba(73,28,15,0.18); padding-bottom: 10px; }
+.doc-page h3 { margin: 26px 0 12px; font-size: 1.15rem; color: #5a2f26; }
+.doc-page p, .doc-page li { color: #333333; font-size: 0.98rem; line-height: 1.8; margin: 0.85rem 0; }
+.doc-page ul { margin: 0.9rem 0 0.9rem 1.3rem; }
+.doc-page pre { background: #f7f7fb; border: 1px solid #e2e4ea; border-radius: 12px; padding: 16px; overflow-x: auto; margin: 14px 0; }
+.doc-page code { font-family: Menlo, Monaco, Consolas, 'Courier New', monospace; font-size: 0.95rem; color: #1e1e2f; }
+.doc-page table { width: 100%; border-collapse: collapse; margin: 18px 0 28px; background: #ffffff; }
+.doc-page th, .doc-page td { border: 1px solid #e8e9ef; padding: 12px 14px; text-align: left; vertical-align: top; }
+.doc-page th { background: #f5f6fb; color: #332f31; font-weight: 700; }
+.doc-page tr:nth-child(even) { background: #fbfbfd; }
+.doc-page .section-divider { border: none; height: 1px; background: linear-gradient(90deg, rgba(73,28,15,0), rgba(73,28,15,0.35), rgba(73,28,15,0)); margin: 28px 0; }
+.doc-page .note-box { padding: 14px 16px; margin: 16px 0; border-left: 4px solid #d49759; background: #fff7ea; color: #4e3520; border-radius: 10px; }
+@media (max-width: 840px) { .doc-page { padding: 0 12px; } .doc-header { padding: 22px 18px 18px; } }
+</style>
+<header class="doc-header">
+    <img src="{{ user_image }}" alt="User Image" class="doc-logo">
+    <h1 style="color:#ffffff">Documentation</h1>
+    <!--<p class="doc-subtitle">Almond admin documentation and configuration guide.</p>-->
+</header>
+                <hr class="section-divider">
+                <h2>1. What is Almond?</h2>
+                <p class="doctext">
+		<b>Almond</b> (or Another Linux Monitor Daemon/Andreas Lindell Monitoring Daemon) <b> is a (Nagios)nrpe compliant scheduler with a Python API, named HowRU, that show results of plugin actions in the Almond daemon</b>.<br>&nbsp;<br>
+                Almond is not a direct replacement for Nagios/Op5/Icinga, since it does not have any administrative GUI and alerting system.<br>
+                However it introduces an API where you could query and get json results of plugins run by Almond , which you could parse/save with whatever tools you prefer to use.<br>
+		Any Nagios plugin which you currently run with nrpe or ncpa should be compatible with Almond. The difference between Almond and nrpe/ncpa, is that the later communicates on a socket with a Nagios server and Almond only runs locally.<br>
+                Nrpe and ncpa invokes commands on the client where it runs when called upon from the scheduler on the Nagios server. The Nagios server receive the result on the socket and show data in its GUI.<br>
+                Almond on the other side, is not a client-server piece of software. It has its own scheduler, runs plugins based on its configuration and stores the results in json which can be accessed from the HowRU API.<br>
+		If wanted it can also use an external scheduler and execute commands from Almond API, being a direct replacement for nrpe/ncpa.
+		<br>Almond can also export Prometheus metrics and act as a Kafka producer putting all the monitoring actions in a data stream.<br>Furthermore, there is an integration available for Nagios that even have to capability to integrate 		     Docker containers seamless into the Nagios monitoring GUI.
+		<br>Finally Almond Monitor has support for OTEL telemetry and works with various IAMs.
+                </p>
+                <h3>1.1 Installation practise</h3>
+		<p class="doctext">
+		There are currently packages for Ubuntu (Debian) and RedHat to install HowRU, which you can download from <a href="https://github.com/andlind/almond">github</a>. You should preferably put them in your repository of choice, since the installation have dependencies to python and nagios plugins.
+                </p>
+                <p class="doctext">You can of course install the service without putting it in a repository, for instance on Ubuntu you type the following (as root) to install the application:</p>
+                <pre><code> 
+		dpkg -i almond-monitor_0.9.28.deb
+                apt-get -f install
+                </code></pre>
+		<p class="doctext"><b>Note!</b>
+		If you do not have Nagios already in use, make sure to install your distros nagios-plugin package to be able to use standard plugins.</p>
+                <p class="doctext">You have now installed and started the HowRU services. However, you might want to check and customize the settings before moving on. The recommendation is therefore to stop the services before continuing:</p>
+                <pre><code>
+                systemctl stop almond.service
+                systemctl stop howru.service
+                </code></pre>
+		<p class="doctext">After stopping the service, check the configuration file for changes and edit the plugins file for your needs. These files are shortly described here below.<br>Finally start the services again and enjoy your API.</p>
+                <pre><code>
+                systemctl start almond.service
+                systemctl start howru.service
+                </code></pre>
+		<h2>2. Almond Scheduler</h2>
+                <p class="doctext">There are currently three versions of the schedulers. One version is written in C# and runs with mono on Linux systems. The reason is crossplattform compatability, where you would make the scheduler run on Windows as well. There is also a Windows version of Almond currently in version 0.5 to be downloaded and compiled from our github resources. Both these versions are still in developement stage. The last version is a native scheduler for Linux, written in C.<br>It should be noted that the native linux version is far ahead of other versions and should be considered stable for production use.</p>
+                <p class="doctext">The old C# scheduler in started manually with the command:
+                </p>
+		<pre><code>
+                mono /opt/howru/howruScheduler.exe
+                </code></pre>
+                <p class="doctext">or if preferably running the native Linux-version</p>
+                <pre><code>
+                /opt/almond/almond
+                </code></pre>
+                <p class="doctext">or through systemctl init-script:</p>
+                <pre><code>
+                systemctl start almond.service
+                </code></pre>
+                <p class="doctext"> 
+                The scheduler requires two configuration files <i>almond.conf</i> (or <i>howru.conf</i> running mono) and <i>plugins.conf</i> located under /etc/almond.<br>
+                <i>howru.conf</i> is used by the mono-version and <i>almond.conf</i> is used by the native Linux scheduler. 
+                </p>
+		<p class="doctext">The native Linux scheduler is currently a far ahead of the depricated  mono version and its configuration values will be described here below.</p>
+                <h3>2.1 Almond configuration file (almond.conf)</h3>
+		<table>
+                <tr>
+                <td>Configuration</td>
+                <td>Default value</td>
+                <td>Description</td>
+                </tr>
+		<tr><td>almond.api=</td><td>true</td><td>True means Almond API is enabled, false disabled.</td></tr>
+                <tr><td>almond.certificate=</td><td>-</td><td>Path to server certificate if enabling TLS for Almond API. Alterntative to <i>scheduler.certificate/<i></td></tr>
+                <tr><td>almond.enableIamAud=</td><td>false</td><td>If using IAM provider setting this value to <i>true</i> will validate that the user token belong to the audience set in <i>almond.iamAud</i>.</td></tr>
+                <tr><td>almond.enforceIAMRoles=</td><td>false</td><td>If using IAM provider setting this value to <i>true</i>, <i>on</i> or <i>1</i> will validate that the user token has a role from the IAM provider matching a value set in <i>almond.iamRolesAccepted</i>.</td></tr>
+                <tr><td>almond.iamAud=</td><td>None</td><td>If using IAM provider here you can set which audience that has the right to execute and change values through the API. Used with <i>almond.enableIamAud</i>.</td></tr>
+		<tr><td>almond.iamIssuer=</td><td>None</td><td>Url to iam issuer.</td></tr>
+                <tr><td>almond.iamRolesAccepted=</td><td>NULL</td><td>If using <i>almond.enforceIAMRoles</i> this config entry takes a comma separated list of which roles provided by the IAM that has the right to execute and change values through Almond API.<br>An example could be <i>=almond-admin, exec, howru-service</i>..</td></tr>
+                <tr><td>almond.iamPublicKeyFile=</td><td>-</td><td>Path to file where you put the public key from an IAM issuer.</td></tr>
+		<tr><td>almond.key=</td><td>-</td><td>Path to key for server certificate if enabling TLS for Almond API. Alterntative to <i>scheduler.key/<i></td></tr>
+		<tr><td>almond.port=</td><td>9909</td><td>Port used by Almond API</td></tr>
+                <tr><td>almond.pushInterval=</td><td>60</td><td>Interval in seconds on how often Almond will push data and/or metrics to a HowRU proxy receiver.</td></tr>
+                <tr><td>almond.pushPort=</td><td>-</td><td>Port used by the HowRU proxy receiver if using Almond push functions.</td></tr>
+                <tr><td>almond.pushUrl=</td><td>-</td><td>Url to HowRU proxy receiver if using <i>api.usePush</i> and/or <i>api.usePushMetrics</i>.</td></tr>
+	        <tr><td>almond.standalone=</td><td>false</td><td>Changing this to 1 will make Almond run in standalone mode.<br>This means it will no longer export files to Howru.</td></tr>
+                <tr><td>almond.useMetricsPush=</td><td>false</td><td>Changing this to true will make Almond push metrics to a HowRU proxy receiver.</td></tr>
+                <tr><td>almond.useMetricsPush=</td><td>false</td><td>Changing this to true will make Almond push json data to a HpwRU proxy receiver.</td></tr>
+                <tr><td>almond.useSSL=</td><td>false</td><td>Changing the value to 1 will force Almond API to use TLS connection. You will need to use certificates on the server and also provide valid certificates while connecting to Almond API. This entry can be used instead of <i>scheduler.useTLS</i></td></tr>
+		<tr><td>api.adminUser=</td><td>admin</td><td>Username for logon to admin page.<br>This will update <i>users.conf</i> and will be removed from config after being read.</td></tr>
+		<tr><td>api.adminPassword=</td><td>password</td><td>Password for logon to admin page.<br>This will update <i>users.conf</i> and will be removed from config after being read.</td></tr>
+                <tr><td>api.activeMods=</td><td>modyaml.py</td><td>If mods are enabled, you enter the mods (maximux 3) you want to run. With package are modyaml and modxml, but you could add your own mods for data conversion..</td></tr>
+                <tr><td>api.authProvider=</td><td>local</td><td>Currently supported is local, keycloak, entra, auth0 and okta. If using other provider than local you must edit auth_config.py file found in <i>/opt/almond/www/api/auth_config.py</i>.</td></tr>
+                <tr><td>api.authType=</td><td>basic</td><td><i>basic</i> (standard) gives a HTTP Auth for logging into admin page. The other option is <i>2fa</i> which will enable two-factor authorization. <br>NOTE: Only has effect if in using local authorization.</td></tr>
+                <tr><td>api.bindPort=</td><td>80</td><td>Port used by the api.<br>Should be 443 if you use SSL, otherwise the API can use any port.</td></tr>
+		<tr><td>api.enableAliases=</td><td>false</td><td>Changing the value to 1 will allow the api to uses aliases as specified in the file <i>/etc/almond/aliases.conf</i>.</td></tr>
+                <tr><td>api.enableFile=</td><td>false</td><td>Changing the value to 1 will allow the api to read from a specific file specified by <i>whichjson</i>.</td></tr>
+                <tr><td>api.enableGUI=</td><td>true</td><td>Changing the value to false will disable HowRU http pages.</td></tr>
+                <tr><td>api.enableLoginRedirect=</td><td>true</td><td>If using external auth provider, setting this to false will run RBOC IAM handling in stead of auth flow.<br>Having this value set to true (standard) will redirect Almond admin login to external auth provider such as Keycloaks, EntraID, Okta or AUth0.</td></tr>
+                <tr><td>api.enableMods=</td><td>false</td><td>Changing the value to true will enable HowRU to run mods to convert data to other formats such as yaml or xml depending on which mods you have enabled.</td></tr>
+                <tr><td>api.enableOauth=</td><td>false</td><td>Changing the value to true will make HowRU admin page login against external oath provider, such as Keycloaks, Entra, Okta and Auth0.</td></tr>
+                <tr><td>api.enableOtelExporter=</td><td>false</td><td>Changing this to true will make HowRU start exporting OTEL data to a otel collector endpoint.</td></tr>
+                <tr><td>api.enableOtelFileWatcher=</td><td>false</td><td>If <i>api.enableOtelExporter</i> is enabled setting this value to true will make HowRU export otel metrics and logs to a receiving endpoint as soon as any data file is updated.</td></tr>
+                <tr><td>api.enablePeriodicOtelExport=</td><td>false</td><td>If <i>api.enableOtelExporter</i> is enabled setting this value to true will make HowRU export otel metrics and logs to a receiving endpoint at the interval given in <i>api.otelExportInterval</i>.</td></tr>
+                <tr><td>api.enableProxyCleaner=</td><td>false</td><td>If set to true HowRU will remove data files older than the value given at <i>api.proxyCleanerSeconds</i>.<br>NOTE: This function is only useful if HowRU is used as a proxy.</td></tr>
+                <tr><td>api.enableScraper=</td><td>false</td><td>Changing the value to 1 will allow the api to make sure metrics exported as prometheus will function as an exporter.</td></tr>
+                <tr><td>api.enableSSL=</td><td>false</td><td>Changing the value to <i>true</i> will force the API to run through SSL. Make sure you have <i>api.sslCertificate</i> and <i>api.sslKey</i> values in your config.</td></tr>
+		<tr><td>api.dataDir=</td><td>/opt/almond/data</td><td>The directory from where the api should read (the) data file(s).</td></tr>
+                <tr><td>api.isContainer=</td><td>false</td><td>If your Almond runs in a docker container you should change this value to <i>true</i>, else HowRU will not be able to talk to Almond API.</td></tr>
+                <tr><td>api.isMetricsProxy=</td><td>false</td><td>Changing the value to <i>true</i> will allow the HowRU API to read metrics from multiple servers.</td></tr>
+                <tr><td>api.isProxy=</td><td>false</td><td>Changing the value to <i>true</i> will allow the HowRU API to read output from multiple servers.</td></tr>
+                <tr><td>api.metricsDir=</td><td>/opt/almond/data/metrics</td><td>The directory where Almond stores metrics, used by HowRU to forward through API calls.</td></tr>
+		<tr><td>api.multiMetrics=</td><td>false</td><td>Changing the value to 1 will allow the api to read metrics from multiple servers. Same as <i>api.isMetricsProxy</i>.</td></tr>
+                <tr><td>api.multiServer=</td><td>false</td><td>Changing the value to 1 will allow the api to read output from multiple servers. Older entry for <i>api.isProxy</i>.</td></tr>
+                <tr><td>api.otelExportInterval=</td><td>60</td><td>If HowRU OTEL exporter is enabled and you are using <i>api.enablePeriodicOtelExport</i> this value will tell the interval in seconds when the exporter should send data to the receiving otel collector endpoint.</td></tr>
+                <tr><td>api.otlpEndpoint==</td><td>-</td><td>If enabling the <i>api.enableOtelExport</i> thos entry will give the address to the receiving otel collector endpoint, as for an example <i>http://localhost:4318</i>.</td></tr>
+                <tr><td>api.persistant2fa=</td><td>false</td><td>Changing the value to <i>true</i> will allow HowRU to persistantly store Auth2FA keys.</td></tr>
+                <tr><td>api.proxyCleanerSeconds=</td><td>320</td><td>If HowRU is used as a proxy and you enable <i>api.enableProxyCleaner</i> this entry tell the seconds how long a data file can live if not updated. Files not updated in the timeframe given in this configuration entry will be removed.</td></tr>
+                <tr><td>api.showDashboard=</td><td>on</td><td>Will show dashboard rather than list of servers in the HowRU monitoring status web page. If set to off or false, list will be shown in stead of dashboard./td></tr>
+		<tr><td>api.sslCertificate=</td><td>/opt/almond/www/api/ssl/cert.pem</td><td>The path to your SSL certificate. The default value is just an example.</td></tr>
+                <tr><td>api.sslKey=</td><td>/opt/almond/www/api/ssl/key.pem</td><td>The path to your SSL key used with the certificate. The default value is just an example.</td></tr>
+		<tr><td>api.stateType=</td><td>systemctl</td><td>This should be <i>supervisorctl</i> when running with supervisord in Docker containers.<br>Otherwise the default value should be used.</td></tr>
+		<tr><td>api.startPage=</td><td>admin</td><td>Which page should be startpage when using http(s).<br>Allowed values are <i>admin</i>, <i>status</i> and </i>metrics</i>.</td></tr>
+		<tr><td>api.useGUI=</td><td>true</td><td>Changing the value to 0 or <i>false</i> will disable HowRU http pages.</td></tr>
+		<tr><td>api.userFile=</td><td>/etc/almond/users.conf</td><td>The file where HowRu stores login credentials for the admin page..</td></tr>
+                 <tr><td>api.useSSL=</td><td>false</td><td>Changing the value to <i>true</i> will force the API to run through SSL. Make sure you have <i>api.sslCertificate</i> and <i>api.sslKey</i> values in your config.</td></tr>
+                <tr><td>api.wsgi=</td><td>true</td><td>If true HowRU service will run as a production safe wsgi app. If set to false, it will run under as a Flask development service..</td></tr>
+                <tr><td>data.jsonFile=</td><td>monitor_data.json</td><td>The name of the file where the scheduler writes data and from where the api will read it</td></tr>
+                <tr><td>data.metricsFile=</td><td>monitor.metrics</td><td>The name of the file where the scheduler should write current metrics.</td></tr>
+		<tr><td>data.metricsOutputPrefix=</td><td>almond</td><td>Prefix given to all metrics created by this instance of Almond.</td></tr>
+		<tr><td>data.saveOnExit=</td><td>0</td><td>Changing the value to 1 will append data to files when restarting the application. If <i>api.multiServer</i> is enabled or you run the scheduler in a container this value is recommended to be 0</td></tr>
+		<tr><td>gardener.CleanUpTime=</td><td>86400</td><td>Value is given in seconds.<br>Default value will drop all metrics files older than 24 hours when gardener runs.</td></tr>
+		<tr><td>plugins.declaration=</td><td>/etc/almond/plugins.conf</td><td>The file where you configure how plugins should run.</td></tr>
+		<tr><td>plugins.directory=</td><td>/opt/almond/plugins/</td><td>The directory where you store your plugins.<br>You can also point to for instance <i>/usr/local/nagios/libexec/</i> or symlink other directories to the howru plugins directory.</td></tr>
+                <tr><td>scheduler.allowAllHosts=</td><td>true</td><td>If set to <i>false</i> Almond will require a file named <i>/etc/almond/allowed_hosts</i> where you specify which servers are allowed to connect to Almond API.</td></tr>
+                <tr><td>scheduler.certificate=</td><td>0</td><td>Path to server certificate if enabling TLS for Almond API.</td></tr>
+		<tr><td>scheduler.clearDataCacheInterval=</td><td>300</td><td>The interval on which Almond wil run its clearDataCash-function, if it´s enabled.</td></tr>
+                <tr><td>scheduler.confDir=</td><td>/etc/almond/</td><td>Path to configuration file</td></tr>
+		<tr><td>scheduler.dataCacheTimeFrame=</td><td>330</td><td>The timeframe an unused data file is allowed to be stored in the Almond data directory.</td></tr>
+		<tr><td>scheduler.dataDir=</td><td>/opt/almond/data/</td><td>The directory where to store output</td></tr>
+		<tr><td>scheduler.enableClearDataCache=</td><td>0</td><td>Changing this value to 1 will make Almond start a thread to clear old data files.</td></tr>
+		<tr><td>scheduler.enableGardener=</td><td>0</td><td>If set to 1 Almond will trigger a <i>gardener script</i> to remove old files.</td></tr>
+		<tr><td>scheduler.enableKafkaExport=</td><td>0</td><td>Changing the value to 1 will make Almond start its Kafka producer.<br>The producer will not start if not all Kafka settings are correct..</td></tr>
+                <tr><td>scheduler.enableKafkaId=</td><td>0</td><td>Changing the value to 1 will make Almond Kafka producer add id as extra metadata to content. Works together with <i>scheduler.kafkaStartId</i>.</td></tr>
+		<tr><td>scheduler.enableKafkaSSL=</td><td>0</td><td>Changing this value to 1 will force Almond to connect to Kafka with SSL.</td></tr>
+		<tr><td>scheduler.enableKafkaTag=</td><td>0</td><td>If set to 1 you can add an additional tag to the message Almond is producing to a Kafka topic.</td></tr>
+		<tr><td>scheduler.format=</td><td>json</td><td>Format of output. The default is <i>json</i>, other possible formats are <i>metrics</i> and the combination of the two <i>jsonmetrics</i><br>You can also use <i>prometheus</i> style metrics.</td></tr>
+		<tr><td>scheduler.gardenerRunInterval=</td><td>43200</td><td>This parameter tell Almond how often it should run the gardener script. The default value will make it run every 12 houers.</td></tr>
+		<tr><td>scheduler.gardenerScript=</td><td>/opt/almond/gardener.py</td><td>Path to the script you want to run to &quot;garden&quot; your metrics files.</td></tr>
+                <tr><td>scheduler.hostName=</td><td><i>virtual hostname</i></td><td>Howru will automatically look up hostname on the server where it´ running and this configuration is therefor optional. However if running in a container you might want to give a virtual hostname to the exports from the container..</td></tr>
+		<tr><td>scheduler.initSleepMs=</td><td>7000</td><td>The sleep time in miliseconds between start of each plugin at startup</td></tr>
+                <tr><td>scheduler.kafkaAvro=</td><td>0</td><td>Setting this to 1 will make Almond use Avro when producing data to Kafka. You need to import schema registry to Kafka and set <i>schemaRegistryUrl</i>, <i>schemaName</i> as well as <i>kafkaStartId</i> and <i><kafkaTag</i> parameters.</td></tr>
+		<tr><td>scheduler.kafkaBrokers=</td><td><i>ip:port</i></td><td>Url and port to Kafka broker(s)r.</td></tr>
+		<tr><td>scheduler.kafkaCACertificate=</td><td>-</td><td>If <i>scheduler.enableKafkaSSL</i> is set you need to provide the path to the CA certificate used in the SSL key chain.</td></tr>
+                <tr><td>scheduler.kafkaConfigFile=</td><td>/etc/almond/kafka.conf</td><td>The file where you want to store configuration for Kafka producer. Read further on <i>scheduler.useKafkaConfigFile</i>.</td></tr>
+		<tr><td>scheduler.kafkaProducerCertificate=</td><td>-</td><td>If <i>scheduler.enableKafkaSSL</i> is set you need to provide the path to the certificate that Almond should use when producing to its Kafka topic</td></tr>
+                <tr><td>scheduler.kafkaStartId=</td><td>0</td><td>If <i>scheduler.enableKafkaId</i> is set you can choose what the first of an incremental id attached to each check made by Almond passed as a metadata to Kafka. </td></tr>
+		 <tr><td>scheduler.kafkaTag=</td><td>-</td><td>The tag that you want to add to a the data Almond produces to a Kafka topic.</td></tr>
+                <tr><td>scheduler.kafkaTopic=</td><td>almond_monitoring</td><td>Name of the Kafka topic where you want to produce your monitoring data.</td></tr>
+                <tr><td>scheduler.key=</td><td>0</td><td>Path to key for  server certificate if enabling TLS for Almond API.</td></tr>
+                <tr><td>scheduler.logDir=</td><td>/var/log/almond/</td><td>Path to log file</td></tr>
+                <tr><td>scheduler.logPluginOutput=</td><td>0</td><td>Changing the value to 1 will make Almond write the results of plugin runs to the standard log file.</td></tr>
+		<tr><td>scheduler.logToStdout=</td><td>0</td><td>Changing the value to 1 will make Almond write verbose to stdout.<br>Might be interesting if it runs in a container.</td></tr>
+                <tr><td>scheduler.quickStart=</td><td>0</td><td>Changing the value to 1 will force Almond to run all plugins at once before starting the scheduler.</td></tr>
+                <tr><td>scheduler.runGardenerAtStart=</td><td>0</td><td>Changing the value to 1 will force Almond to run the <i>gardener script</i> at startup.</td></tr>
+                <tr><td>scheduler.schemaName=</td><td>almond-montitor-topic-value</td><td>The name of the schema registry used by Almond as a Kafka producer if avro is enabled.</td></tr>
+                <tr><td>scheduler.schemaRegistryUrl=</td><td>-</td><td>The url to where Kafka stores its schema registry (http://localhost:8081). Needed by Almond as a Kafka producer only if <i>kafkaAvro</i> is enabled.</td></tr>
+                <tr><td>scheduler.sleepMs=</td><td>5000</td><td>Sleep time for the scheduler timer. Default is looking every 5th second if it´s time to run a command<td></tr>
+                <tr><td>scheduler.storeResults=</td><td>0</td><td>Changing the value to 1 will make Almond  write the results of plugins to the directory specified in <i>scheduler.storeDir</i>. The value should be set to 1 if you use metrics instead of or together with json.</td></tr>
+                <tr><td>scheduler.storeDir=</td><td>/opt/almond/data/metrics</td><td>The directory where you store plugin results if enabled in the <i>scheduler.storeResults</i> parameter.</td></tr>
+		<tr><td>scheduler.templateDir=</td><td>/opt/almond/templates/</td><td>The directory where you put output templates. This function is depricated..</td></tr>
+                <tr><td>scheduler.truncateLog=</td><td>0</td><td>If value is set to 1, Almond will compress and truncate the log file at the interval set in<i>truncateLogInterval</i>.</td></tr>
+                <tr><td>scheduler.truncateLogInterval=</td><td>604800</td><td>If <i>scheduler.trucateLog</i> is activated, the value added to this entry will determine how much log that is going to be saved.</td></tr>
+                <tr><td>scheduler.truncateLogInterval=</td><td>604800</td><td>The interval on which Almond will compress and trucate its log (if activated). The value is set in seconds.</td></tr>
+                <tr><td>scheduler.tuneCycle=</td><td>15</td><td>Value given in minutes.<br>How often the time tuner function (if enabled) will checking for plugin runs being scheduled to run in proximity to each other.</td></tr>
+		<tr><td>scheduler.tuneMaster=</td><td>1</td><td>Value given as plugin id.<br>The tune master could be any declared plugin whose next run timestamp is used to calculate runtimes for the scheduler. Only valid if tuneTimer is enabled.</td></tr>
+		<tr><td>scheduler.tuneTimer=</td><td>0</td><td>Changing the value to 1 will activate the tuneTimer function.<br>The tune timer will try to prevent chunks of plugins running simultaneously. It might delay plugin runs, in order to minimize load.</td></tr>
+		<tr><td>scheduler.type=</td><td>classic</td><td>Changing the value to <i>time</i> instead of <i>classic</i> will implement the new scheduler introduced in version 0.9.6.</td></tr>
+		<tr><td>scheduler.useExternal=</td><td>0</td><td>Changing the value to 1 will disable Almond internal scheduler for executing check commands. Almond will solely reply to calls to Almond API to execute commands. This is mostly for use with <i>check_almond</i> with Nagios equivelent solution.</td></tr>
+                <tr><td>scheduler.useKafkaConfigFile=</td><td>0</td><td>Changing this value to 1 will make the Almond Kafka producer reading <b>all</b> configurations from the file specified in <i>scheduler.kafkaConfigFile</i>.<br>Take note that kafka_brokers, kafka topic and SSL related information added in <i>almond.conf</i> will be overriden.<br>You can set the kafka file to <i>almond.conf</i> prefixing Kafka related configurations with <i>kafka.</i>. All Kafka producer related configurations prefixed <i>scheduler.</i> will be omitted.</td></tr>
+                <tr><td>scheduler.useTLS=</td><td>0</td><td>Changing the value to 1 will force Almond API to use TLS connection. You will need to use certificates on the server and also provide valid certificates while connecting to Almond API.</td></tr>
+                </table>
+                <h3>2.2 Almond plugins configuration file (plugins.conf)</h3>
+                <p class="doctext">The plugins configuration file is a semicolon separated file where each line refers to a specific plugin, using the following schema:</p>
+                <pre><code>
+                [service_name] description; plugin args;active;interval
+                </code></pre>
+                <p class="doctext">As for an example:</p>
+                <p class="doctext"><i>You have a plugin called check_disk in the plugin directory declared in the <b>plugins.directory</b> configuration above.<br>
+                        The plugin takes three parameters, <b>-w, -c</b> and <b>-p</b> for warning, critical and the path to the directory you want to control. You want the plugin to respond with warning if 10% or less is unused and if 5% or less is unused you want a critical response from the plugin.<br>You want to check your /var/log directory every minute and have the description &quot;Control /var/log&quot; in the api.</i><br>
+                Your plugin configuration for this check would look like this:</p>
+                <pre><code>
+                [check_var_log] Control /var/log;check_disk -w 10% -c 5% -p /var/log;1;1
+                </code></pre>
+                <p class="doctext">Say, you want to use the same check to also control /boot and /home, but you feel it´s enough to check them every 15th and every 30th minutes respectively - and your file cc
+ould look like:</p>
+                <pre><code>
+                [check_boot] Control /boot;check_disk -w 10% -c 5% -p /boot;1;15
+                [check_home] Control /home;check_disk -w 10% -c 5% -p /home;1;30
+                [check_var_log] Control /var/log;check_disk -w 10% -c 5% -p /var/log;1;1
+                </code></pre>
+                <p class="doctext"><b>Note</b>: The second last field, <i>active</i> is always <b>1</b> in these examples. If you for instance want to disable a check for some reason, you give it the value 0, as an example</p>
+                <pre><code>
+                [check_myservice] Control MyOwnService;my_own_control_script.sh;0;1
+                </code></pre>
+		<h3>2.3 Almond memory allocation configuration file (memalloc.conf)</h3>
+		<p class="doctext">The memalloc.conf file should consist of either the word <i>enabled</i> or the word</i> disabled</i>.<br>
+		By default &quot;disabled&quot; is written in the file. By changing this to <i>enabled</i> Almond will read how much memory the program will allocate to a number of important variables.<br>
+		The file read from is found in:</p>
+		<pre><code>
+		/opt/almond/memalloc.alm
+		</code></pre>
+		<p class="doctext"><b>Note! Do not change values in <i>memalloc.alm</i> without knowing the consequences!</b></p>
+		<h3>2.4 Almond Kafka producer configuration file (kafka.conf)</h3>
+	        <p class="doctext">If setting <i>scheduler.useKafkaConfigFile=1</i> in <i>almond.conf</i> the Kafka producer module in Kafka will read it´s configuration from the file specified in <i>scheduler.kafkaConfigFile</i>. Preferred file should be <i>/etc/almond/kafka.conf</i>.</p>
+		<p class="doctext">The producer settings used without this file is standardized and you only need to care about which brokers you want to use, what the name of the topic should be and SSL settings and this should be fine for most circumstances.<br>
+		However, if you want to optimize the producer or want to add specific settings to it you can use the <i>kafka.conf</i> file.</p>
+		<p class="doctext">The settings will not be explained here more than by name, since they are Kafka specific.</p>
+		<p class="doctext"><b>Note!</b> You can set <i>scheduler.kafkaConfigFile</i> to point at your general almond configutation file, adding the entries you are interested of below.</p>
+		<table>
+		<thead>
+		<tr>
+			<th scope="col">Configuration</th>
+			<th scope="col">Kafka producer property</th>
+			<th scope="col">Default value/Comment</th>
+		</tr>
+		</thead>
+		<tbody>
+		<tr>
+			<th scope="row">kafka.bootstrap.servers</th>
+			<td>bootstrap.servers</td>
+			<td>Empty / Must be specified<br><b>Note!</b> <i>scheduler.kafkaBrokers</i> will not be read.</td>
+		</tr>
+		<tr>
+                        <th scope="row">kafka.topic</th>
+                        <td>-</td>
+                        <td>Empty / Must be specified<br><b>Note!</b> <i>scheduler.kafkaTopic</i> will not be read.</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.client.id</th>
+                        <td>client.id</td>
+                        <td>almond</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.metadata.max.age.ms</th>
+                        <td>metadata.max.age.ms</td>
+                        <td>60000</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.acks</th>
+                        <td>acks</td>
+                        <td>1</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.enable.idempotence</th>
+                        <td>enable.idempotence</td>
+                        <td>false</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.transactional.id</th>
+                        <td>transactional.id</td>
+                        <td>Empty / String value set with <i>enable.idempotence</i></td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.retries</th>
+                        <td>retries</td>
+                        <td>5</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.max.in.flight.requests.per.connection</th>
+                        <td>max.in.flight.requests.per.connection</td>
+                        <td>5</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.linger.ms</th>
+                        <td>linger.ms</td>
+                        <td>10</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.batch.num.messages</th>
+                        <td>batch.num.messages</td>
+                        <td>10000 / Not used</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.queue.buffering.max.messages</th>
+                        <td>queue.buffering.max.messages</td>
+                        <td>100000</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.queue.buffering.max.kbytes</th>
+                        <td>queue.buffering.max.messages</td>
+                        <td>100000 / Not used</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.compression.codec</th>
+                        <td>compression.codec</td>
+                        <td>lz4</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.message.max.bytes</th>
+                        <td>message.max.bytes</td>
+                        <td>1000000</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.message.copy.max.bytes</th>
+                        <td>message.copy.max.bytes</td>
+                        <td>65535</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.request.timeout.ms</th>
+                        <td>request.timeout.ms</td>
+                        <td>30000</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.delivery.timeout.ms</th>
+                        <td>delivery.timeout.ms</td>
+                        <td>300000</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.retry.backoff.ms</th>
+                        <td>retry.backoff.ms</td>
+                        <td>100</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.dr_cb</th>
+                        <td>-</td>
+                        <td>true</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.statistics.interval.ms</th>
+                        <td>statistics.interval.ms</td>
+                        <td>60000</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.log.connection.close</th>
+                        <td>log.connection.close</td>
+                        <td>false</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.ssl.ca.location</th>
+                        <td>ssl.ca.location</td>
+                        <td>Empty / Replaces <i>scheduler.kafkaCACertificate</i></td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.ssl.certificate.location</th>
+                        <td>ssl.certificate.location</td>
+                        <td>Empty / Replaces <i>scheduler.kafkaProducerCertificate</i></td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.ssl.key.location</th>
+                        <td>ssl.key.location</td>
+                        <td>Empty / Replaces <i>scheduler.kafkaSSLKey</i></td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.security.protocol</th>
+                        <td>security.protocol</td>
+                        <td>Empty</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.sasl.mechanisms</th>
+                        <td>sasl.mechanisms</td>
+                        <td>Empty</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.sasl.username</th>
+                        <td>sasl.username</td>
+                        <td>Empty</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.sasl.password</th>
+                        <td>sasl.password</td>
+                        <td>Empty</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.socket.timeout.ms</th>
+                        <td>socket.timeout.ms</td>
+                        <td>600000</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.transaction.timeout.ms</th>
+                        <td>transaction.timeout.ms</td>
+                        <td>30000</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.socket.blocking.max.ms</th>
+                        <td>socket.blocking.max.ms</td>
+                        <td>1000y</td>
+                </tr>
+		<tr>
+                        <th scope="row">kafka.partitioner</th>
+                        <td>partitioner</td>
+                        <td>consistent_random</td>
+                </tr>
+		</tbody>
+		</table>
+                <h2>3. HowRU API</h2>
+                <p class="doctext">The scheduler will run the plugins with the parameters and with the intervals declared in the <i>plugins.conf</i> file briefly described above.<br>
+                The result of the runs will be stored in the <i>data.jsonFile</i>. To access the information through a local web page (or through external calls on the <i>api.bindPort</i> you need to start the API.</p>
+                <p class="doctext">HowRU uses Python Flask and to start in manually you need to install the required packages before running the command:</p>
+                <pre><code>
+                python /opt/almond/www/api/howru.py
+                </code></pre>
+                <p class="doctext">If you install HowRU with packages you will most likely prefer the to start it with systemd:</p>
+                <pre><code>
+                systemctl start howru.service
+                </code></pre>
+		<h3>3.1 HowRU configuration files</h3>
+		<p class="doctext">By default HowRu uses the same configuration file as almond, namely <i>almond.conf</i>. However if you prefer you can put configuration in an own file called <i>api.conf</i>.<br>
+		The <i>api.conf</i> file should include all parameters from the <i>almond.conf</i>-file prefixed <b>api.</b> as well as the following entries:
+                <ul>
+			<li>data.jsonFile</li>
+			<li>data.metricsFile</li>
+			<li>scheduler.storeDir</li>
+			<li>scheduler.configFile</li>
+			<li>scheduler.dataDir</li>
+			<li>plugins.directory</lI>
+			<li>plugins.declaration</li>
+		</ul></p>
+		<p class="doctext"><b>Note!</b> If an <i>api.conf</i> file exists alongside <i>almond.conf</i>, HowRU will prefer the values in the <i>api.conf</i>-file.</p>
+		<p class="doctext">Apart from the standard configuration, HowRU also uses <i>users.conf</i> and <i>aliases.conf</i>.<br>
+		<i>users.conf</i> holds the encrypted allowed logins for the admin page and the <i>aliases.conf</i> holds aliases for API calls.</p>
+                <p class="doctext">The <i>aliases.conf</i> files containins json entries, for an example </p>
+		<pre><code>
+		{"ID":1, "check_name":"check_cpu_stats","alias":"cpu"}
+		</code></pre>
+                <p class="doctext">If you want to restrict which hosts are allowed to connect to HowRU you can optionally put a file named <i>allowed_hosts.txt</i> in the runtime directory of HowRU (usally <i>/opt/almond/www/api/allowed_hosts.txt</i>) where you can specify which hosts are allowed to connect to HowRU.
+                <br>If using the allowed_hosts file any call from servers not added to the file will be rejected as a 403.</p>
+                <p class="doctext">If not having this file in the howru runtime directory HowRU will allow any server to connect.</p>
+                <p class="doctext"><b>Note!</b> The Almond service has its own file to allow hosts, named <i>/etc/almond/allowed_hosts</i> and it will not have any effect on HowRU.</p>
+                <h2>4.HOWRU API CALLS</h2>
+                <p class="doctext">
+                <h3>4.1 Available API calls </h3>
+                <p class="doctext">The following API:s will be available:</p>
+		<table>
+                <tr>
+                <td>API call</td><td>Description</td></tr>
+                <tr><td>/api/status</td><td>Short compilation of server state.</td></tr>
+		<tr><td>/api/summary</td><td>Same as above.</td></tr>
+		<tr><td>/api/howru</td><td>Same as above.</td></tr>
+		<tr><td>/api/howareyou</td><td>Same as above.</td></tr>
+		<tr><td>/howru/api/howareyou</td><td>Same as above.</td></tr>
+		<tr><td>/howru/monitoring/howareyou</td><td>Same as above.</td></tr>
+		<tr><td>/api/criticals</td><td>Compilation of all plugins in critical state.</td></tr>
+		<tr><td>/howru/api/criticals</td><td>Same as above.</td></tr>
+                <tr><td>/howru/monitoring/criticals</td><td>Compilation of all plugins in critical state.</td></tr>
+		<tr><td>/api/warnings</td><td>Compilation of all plugins in warning state.</td></tr>
+                <tr><td>/howru/api/warnings</td><td>Same as above.</td></tr>
+                <tr><td>/howru/monitoring/warnings</td><td>Compilation of all plugins in warning state.</td></tr>
+		<tr><td>/api/ok</td><td>Compilation of all plugins in state ok.</td></tr>
+		<tr><td>/api/oks</td><td>Same as above.</td></tr>
+		<tr><td>/howru/api/ok</td><td>Same as above.</td></tr>
+                <tr><td>/howru/monitoring/ok</td><td>Compilation of all plugins in state ok.</td></tr>
+		<tr><td>/api/changes</td><td>Compilation of changes</td></tr>
+		<tr><td>/howru/api/changes</td><td>Same as above</td></tr>
+                <tr><td>/howru/monitoring/changes</td><td>Compilation of changes</td></tr>
+		<tr><td>/api/showall</td><td>All plugin results are shown</td></tr>
+		<tr><td>/api/all</td><td>Same as above</td></tr>
+                <tr><td>/api/json</td><td>Same as above</td></tr>
+		<tr><td>/howru/api/showall</td><td>Same as above</td></tr>
+		<tr><td>/howru/api/all</td><td>Same as above</td></tr>
+                <tr><td>/howru/api/json</td><td>Same as above</td></tr>
+                <tr><td>/api/monitoring</td><td>Versatile API that can show all or specific items (if adding &name= or &item=).
+                <br>It can also create check results based on metrics. For instance /api/monitoring?item=check_memory&check will return a check result for <i>check_memory.</i><br>
+                /api/monitoring?item=check_cpu_stats&check&option=CpuSystem&warning=6&critical=10 will create a <i>custom check</i> based on CpuSystem metrics given the warning and critical parameters.<br>
+                Finally adding &help will show you which <i>options</i> are available on a given check.</td></tr>
+                <tr><td>/howru/api/monitoring</td><td>Same as above.</td></tr>
+		<tr><td>/howru/monitoring/json</td><td>All plugin results are shown</td></tr>
+		<tr><td>/api/servers</td><td>Results from specifik server in multimode. <i>id</i> or </i>name</i> must be provided.</td></tr>
+		<tr><td>/howru/api/servers</td><td>Same as above</td></tr>
+		<tr><td>/api/<i>alias</i></td><td>Show results from <i>alias</i> as provided in the <i>aliases.conf</i> file.</td></tr>
+		<tr><td>/api/search?name=<i>searchstring</i></td><td>Search results from string</td></tr>
+		<tr><td>/api/querysearch?name=<i>searchstring</i></td><td>Same as above</td></tr>
+		<tr><td>/howru/api/search?name=<i>searchstring</i></td><td>Same as above</td></tr>
+		<tr><td>/api/query?id=<i>plugin_id</i></td><td>Search result of a specific plugin id</td></tr>
+		<tr><td>/api/plugin?id=<i>plugin_id</i></td><td>Same as above</td></tr>
+		<tr><td>/howru/api/plugin?id=<i>plugin_id</i></td><td>Same as above</td></tr>
+                <tr><td>/howru/monitoring/plugin?id=<i>plugin_id</i></td><td>Result of a specific plugin by id </td></tr>
+                <tr><td>/howru/monitoring/plugin?name=<i>plugin_name</i></td><td>Result of specific plugin by plugin name</td></tr>
+                <tr><td>/howru/settings/plugins</td><td>Show settings of plugins running on the server</td></tr>
+                <tr><td>/howru/settings/scheduler</td><td>Show all settings in the <i>almond.conf</i> file</td></tr>
+                </table>
+                <br>
+                <p class="doctext">All of the API calls can take the parameter <i>whichjson</i> if you want the API to look only in a particular json-file if you are running in <i>multiserver</i>-mode.</p>
+                <p class="doctext">In <i>multiserver</i>-mode the parameter <i>server</i> can also be used if you want to look at the result from a particular server of many:</p>
+                <pre><code>
+                curl url_to_hostserver:port/api/v1/howareyou
+                </code></pre>
+                <p class="doctext">will return status information from all servers running under the api.</p>
+                <pre><code>
+                curl url_to_hostserver:port/api/v1/howareyou&server=testserver.test.domain.com
+                </code></pre>
+                <p class="doctext">will only show status from the particular server <i>testserver.test.domain.com</i>.</p>
+                <p class="doctext">Apart from the above API calls HowRU also have a number of calls mainly to be used with integration scripts, which are listed here:</p>
+                <table>
+                <tr>
+                <td>API call</td><td>Description</td></tr>
+                <tr><td>/api/countjobs</td><td>Returns the number of plugins handled by HowRu.</td></tr>
+                <tr><td>/howru/api/countjobs</td><td>Same as above.</td></tr>
+                <tr><td>/api/countservers</td><td>Returns the number of servers HowRU is serving.</td></tr>
+                <tr><td>/howru/api/countservers</td><td>Same as above.</td></tr>
+                <tr><td>/api/elderpluginrun</td><td>Returns a timestamp of the &quot;oldest&quot; plugin execution.</td></tr>
+                <tr><td>/howru/api/elderpluginrun</td><td>Same as above.</td></tr>
+                <tr><td>/api/getmaintenance</td><td>Returns a list of all plugins that are disabled.</td></tr>
+                <tr><td>/howru/api/getmaintenance</td><td>Same as above.</td></tr>
+                <tr><td>/api/getmaintenancelist</td><td>Returns a list of the maintenance status of all plugin items.</td></tr>
+                <tr><td>/howru/api/getmaintenancelist</td><td>Same as above.</td></tr>
+                <tr><td>/api/lastpluginrun</td><td>Returns a timestamp of when the last plugin was executed.</td></tr>
+                <tr><td>/howru/api/lastpluginrun</td><td>Same as above.</td></tr>
+                <tr><td>/api/listjobnames</td><td>Returns a list with the names of all plugins handled by this HowRU instance.</td></tr>
+                <tr><td>/howru/api/listjobnames</td><td>Same as above.</td></tr>
+                <tr><td>/api/listjobs</td><td>Returns the name and id of all plugins handled by this HowRU installation.</td></tr>
+                <tr><td>/howru/api/listjobs</td><td>Same as above.</td></tr>
+                <tr><td>/api/listservers</td><td>Returns the list of all servers handled by this HowRU instance.</td></tr>
+                <tr><td>/howru/api/listservers</td><td>Same as above</td></tr>
+                <tr><td>/api/unixdeploytime</td><td>Returns the unix timestamp of when the configuration file was last changed.</td></tr>
+                <tr><td>/howru/api/unixdeplytime</td><td>Same as above</td></tr>
+                <tr><td>/api/unixupdatetime</td><td>Returns a unix timestamp for when plugin configuration was last changed..</td></tr>
+                <tr><td>/howru/api/servers</td><td>Same as above</td></tr>
+                </table>
+		<h2>5. Using the Almond API</h2>
+                <p class="doctext">Almond itself has its own API, which should be used with more caution than the more easygoing HowRU API. The Almond API is running on the port specified in the<br>
+                <i>almond.conf</i>, if enabled. As a user the HowRU API should generally be preferred to use in all cases where it provides the same service as Almond API.</p>
+		<p class="doctext">Almond API will require you to send a valid json object which it can evalutate, as will be explained further later. An API call to Almond could look like this:</p>
+		<pre><code>
+		curl localhost:9909 -d '{"action":"set","name":"hostname","value":"newservername","token":"qwyhb67jnds1qee9x"}'
+                </code></pre>
+		<p class="doctext">Tokens are needed to execute or change things. Reading metrics, plugin outputs or values can be done without providing a token.<br>
+		Tokens can be created with the tool <i>almond-token-generator</i> usually found under <i>/opt/almond/utlities</i> and should be provided as part of the json data sent to the server, as in the example above.</p>
+		<p class="doctext">However, if you use the IAM settings in Almond you instead should put the authorization token in the header of the post, like this:</p>
+		<ore><code>
+		curl -X POST localhost:9015 -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICIteWs0RGVuTGkxS1ZDZkVTRzZkMWo4cnFEci1Gbjd4R3ZmdnRNSDRnZWNZIn0.eyJleHAiOjE3NzU3MjE5OTUsImlhdCI6MTc3NTcyMTY5NSwianRpIjoiMzcyNDEzOWYtY2MzYi00ZTJjLWJjNWYtZjk0MWJiZTk3ZTk2IiwiaXNzIjoiaHR0cDovL2xvY2FsaG9zdDo4MDg5L3JlYWxtcy9hbG1vbmRtb25pdG9yIiwic3ViIjoiOGQ2YTQ2NjktOWMxOS00ZTQxLWFhN2ItNDg2YmY1NzFmODMzIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoiYWxtb25kLWxvZ2luIiwic2Vzc2lvbl9zdGF0ZSI6IjYzMDBjZWExLTVjYWEtNGVlZS1hMDRhLTNjMjExMzJjYmUwYiIsInNjb3BlIjoiIiwic2lkIjoiNjMwMGNlYTEtNWNhYS00ZWVlLWEwNGEtM2MyMTEzMmNiZTBiIiwiZW1haWxfdmVyaWZpZWQiOmZhbHNlLCJuYW1lIjoiVGVzdCBVc2VyIiwicHJlZmVycmVkX3VzZXJuYW1lIjoidGVzdHVzZXIiLCJnaXZlbl9uYW1lIjoiVGVzdCIsImZhbWlseV9uYW1lIjoiVXNlciIsImVtYWlsIjoidGVzdEBhbG1vbmRtb25pdG9yLmNvbSJ9.VSB0hMGg6WxIbR1z9bVWEqH2-ftb2rAeu1GuccrV3_pZ-PDFzMVy0eNPHmRWA0b3M0ORNhlTl3eZkZYotBPFHTwuOZKxxoutv6-o53HT0SZiDfICKMpdkqK5A1u-QnKqfPQhkhfWZ3PCEH26jRqqcFAePoif_Hebhl96CGL9cDUeYxMosMKVhnxiFfHOxWilQdhH85IHiTC1h072Ptr0SIccCTwfJdqYHIywGxGLzVL4f0TWzYCbehvZikzPhoRHNcbiBswC3c0FribmRejHjRxBUcDGNxvWEDHJGngEtXQNVmgnkvLePmo_3jGaedb2gSqLJ-naDUA2zul_zfbbng" -H "Content-Type: application/json" -d '{"action":"run", "name":"check_almond", "flags":"verbose"}' 
+		</code></pre>
+		<p class="doctext">With Almond API you have the possibility to change some variables that was written in configuration files, read plugin results, run and toggle processes inside Almond as well
+                 as executing plugins, <br> including sending arbitary parameters to them. While Almond API is somewhat dangerous to play around with, it does provide a great opportunity to make integrations with other systems and optimize
+                the Almond process.</p>
+                <p class="doctext"><b>Note!</b> All calls to Almond API that involves executing code or change variables with the program require you to use a <i>token</i> ackknowledged by Almond.<br>
+                You find an <i>almond_token_generator</i> in the directory <i>/opt/almond/utilities</i> that will help you create and install tokens.</p>
+                <p class="doctext">All calls to Almond API must have the &quot;action&quot; parameter specified, as well as following parameters depending on what you want to achieve.<br>
+                A list of valid parameters are specified below:</p>
+                <p class="doctext">Allowed actions are the following:</p>
+		<ul>
+                <li>almond</li>
+                <li>check</li>
+                <li>disable</li>
+                <li>enable</li>
+		<li>execute</li>
+                <li>exread</li>
+                <li>get</li>
+		<li>getm</li>
+		<li>getvar</li>
+		<li>maintenance</li>
+                <li>metrics</li>
+		<li>monitor</li>
+		<li>read</li>
+                <li>read_all</li>
+                <li>reload</li>
+		<li>run</li>
+                <li>runread</li>
+                <li>set</li>
+                <li>setvar</li>
+                </ul>
+                <p class="doctext">Depending of <i>action</i> a number of other parameters are required, where <i>name</i> is usually always required and then depending on the action further parameters such as <i>flags</i>, <i>value</i> and <i>args</i> must be added. The <i>token</i> parameter must be added for all API calls that trigger changes or runs.</p>
+                <p class="doctext">You can however run a read command such as the one below without supplementing a token:</p>
+                <pre><code>
+                curl localhost:9909 -d '{"action":"read", "name":"check_memory", "flags":"verbose"}'
+                </code></pre>
+                <p class="doctext">You can also retrieve metrics without a token:</p>
+                <pre><code>
+                curl localhost:9909 -d '{"action":"metrics", "name":"metrics"}'
+                </code></pre>
+                <p class="doctext">As a final example, this call would trigger a plugin to execute a dry run with the arguments passed by the API call:</p>
+                <pre><code>
+                curl localhost:9909 -d '{"action":"execute", "name":"check_memory", "flags":"dry", "args":"-w 70 -c 75", "token":"qwyhb67jnds1qee9x"}'
+                </code></pre>
+                <p class="doctext">You can look at the API section in the Almond Admin page to see what types of calls are possible and try them out from there.</p>
+		<h2>6. Tips and recommendations</h2>
+                <p class="doctext">If you run the HowRU API on port 80 (default) you get a very simplistic web GUI where you can explore and test the API.<br>
+                If you wish to run the API on another port you can always curl to get API responses in json-format, for instance:</p>
+                <pre><code>
+                curl url.to.my.server:port/howru/monitoring/howareyou
+                </code></pre>
+		<p class="doctext"><b>Note!</b> If you run SSL you should set port to 443.</p>
+		<p class="doctext"><b>Note!</b> If running the scheduler as a Prometheus exporter, port as 9245, 9267 or 9927 could be used as these are reserved for Nagios exporters.</p>
+                <p class="doctext">If running HowRU scheduler in a Docker container, you either need to EXPOSE the port used by the API or you can use the multiServer or enableFile options running the API service on the server hosting the container.</p>
+                <p class="doctext">Running the API on the server hosting containers is the preferred way to use HowRU. In this case you need to make sure your container(s) have access to the local directory where the API reads data. If using <i>multiServer</i> the API will expose all files written to the data directory.</p>
+		<p class="doctext"><b>Note!</b> Make sure your containers don´t use the same name in the <i>data.jsonFile</i> settin.</p>
+		<p class="doctext">Setting the <i>api.enableFile</i> option will make it possible to run API against one of many data files. <br>Imagine you have three containers writing data files to the API data directory. Let´s say the names ar <i>container1.json</i>,<i> container2.json</i> and <i>container3.json</i> respectively.
+		Running the API on the server hosting the containers in <i>api.multiServer</i> mode would let you get the results from all containers, for instance running:</p>
+                <pre><code>
+                curl url_to_hostserver:port/howru/json
+                </code></pre>
+                <p class="doctext">Running <i>api.enableFile</i> would also make it possible to get API results from the containers individually, eg:</p>
+                <pre><code>
+                curl url_to_hostserer:port:/howru/monitoring/howareyou?whichjson=container2
+                </code></pre>
+                <p class="doctext">There are also some additional tools to HowRU, not included in the installation package but available at <a href="https://github.com/andlind/howru">GitHub</a>, including an alerter which can run standalone and a Nagios plugin if you want to use the HowRU scheduler to send data to an existing Nagios system.</p>
+                <p class="doctext">Do not hesitate to make <a href="mailto: andreas.lindell@almondmonitor.com">contact</a> if you have any questions!</p>
+</div>
+{% include 'foot.html' %}

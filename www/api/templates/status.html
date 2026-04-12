@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta http-equiv="refresh" content="60" />
+    <title>HowRU</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #f4f6f9;
+            --text-color: #333;
+            --card-bg: #fff;
+            --accent: #491c0f; /* your theme color */
+            --header-bg: linear-gradient(90deg, #491c0f, #6b2a1a);
+        }
+        body.dark {
+            --bg-color: #1e1e2f;
+            --text-color: #e0e0e0;
+            --card-bg: #2a2a3d;
+            --accent: #d07c65; /* lighter variant for dark mode */
+            --header-bg: linear-gradient(90deg, #6b2a1a, #a34d36);
+        }
+	body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+            transition: background 0.3s, color 0.3s;
+        }
+        .status-icon {
+   	    width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            object-fit: contain;
+            background: var(--card-bg);
+            padding: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            transition: filter 0.2s ease, background 0.2s ease;
+        }
+
+        /* Dark-mode tweak: flip white-heavy icons so they don’t glare */
+        body.dark .status-icon {
+            filter: invert(1) hue-rotate(180deg) contrast(0.9);
+        }
+        h1 {
+            margin: 10px 0;
+            font-size: 2rem;
+            color: var(--accent);
+        }
+        .logo {
+            max-width: 400px;   /* adjust as needed */
+            height: auto;
+            border-radius: 12px; /* optional: rounded corners */
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+   	}
+        .status-table, .summary-table {
+            margin: 20px auto;
+            border-collapse: collapse;
+            width: 60%;
+            background: var(--card-bg);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transition: background 0.3s;
+        }
+        .status-table td {
+            padding: 15px;
+            font-size: 1.2rem;
+            font-weight: 600;
+        }
+        .summary-table th {
+            background: var(--header-bg);
+            color: #fff;
+            font-size: 1.2rem;
+            padding: 12px;
+        }
+        .summary-table td {
+            padding: 10px 20px;
+            font-size: 1rem;
+            border-top: 1px solid #eee;
+        }
+        a {
+            color: var(--accent);
+            text-decoration: none;
+            font-weight: 500;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .links {
+            margin-top: 20px;
+        }
+        .links a {
+            margin: 0 15px;
+        }
+        .toggle-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        .toggle-btn:hover {
+            background: #357ab8;
+        }
+    </style>
+</head>
+<body>
+    <button class="toggle-btn">Toggle Theme
+    </button>
+    <script>
+    	const body = document.body;
+    	const toggleBtn = document.querySelector('.toggle-btn');
+
+    	// Load saved preference
+    	if (localStorage.getItem('theme') === 'dark') {
+        	body.classList.add('dark');
+    	}
+
+    	toggleBtn.addEventListener('click', () => {
+        	body.classList.toggle('dark');
+        	localStorage.setItem('theme', body.classList.contains('dark') ? 'dark' : 'light');
+    	});
+     </script>
+
+    <img src="{{ user_image }}" alt="User Image" class="logo">
+    <p style="font-size: 14px; font-weight: bold; margin-top: 10px;">HowRU is running on this server</p>
+    <h1>{{ server }}</h1>
+
+    <table class="status-table">
+        <tr>
+            <td>Status</td>
+            <td><img src="{{ icon }}" alt="Icon Image" class="status-icon"></td>
+        </tr>
+    </table>
+
+    <table class="summary-table">
+        <tr>
+            <th colspan="2">Summary</th>
+        </tr>
+        <tr>
+            <td>OK</td>
+            <td>{{ oks }}</td>
+        </tr>
+        <tr>
+            <td>Warning</td>
+            <td>{{ warnings }}</td>
+        </tr>
+        <tr>
+            <td>Critical</td>
+            <td>{{ criticals }}</td>
+        </tr>
+        <tr>
+            <td>Unknown</td>
+            <td>{{ unknown }}</td>
+        </tr>
+        <tr>
+            <td colspan="2" style="text-align: right;">
+                <a href="/howru/monitoring/details">Detailed list</a>
+            </td>
+        </tr>
+    </table>
+
+    <div class="links">
+        <a href="/howru/settings/plugins">Plugin settings</a>
+        <a href="/howru/settings/scheduler">Scheduler settings</a>
+        <a href="/docs">Documentation</a>
+    </div>
+
+    <script>
+        // Optional: remember user preference
+        const body = document.body;
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark') body.classList.add('dark');
+        document.querySelector('.toggle-btn').addEventListener('click', () => {
+            body.classList.toggle('dark');
+            localStorage.setItem('theme', body.classList.contains('dark') ? 'dark' : 'light');
+        });
+    </script>
+<p>&nbsp;</p>
+<p align="center">HowRU &copy Almond Monitor <a href="maito: info@almondmonitor.com">info@almondmonitor.com</a></p>
+</body>
+</html>

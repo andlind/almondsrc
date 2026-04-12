@@ -1,0 +1,95 @@
+{% include 'head.html' %}
+<p align="center"><img src="{{ user_image }}" alt="User Image"></p>
+<hr size="1">
+<table style="margin-left:auto;margin-right:auto;border:1px solid #000000; text-align:center; " width="90%">
+            <tr style="text-align:center">
+                <td>
+                        <p style="font-family: Verdana; font-size: 22px;font-weight:bold">{{ server }}</p>
+                </td>
+            </tr>
+	    </table>
+	    <!-- Remove --!>
+	    <!-- Add --!>
+	    <!-- Upload new --!>
+	    <table class="styled-table" width="90%">
+            <thead>
+	     {% for plugin_element in plugins_loaded%}
+	        {% if loop.index == 1 %}
+		<tr>
+			<th width="5%">#</th>
+			<th colspan="4" width="95%">{{ plugin_element }} </th>
+		</tr>
+	    </thead>
+	    <tbody>
+		{% else %}
+		<tr>
+			<td width="5%"> {{ loop.index -1 }}.</td>
+			<!--<td width="90%"><input type="text" size="100" name="val_{{ loop.index -1 }}" value="{{ your_list_element }}"-->
+			<td style="font-weight: bold"> {{ plugin_element }} </td>
+			<td style="padding: 0px">
+			        <form name="update_plugins" method="post" action="/almond/admin">
+            			<input type="hidden" name="action_type" value="plugins">
+				<input type="hidden" name="edit_line" value="{{ loop.index -2 }}">
+			        <input type="hidden" name="edit_text" value="{{ plugin_element }}">
+				<input type="submit" value="Edit">
+				</form>
+			</td>
+			<td style="padding: 0px">
+			        <form name="update_plugins" method="post" action="/almond/admin">
+            			<input type="hidden" name="action_type" value="plugins">
+				<input type="hidden" name="delete_line" value="{{ loop.index -2 }}">
+                                <input type="submit" value="Delete">
+				</form>
+			</td>
+			<td style="padding: 0px">
+				<form name="run_plugin" method="post" action="/almond/admin">
+				<input type="hidden" name="action_type" value="plugins">
+				<input type="hidden" name="plugin_id" value="{{ loop.index -1 }}">
+				<input type="hidden" name="execute" value="{{ plugin_element }}">
+				<input type="submit" value="Run">
+				</form>
+			</td>
+		</tr>
+		{% endif %}
+  	    {% endfor %}
+	    <tr>
+		    <td colspan="5" style="background-color: #491c0f;">&nbsp;</td>
+	    </tr>
+	    <tr>
+	    <td width="5%"> --</td>
+	    <form name="update_plugins" method="post" action="/almond/admin">
+            <input type="hidden" name="action_type" value="plugins">
+	    <td align="right">Add installed plugin <label for="installed_plugins">Choose plugin:</label>
+	    <select name="installed_plugins" id="installed_plugins">
+	    {% for p in plugins_available %}
+	    	<option value="{{ p }}">{{ p }}</option>
+	    {% endfor %}
+	    </select>
+	    </td>
+	    <td colspan="3" align="center">
+		    <input type="hidden" name="add_line" value="True">
+		    <input type="submit" value=" Add ">
+	    </td>
+	    </form>
+	    </tr>
+	    <tr>	  
+		    <td width="5%"> --</td>
+		    <form name="update_plugins" method="post" action="/almond/admin">
+	            <input type="hidden" name="action_type" value="install">
+	            <input type="hidden" name="upload_plugin" value="True">
+		    <td align="right">Upload a new plugin to the server</td>
+		    <td colspan="3" align="center">
+			    <input type="submit" value= "Upload">
+		    </td>
+		    </form>
+	    </td>
+	    </tr>
+	    </tbody>
+            </table>
+	    </form>
+	<p align="center">
+	<script language="javascript">document.write('<a href="' + document.referrer + '">Go back</a>');
+	</script>
+	</p>
+         <p>&nbsp;</p>
+{% include 'foot.html' %}

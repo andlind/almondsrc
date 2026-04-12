@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>HowRU Details</title>
+    <meta http-equiv="refresh" content="60">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #f4f6f9;
+            --text-color: #333;
+            --card-bg: #fff;
+            --accent: #491c0f; /* your theme color */
+            --header-bg: linear-gradient(90deg, #491c0f, #6b2a1a);
+        }
+
+        body.dark {
+            --bg-color: #1e1e2f;
+            --text-color: #e0e0e0;
+            --card-bg: #2a2a3d;
+            --accent: #d07c65; /* lighter variant for dark mode */
+            --header-bg: linear-gradient(90deg, #6b2a1a, #a34d36);
+        }
+	body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            text-align: center;
+            transition: background 0.3s, color 0.3s;
+        }
+        .toggle-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+        .toggle-btn:hover {
+            background: #357ab8;
+        }
+        .styled-table {
+            border-collapse: collapse;
+            margin: 20px auto;
+            font-size: 0.95em;
+            min-width: 600px;
+            background: var(--card-bg);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .logo {
+            max-width: 400px;   /* adjust as needed */
+            height: auto;
+            border-radius: 12px; /* optional: rounded corners */
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .styled-table thead tr {
+            background: var(--header-bg);
+            color: #fff;
+            text-align: left;
+        }
+        .styled-table th,
+        .styled-table td {
+            padding: 12px 15px;
+        }
+        .styled-table td.plugin-output {
+            text-align: left;
+        }
+        .status-ok { color: #28a745; font-weight: 600; }
+        .status-warning { color: #ffc107; font-weight: 600; }
+        .status-critical { color: #dc3545; font-weight: 600; }
+        .status-unknown { color: #fd7e14; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <button class="toggle-btn">Toggle Theme</button>
+
+    <img src="{{ user_image }}" alt="User Image" class="logo">
+    <p style="font-size: 14px; font-weight: bold;">HowRU is running on this server</p>
+    <h1>{{ server }}</h1>
+
+    <table class="styled-table" width="90%">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Last run</th>
+                <th>Plugin output</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for obj in monitoring %}
+            <tr>
+                <td>{{ obj['pluginName'] }}</td>
+                {% if obj['pluginStatus'] == 'OK' %}
+                    <td class="status-ok">{{ obj['pluginStatus'] }}</td>
+                {% elif obj['pluginStatus'] == 'WARNING' %}
+                    <td class="status-warning">{{ obj['pluginStatus'] }}</td>
+                {% elif obj['pluginStatus'] == 'CRITICAL' %}
+                    <td class="status-critical">{{ obj['pluginStatus'] }}</td>
+                {% elif obj['pluginStatus'] == 'UNKNOWN' %}
+                    <td class="status-unknown">{{ obj['pluginStatus'] }}</td>
+                {% endif %}
+                <td>{{ obj['lastRun'] }}</td>
+                <td class="plugin-output">{{ obj['pluginOutput'] }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="mt-3">
+        <a href="/howru/settings/plugins">Plugin settings</a> |
+        <a href="/howru/settings/scheduler">Scheduler settings</a> |
+        <a href="/docs">Documentation</a>
+    </div>
+     <p align="center">
+        <script language="javascript">document.write('<a href="' + document.referrer + '">Go back</a>');
+      	</script>
+    </p>
+    <footer style="margin-top:20px; font-size:0.85rem;">
+        HowRU &copy; Almond Monitor —
+        <a href="mailto:info@almondmonitor.com">info@almondmonitor.com</a>
+    </footer>
+
+    <script>
+        const body = document.body;
+        const toggleBtn = document.querySelector('.toggle-btn');
+
+        // Load saved preference
+        if (localStorage.getItem('theme') === 'dark') {
+            body.classList.add('dark');
+        }
+
+        toggleBtn.addEventListener('click', () => {
+            body.classList.toggle('dark');
+            localStorage.setItem('theme', body.classList.contains('dark') ? 'dark' : 'light');
+        });
+    </script>
+</body>
+</html>

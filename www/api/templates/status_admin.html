@@ -1,0 +1,59 @@
+{% include 'head_r.html' %}
+<p align="center"><img src="{{ user_image }}" alt="User Image"></p>
+        <hr size="1">
+	    <table style="margin-left:auto;margin-right:auto;border:1px solid #000000; text-align:center; " width="90%">
+            <tr style="text-align:center">
+                <td>
+                        <p style="font-family: Verdana; color: #491c0f; font-size: 22px;font-weight:bold">{{ server }}</p>
+                </td>
+            </tr>
+	    </table>
+	    <table class="styled-table" width="90%">
+	    <thead>
+		    <tr>
+			    <th>Name</th>
+			    <th>Status</th>
+			    <th>Last run</th>
+			    <th>Plugin output</th>
+		    </tr>
+	    </thead>
+	    <tbody>
+	    {% for obj in monitoring %}
+	        {% if obj['pluginName'] == 'Not loaded' %}
+		    <tr>
+			    <td colspan="4"> {{ obj['name'] }} </td>
+		    </tr>
+                {% endif %}		
+		{% if obj['maintenance'] == 'true' %}
+		    <tr style="border: 2px solid #000080">
+		{% else %}
+		    <tr>
+	        {% endif %}
+			    {% if not obj['pluginName'] == 'Not loaded' %}
+			    <td><a href="/almond/admin?page=graph&name={{obj['pluginName']}}"> {{ obj['pluginName'] }} </a></td>
+			    {% endif %}
+			    {% if obj['pluginStatus'] == 'OK' %}
+			    <td><font color="#009900">{{ obj['pluginStatus'] }}</font></td>
+			    {% endif %}
+			    {% if obj['pluginStatus'] == 'WARNING' %}
+			    <td><font color="#cdb319">{{ obj['pluginStatus'] }} </font></td>
+                            {% endif %}
+			    {% if obj['pluginStatus'] == 'CRITICAL' %}
+			    <td><font color="#990000"> {{ obj['pluginStatus'] }} </font></td>
+                            {% endif %}
+			    {% if obj['pluginStatus'] == 'UNKNOWN' %}
+			    <td><font color="#ff8c00"> {{ obj['pluginStatus'] }} </font></td>
+                            {% endif %}
+			    <td> {{ obj['lastRun']  }} </td>
+			    <td> {{ obj['pluginOutput'] }} </td>
+		    </tr>
+	    {% endfor %}
+	    </tbody>
+            </table>
+	<p align="center">
+	<script language="javascript">document.write('<a href="' + document.referrer + '">Go back</a>');
+	</script>
+	</p>
+         <p>&nbsp;</p>
+{% include 'foot.html' %}
+

@@ -1,0 +1,70 @@
+{% include 'head.html' %}
+<p align="center"> {{ info }} </p>
+<p align="center"><img src="{{ user_image }}" alt="User Image"></p>
+<hr size="1">
+<table style="margin-left:auto;margin-right:auto;border:1px solid #000000; text-align:center; " width="90%">
+	<tr style="text-align:center">
+                <td>
+                        <p style="font-family: Verdana; color: #491c0f; font-size: 22px;font-weight:bold">Add monitoring object</p>
+                </td>
+       </tr>
+</table>
+<p>&nbsp;</p>
+<table style="margin-left:auto;margin-right:auto;border:none; text-align:center; " width="90%">
+	<tr style="background-color:#491c0f;color:#ffffff;" >
+		<td>Service and description</td>
+		<td>Plugin</td>
+		<td>Arguments</td>
+		<td>&nbsp;</td>
+		<td>Interval</td>
+		<td>Active</td>
+	</tr>
+<form name="update_plugins" method="post" action="/almond/admin">
+<input type="hidden" name="action_type" value="addplugin">
+<input type="hidden" name="plugin_name" value="{{ plugin  }}">
+<input type="hidden" name="test_plugin" id="test_plugin" value="False">
+<tr>
+        <td>
+		<input type="text" size="30" name="description" value="{{ description }}">
+        </td>
+	<td>
+	{{ plugin }}
+	</td>
+	<td>
+		<input type="text" size="20" name="arguments" value="{{ args }}">
+	</td>
+	<td>
+		<a href="/almond/admin?page=addplugin&test=true"><button onClick="document.getElementById('test_plugin').value='True'" style="width:auto;">Test plugin</button></a>
+	</td>
+	<td>
+		<input type="number" min="1" max="1440" value="{{ interval }}" size="4" name="intervall">
+	</td>
+	<td>
+		{% if active == True %}
+		<input type="checkbox" name="active" checked>
+		{% else %}
+		<input type="checkbox" name="active">
+		{% endif %}
+	</td>
+</tr>
+</table>
+<table style="margin-left:auto;margin-right:auto;border:none; text-align:center; " width="90%">
+<tr style="margin-left:auto; margin-right:auto; text-align:center">
+	<td align="center"><b><u>Plugin output</u></b></td>
+</tr>
+<tr>
+	<td style="border: 1px solid #491c0f">
+		{{ output }}
+	</td>
+</tr>
+</table>
+<table style="margin-left:auto;margin-right:auto;border:none; text-align:center; " width="90%">
+<tr style="text-align:center">
+	<td align="center">
+		<input type="submit" value="Add this monitoring object">
+		<a href="/almond/admin?page=plugins"><input type="button" value="Go back"></a>
+</form>
+</td>
+</tr>
+</table>
+{% include 'foot.html' %}

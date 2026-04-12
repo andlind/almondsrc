@@ -1,0 +1,161 @@
+{% include 'head.html' %}
+        <script languge="Javascript">
+        	function toggleTokenInput(checkbox) {
+               		const tokenInput = document.getElementById('token');
+   			
+                        if (!tokenInput) {
+        			return;
+    			}
+
+                	tokenInput.readonly = checkbox.checked;
+
+                	if(!checkbox.checked) {
+               			tokenInput.value = '';
+				tokenInput.style.color = '#000000';
+               		}
+                        else {
+                            //tokenInput.value = '{{ token }}';
+                            //tokenInput.style.color = 'white';
+                            const savedToken = tokenInput.dataset.savedToken || '';
+        		    tokenInput.value = savedToken;
+                            tokenInput.style.color = 'white';
+                        }
+               	}
+        </script>
+	<p align="center"><img src="{{ logo_image }}" alt="Logo Image"></p>
+	<hr size="1">
+	<table style="margin-left:auto;margin-right:auto;border:1px solid #000000; text-align:center; " width="90%">
+	<tr style="text-align:center">
+		<td>
+			<p style="font-family: Verdana; color: #491c0f; font-size: 22px;font-weight:bold">Run Almond API Query</p>
+		</td>
+	</tr>
+	</table>
+	<form name="action_api" method="post" action="/almond/admin">
+	<input type="hidden" name="action_type" value="actionapi">
+	<input type="hidden" name="action_id" value="{{ action }}">
+	<table width="60%" align="center" style="margin-left:auto; margin-right:auto;">
+        {% if (action == "1" or action == "2" or action == "3" or action == "15") %}
+	<tr>
+		<td>
+			<label for="name">Name</label>
+			<select name="name" id="name">
+                                {% for plugin in plugins %}
+                                <option value="{{ loop.index }}" name="{{plugin}}">{{plugin}}</option>
+                                {% endfor %}
+                        </select>
+		</td>
+	</tr>
+	{% endif %}
+	<tr>
+		<td>
+			{% if action == "1" %}
+			<label for="flags">Flags</label>&nbsp;&nbsp;<select name="flags" id="flags">
+				<option value="1">Verbose</option>
+				<option value="2">None</option>
+				<option value="3">All</option>
+			</select>
+			{% elif (action == "2" or  action == "3") %}
+			<label for="flags">Flags</label>&nbsp;&nbsp;<select name="flags" id="flags">
+                                <option value="1">Verbose</option>
+                                <option value="2" selected>None</option>
+                        </select>
+			{% elif action == "4" %}
+			<p>Get all metrics</p>
+			{% elif (action == "6" or action == "7") %}
+			<label for="function">Function</label>&nbsp;&nbsp;<select name="function" id="function">
+				<option value="cleancache">Clean cache</option>
+				<option value="gardener">Gardener</option>
+				<option value="push">Push</option>
+				<option value="pushmetrics">Push metrics</option>
+				<option value="standalone">Standalone</option>
+				<option value="timetuner">Time tuner</option>
+				<option value="quickstart">Quick start</option>
+			</select>
+			{% elif (action == "5" or action == "8") %}
+                        <label for="variable">Server variable</label>&nbsp;&nbsp;<select name="variable" id="variable">
+				<option value="jsonfilename">Json filename</option>
+				<option value="kafkastartid">Kafka start id</option>
+				<option value="kafkatag">Kafka tag</option>
+                                <option value="kafkatopic">Kafka topic</option>
+				<option value="metricsfilename">Metrics filename</option>
+				<option value="metricsprefix">Metrics prefix</option>
+                                <option value="pluginoutput">Plugin output</option>
+				<option value="pushurl">Push url</option>
+				<option value="pushport">Push port</option>
+				<option value="pushinterval">Push interval</option>
+                                <option value="saveonexit">Save on exit</option>
+                                <option value="sleep">Sleep</option>
+				<option value="hostname">Virtual hostname</option>
+                        </select>
+			{% elif (action == "11") %}
+			<label for="id">Item ID</label>&nbsp;&nbsp;
+                        <input type="number" id="id" name="id" min="1" value="1" />&nbsp;&nbsp;&nbsp;
+                        <label for="value">Server variable</label>&nbsp;&nbsp;<select name="value" id="value">
+                                <option value="true">True</option>
+                                <option value="false">False</option>
+                        </select>
+                        {% elif (action == "12") %}
+			<label for="name">API name</label>&nbsp;&nbsp;<select name="name" id="name">
+                                <option value="version">Version</option>
+				<option value="status">Status</option>
+				<option value="plugins">Plugins</option>
+			</select>
+                        {% elif (action == "13") %}
+                        <label for="name">Choose</label>&nbsp;&nbsp;<select name="name" id="name">
+                                <option value="pluginconfig">pluginconfig</option>
+                                <option value="pluginconfigts">pluginconfigts</option>
+                        </select>
+                        {% elif (action == "14") %}
+                        <label for="name">Choose</label>&nbsp;&nbsp;<select name="name" id="name">
+                                <option value="almond">almond</option>
+                                <option value="plugins (hard)">plugins (hard)</option>
+                                <option value="plugins (soft)">plugins (soft)</option>
+                        </select>
+                        {% elif (action == "15") %}
+                        <label for="flags">Flags</label>&nbsp;&nbsp;<select name="flags" id="flags">
+                                <option value="hard">hard</option>
+                                <option selected value="soft">soft</option>
+                        </select><br>
+                        <label for="options">Options</label>&nbsp;&nbsp;<input type="text" name="options" id="options" maxlength="25" required placeholder="Enter options"/><br>
+			<label for="warning">Warning value</label>&nbsp;&nbsp;<input type="text" name="warning" id="warning" maxlength="10"/>&nbsp;&nbsp;&nbsp;&nbsp;
+			<label for="critical">Critical value</label>&nbsp;&nbsp;<input type="text" name="critical" id="critical" maxlength="10" />
+			{% endif %}
+		</td>
+	</tr>
+	{% if action == "8" %}
+        <tr>
+                <td>
+                        <label for="value">Value</label>
+                        <input type="text" name="value" id="value" size="10">
+                </td>
+        </tr>
+        {% endif %}
+	{% if (action == "2" or action == "3" or action == "6" or action == "7" or action == "8" or action == "11" or action == "14") %}
+	<tr>
+                <td>
+    			<label for="token">Token</label>
+    			{% if token == "None" %}
+    			<input type="text" name="token" id="token" size="30">
+    			{% else %}
+    			<input type="text" name="token" id="token" size="30" style="color: #ffffff" value="{{ token|safe }}" readonly>
+    			{% endif %}
+    			<label for="usertoken">Use saved usertoken</label>
+    			{% if token == "None" %}
+    			<input type="checkbox" name="usertoken" disabled>
+    			{% else %}
+    			<input type="checkbox" name="usertoken" checked onchange="toggleTokenInput(this)">
+    			{% endif %}
+		</td>
+	</tr>
+	{% endif %}
+	<tr>
+		<td>
+			<input type="submit" name="submit" id="submit" value="RUN">&nbsp;&nbsp;&nbsp;
+			<input type="button" name="goback" id="goback" value="Go back" onClick="javascript:history.back()">
+		</td>
+	</tr>
+	</table>
+	</form>
+	<p>&nbsp;</p>
+{% include 'foot.html' %}

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>HowRU</title>
+</head>
+<body>
+	<p align="center"><img src="{{ user_image }}" alt="User Image"></p>
+	<p align="center" style="font-family: Vedana; font-size: 14px; font-weight: bold">HowRU is running on this server</p>
+	<hr size="1">
+	<table style="margin-left:auto;margin-right:auto;" border="0" width="75%">
+		<caption style="font-family: Verdana; font-size: 16px; color:#ffffff; background: #000000">Plugin Search</caption>
+		<tr>
+                        <td>&nbsp;</td>
+                </tr>
+		<tr>
+			<td style="font-family: Verdana; font-size:16px; text-align: center; color: #ffffff; background: #000000 ">Search by plugin name</td>
+		</tr>
+		<tr>
+			<td style="font-family: Verdana; font-size:14px; text-align: center; text-decoration: underline">Name server to search:</td>
+		</tr>
+		 <tr>
+                        <td align="center">
+                        <form action="/howru/monitoring/plugin" method="get">
+                        <label for="name" style="font-family: Verdana; font-size: 14px">Server name (fqdn):</label>
+                        <input type="text" id="server" name="server" size=50><br><br>
+                        </td>
+                </tr>
+		<tr>
+			 <td>&nbsp;</td>
+		</tr>
+		<tr>
+			<td style="font-family: Verdana; font-size:14px; text-align: center; text-decoration: underline">Search by plugin name:</td>
+		</tr>
+		<tr>
+			<td align="center">
+		        <label for="name" style="font-family: Verdana; font-size: 14px">Plugin name:</label>
+			<input type="text" id="name" name="name" size=50><br><br>
+			<input type="submit" value="Try">
+			</form>
+			</td>
+		</tr>
+		<tr>
+			<td>&nbsp;</td>
+		</tr>
+		 <tr>
+                        <td style="font-family: Verdana; font-size:16px; text-align: center; color: #ffffff; background: #000000 ">Search by plugin id</td>
+                </tr>
+		<tr>
+                        <td style="font-family: Verdana; font-size:14px; text-align: center; text-decoration: underline">Name server to search:</td>
+                </tr>
+                 <tr>
+                        <td align="center">
+                        <form action="/howru/monitoring/plugin" method="get">
+                        <label for="name" style="font-family: Verdana; font-size: 14px">Server name (fqdn):</label>
+                        <input type="text" id="server" name="server" size=50><br><br>
+                        </td>
+                </tr>
+		<tr>
+			<td style="font-family: Verdana; font-size: 14px; text-align:center; text-decoration: underline">Search by id:</td>
+		</tr>
+		<tr>
+	                <td align="center">	
+			<form action="/howru/monitoring/plugin" method="get">
+                        <label for="id" style="font-family: Verdana; font-size: 14px">Plugin id:</label><br><br>
+                        <input type="number" step="1" pattern="\d+1" id="id" name="id" value="0" ><br><br>
+                        <input type="submit" value="Try">
+                        </form>
+			</td>
+                </tr>
+	</table>
+	<hr size="1">
+	<p align="center"><a href="/">To start page</a></p>
+	<p>&nbsp;</p>
+	<p>&nbsp;</p>
+	<p align="center">HowRU &copy Andreas Lindell <a href="maito: andreas.lindell@almondmonitor.com">andreas.lindell@almondmonitor.com</a></p>
+</body>
+</html>

@@ -1,0 +1,127 @@
+{% include 'head.html' %}
+	<p align="center"><img src="{{ logo_image }}" alt="Logo Image"></p>
+	<hr size="1">
+	<table style="margin-left:auto;margin-right:auto;border:1px solid #000000; text-align:center; " width="90%">
+	<tr style="text-align:center">
+		<td>
+			<p style="font-family: Verdana; color: #491c0f; font-size: 22px;font-weight:bold">Howru API Query Result</p>
+		</td>
+	</tr>
+	</table>
+        <div id="resultContainer">Loading...</div>
+        <script>
+  const aid = "{{ aid }}";  // comes in as a string
+
+  const apiMap = {
+    "1": "howareyou",
+    "2": "warnings",
+    "3": "criticals",
+    "4": "oks",
+    "5": "notok",
+    "6": "changes",
+    "7": "plugin",
+    "25": "monitoring",
+    "8": "all",
+    "9": "unixupdatetime",
+    "10": "unixdeploytime",
+    "11": "lastpluginrun",
+    "12": "elderpluginrun",
+    "13": "countservers",
+    "14": "listservers",
+    "15": "countjobs",
+    "16": "listjobs",
+    "17": "listjobnames",
+    "18": "getmaintenance",
+    "19": "getmaintenancelist",
+    "20": "scheduler",          // special
+    "21": "plugins"    // special
+  };
+
+  let endpoint = apiMap[aid];
+  let base = "/howru/api";   // default base path
+
+  // Special case: aid 20 and 21 go to /settings
+  if (aid === "20" || aid === "21") {
+    base = "/howru/settings";
+  }
+
+  let url = `${base}/${endpoint}`;
+
+  if (aid === "7") {
+    const params = new URLSearchParams(window.location.search);
+    const pluginName = params.get("plugin_name");
+    const pluginId = params.get("plugin_id");
+
+    if (pluginName) {
+      url += `?name=${encodeURIComponent(pluginName)}`;
+    } else if (pluginId) {
+      url += `?id=${encodeURIComponent(pluginId)}`;
+    }
+  }
+  if (aid == "25") {
+    const params = new URLSearchParams(window.location.search);
+    const pluginId = "{{ plugin_id }}"; 
+    const checkOn = "{{ check }}";
+    const optionstr = "{{ option }}";
+    const warningval = "{{ warning }}";
+    const criticalval = "{{ critical }}";
+    const helpOn = "{{ help }}";
+
+    if (pluginId) {
+       url += `?item=${encodeURIComponent(pluginId)}`;
+    }
+    if (checkOn == "on") {
+       url += `&check`;
+    }
+    if (optionstr) {
+       url += `&option=${encodeURIComponent(optionstr)}`;
+    }
+    if (warningval) {
+        url += `&warning=${encodeURIComponent(warningval)}`;
+    }
+    if (criticalval) {
+         url += `&critical=${encodeURIComponent(criticalval)}`;
+    }
+    if (helpOn == "on") {
+       url += `&help`;
+    }
+    
+  }
+  //console.log("DEBUG: The constructed URL is: ", url);
+
+  if (endpoint) {
+    fetch(url)
+      .then(resp => {
+        // Try to parse JSON, fallback to text
+        const contentType = resp.headers.get("content-type");
+        if (contentType && contentType.includes("application/json")) {
+          return resp.json();
+        } else {
+          return resp.text();
+        }
+      })
+      .then(data => {
+        if (typeof data === "string") {
+          document.getElementById("resultContainer").innerHTML =
+            "<pre>" + data + "</pre>";
+        } else {
+          document.getElementById("resultContainer").innerHTML =
+            "<pre>" + JSON.stringify(data, null, 2) + "</pre>";
+        }
+      })
+      .catch(err => {
+        document.getElementById("resultContainer").innerHTML =
+          "<p style='color:red'>Error: " + err + "</p>";
+      });
+  } else {
+    document.getElementById("resultContainer").innerHTML =
+      "<p>Unknown aid value.</p>";
+  }
+  document.getElementById("resultContainter").innerHTML = 
+      "<p>" + url + "</p>"
+</script>
+
+	<p>&nbsp;</p>
+        <hr size=1>
+        <p align="center"><input type="button" class="apibutton" value="<- Go back" OnClick="javascript: history.back()">
+{% include 'foot.html' %}

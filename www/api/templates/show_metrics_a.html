@@ -1,0 +1,16 @@
+{% include 'head.html' %}
+<p align="center"><img src="{{ user_image }}" alt="User Image" class="logo">></p>
+<hr size="1">
+<h1>{{ file }}</h1>
+<table style="margin-left:auto;margin-right:auto;border:1px solid #000000;">
+{% for line in b_lines %}
+<tr><td>
+          {{ line }}
+</td></tr>
+{% endfor %}
+</table>
+<hr size="1">
+<p align="center">
+<a href="/almond/admin?page=metrics"><input type="button" value=" Go back "></a>
+</p>
+{% include 'foot.html' %}

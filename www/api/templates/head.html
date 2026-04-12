@@ -1,0 +1,485 @@
+<html>
+<head>
+<title>Almond admin</title>
+<style>
+body {font-family: Arial, Helvetica, sans-serif;}
+:root {
+    --bg-color: #f7f7f7;
+    --text-color: #333;
+    --card-bg: #fff;
+    --accent: #491c0f;
+    --header-bg: linear-gradient(90deg, #491c0f, #6b2a1a);
+}
+body.dark {
+    --bg-color: #1e1e2f;
+    --text-color: #e0e0e0;
+    --card-bg: #2a2a3d;
+    --accent: #d07c65;
+    --header-bg: linear-gradient(90deg, #6b2a1a, #a34d36);
+}
+body {
+    font-family: 'Inter', sans-serif;
+    background: var(--bg-color);
+    color: var(--text-color);
+    margin: 0;
+    padding: 20px;
+    transition: background 0.3s, color 0.3s;
+    text-align: center;
+}
+
+.apicontainer {
+	max-width: 700px;
+	margin: auto;
+	background: #fff;
+	border: 2px solid #491c0f;
+	border-radius: 8px;
+	padding: 1.5rem;
+	box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+	margin-bottom: 2rem;
+}
+.topbar {
+  background: #5a2e1f;
+  color: #fff;
+  padding: 16px 20px;
+  font-size: 1.4rem;
+  font-weight: 600;
+}
+h2 {
+	text-align: center;
+	color: #491c0f;
+      	font-size: 1.5rem;
+      	margin-bottom: 1rem;
+}
+.apiabel {
+	display: block;
+      	margin-top: 1rem;
+      	font-weight: bold;
+      	color: #491c0f;
+}
+.apiselect, .apibutton {
+      width: 100%;
+      padding: 0.5rem;
+      margin-top: 0.5rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 1rem;
+}
+.apibutton {
+	background: #491c0f;
+      	color: #fff;
+      	cursor: pointer;
+      	margin-top: 1rem;
+}
+.apibutton:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+}
+
+.toggle-btn {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 8px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+}
+.logo {
+    max-width: 300px;
+    height: auto;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    margin-bottom: 15px;
+}
+h1 {
+    background: var(--header-bg);
+    color: #fff;
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+.styled-table {
+    border-collapse: collapse;
+    margin: 20px auto;
+    font-size: 0.95em;
+    min-width: 400px;
+    background: var(--card-bg);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.styled-table caption {
+    font-size: 1rem;
+    font-weight: 600;
+    text-decoration: underline;
+    padding: 10px;
+}
+status-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 25px;
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.status-table caption {
+   background: #5a2e1f;
+   color: #fff;
+   font-weight: 600;
+   padding: 12px;
+   text-align: left;
+}
+
+.status-table td {
+   padding: 12px 16px;
+   border-bottom: 1px solid #e0e0e0;
+}
+
+.status-table tr:last-child td {
+   border-bottom: none;
+}
+
+.status-table td:first-child {
+   font-weight: 600;
+   width: 35%;
+}
+.top-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  background: #5a2e1f;
+  padding: 12px 20px;
+}
+
+.top-nav a {
+  display: inline-block;
+  padding: 8px 14px;
+  background: #ffffff10;
+  color: #fff;
+  border: 1px solid #ffffff30;
+  border-radius: 6px;
+  text-decoration: none;
+  font-family: "Inter", "Segoe UI", sans-serif;
+  white-space: nowrap;   /* prevents stretching */
+  transition: background 0.2s, transform 0.1s;
+}
+
+.top-nav a:hover {
+  background: #ffffff25;
+  transform: translateY(-1px);
+}
+.nav-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.credentials-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.logout-btn {
+  background: #b33a3a;
+  border-color: #b33a3a;
+}
+
+.logout-btn:hover {
+  background: #d14a4a;
+}
+select, input[type="number"], input[type="submit"] {
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    font-size: 0.95rem;
+    margin: 8px 0;
+}
+input[type="submit"] {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+}
+footer {
+    margin-top: 30px;
+    font-size: 0.85rem;
+}
+
+/* Full-width input fields */
+input[type=text], input[type=password] {
+	width: 100%;
+	padding: 12px 20px;
+	margin: 8px 0;
+	display: inline-block;
+	border: 1px solid #ccc;
+	box-sizing: border-box;
+}
+pre, code {
+    text-align: left;
+    display: block;   /* ensures it takes full width */
+    padding: 8px 12px;
+    background: #f4f6f9; /* optional: matches your theme */
+    border-radius: 6px;
+    font-family: monospace;
+}
+/* Set a style for all buttons */
+button {
+	background-color: #491c0f;
+	color: white;
+	padding: 14px 20px;
+	margin: 8px 0;
+	border: none;
+	cursor: pointer;
+	width: 100%;
+}
+
+button:hover {
+	opacity: 0.8;
+}
+			
+.cancelbtn {
+	width: auto;
+	padding: 10px 18px;
+	background-color: #f44336;
+}
+
+.imgcontainer {
+	text-align: center;
+	margin: 24px 0 12px 0;
+	position: relative;
+}
+
+img.avatar {
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    object-fit: cover;
+    display: block;
+    margin: 0 auto 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 16px;
+  font-family: "Inter", "Segoe UI", Arial, sans-serif;
+  color: #333;
+}
+
+
+span.psw {
+	float: right;
+	padding-top: 16px;
+}
+.doctext {
+        font-family: Verdana:
+        font-size: 12px;
+        text-align: left;
+        padding-left: 65px;
+        padding-right: 85px;
+}
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 10;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(3px);
+}
+
+.modal-content {
+  background-color: #fff;
+  margin: 8% auto;
+  padding: 20px 30px;
+  border-radius: 12px;
+  width: 350px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+  font-family: "Inter", "Segoe UI", sans-serif;
+}
+
+.modal-content input {
+  width: 100%;
+  padding: 10px;
+  margin: 8px 0 16px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+.modal-content button {
+  width: 100%;
+  padding: 10px;
+  background: #5a2e1f;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.modal-content button:hover {
+  background: #6c3a28;
+}
+
+.cancelbtn {
+  background: #ccc;
+  color: #333;
+}
+
+.cancelbtn:hover {
+  background: #bbb;
+}
+
+.close {
+  float: right;
+  font-size: 28px;
+  cursor: pointer;
+}
+
+.close:hover,
+.close:focus {
+	color: red;
+	cursor: pointer;
+}
+
+/* Add Zoom Animation */
+.animate {
+	-webkit-animation: animatezoom 0.6s;
+	animation: animatezoom 0.6s
+}
+
+@-webkit-keyframes animatezoom {
+	from {-webkit-transform: scale(0)}
+	to {-webkit-transform: scale(1)}
+}
+
+@keyframes animatezoom {
+	from {transform: scale(0)}
+	to {transform: scale(1)}
+}
+
+@media screen and (max-width: 300px) {
+	span.psw {
+		display: block;
+		float: none;
+	}
+	.cancelbtn {
+		width: 100%;
+	}
+}
+.info-text {
+  text-align: center;
+  margin-top: 12px;
+  font-family: "Inter", sans-serif;
+  color: #444;
+}
+.styled-table {
+	border-collapse: collapse;
+        margin-left:auto;
+        margin-right:auto;
+        font-size: 0.9em;
+        font-family: sans-serif;
+        min-width: 400px;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.15);
+}
+
+.styled-table thead tr {
+	background-color: #491c0f;
+	color: #ffffff;
+	text-align: left;
+}
+
+.styled-table th,
+.styled-table td {
+	padding: 12px 15px;
+}
+
+.styled-table tbody tr {
+	border-bottom: 1px solid #dddddd;
+}
+
+.styled-table tbody tr:nth-of-type(even) {
+	background-color: #f3f3f3;
+}
+
+.styled-table tbody tr:last-of-type {
+	border-bottom: 2px solid #491c0f;
+}
+
+.styled-table tbody tr.active-row {
+	font-weight: bold;
+	color: #009879;
+}
+#resultContainer {
+        width: 90%; 
+    	margin-left: auto; 
+    	margin-right: auto;
+	border: 1px solid #ccc;
+      	padding: 1em;
+      	margin-top: 1em;
+      	background: #f9f9f9;
+      	font-family: monospace;
+      	white-space: pre-wrap;
+}
+</style>
+</head>
+<body>
+<nav class="top-nav">
+  <a href="/almond/admin">Home</a>
+  <a href="/almond/admin?page=status">Status</a>
+  <a href="/almond/admin?page=metrics">Metrics</a>
+  <a href="/almond/admin?page=plugins">Plugins</a>
+  <a href="/almond/admin?page=api">API</a>
+  <a href="/almond/admin?page=almond">Almond</a>
+  <a href="/almond/admin?page=howru">Howru</a>
+  <a href="/almond/admin?page=logs">Logs</a>
+  <a href="/almond/admin?page=docs">Documentation</a>
+
+  <!-- Credentials button rewritten as a link -->
+  <a href="javascript:void(0)" class="credentials-btn" onclick="document.getElementById('id01').style.display='block'">
+    <!--<img src="{{ avatar }}" alt="Avatar" class="nav-avatar">-->
+    Credentials
+  </a>
+
+  <!-- Logout stays a link -->
+  <a href="/almond/admin?page=logout" class="logout-btn">Log out</a>
+</nav>
+
+<p class="info-text">{{ info }}</p>
+<div id="id01" class="modal">
+<form class="modal-content animate" action="/almond/admin" method="post">
+<input type="hidden" name="action_type" value="change_credentials">
+<div class="imgcontainer">
+<span onclick="document.getElementById('id01').style.display='none'" class="close" title="Close Modal">&times;</span>
+<img src="{{ avatar }}" alt="Avatar" class="avatar">
+</div>
+<div class="container">
+<label for="uname"><b>username</b></label>
+<input type="text" placeholder="{{ username }}" name="username"" required>
+<label for="psw"><b>password</b></label>
+<input type="password" placeholder="{{ passwd }}" name="password" required>
+<button type="submit">Update</button>
+</div>
+<div class="container" style="background-color:#f1f1f1">
+<button type="button" onclick="document.getElementById('id01').style.display='none'" class="cancelbtn">Cancel</button>
+</div>
+</form>
+</div>
+<script>
+	var modal = document.getElementById('id01');
+	window.onclick = function(event) {
+		if (event.target == modal) {
+       			modal.style.display = "none";
+    		}		
+	}	
+</script>
