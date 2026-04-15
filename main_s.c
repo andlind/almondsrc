@@ -7148,65 +7148,87 @@ void* zombieReaper(void* arg) {
 	return NULL;
 }
 
+static int init_system(void) {
+     	install_signals();
+        initialLogging();
+        int configResult = loadConfiguration();
+        if (configResult != 0) {
+                logError("Failed to load configuration", 1, 1);
+                return 1;
+        }
+        else
+                printf("Configuration read.\n");
+
+        if (strcmp(hostName, "None") == 0) {
+                char *tempHost = getHostName();
+                snprintf(hostName, 255, "%s", tempHost);
+                free(tempHost);
+        }
+        writeLog("Initiate logger thread.", 0, 1);
+        initLoggerThread();
+        if (check_plugin_conf_file(pluginDeclarationFile) != 0) {
+                logError("plugins.conf file seems to be corrupt. Program will shut down.", 2, 0);
+                return 2;
+        }
+        threadIds = (unsigned short*)malloc((size_t)MAX_PLUGINS * sizeof(unsigned short));
+        memset(threadIds, 0, MAX_PLUGINS * sizeof(unsigned short));
+        checkPluginFileStat(pluginDeclarationFile, tPluginFile, 0);
+        logInfo("No errors found in plugins.conf", 0, 0);
+        decCount = countDeclarations(pluginDeclarationFile);
+        for (int i = 0; i < decCount; i++) {
+                threadIds[i] = 0;
+        }
+        g_current_scheduler_cnt = decCount;
+        if (init_plugins() != 0) {
+                logError("Failed to initiate plugins", 2, 0);
+                flushLog();
+                return 2;
+        }
+        flushLog();
+        initScheduler(decCount, initSleep, false);
+        return 0;
+}
+
+static void run_check_loop(void) {
+    while (!is_stopping) {
+        scheduleChecks();
+    }
+}
+
+static void shutdown_system(void) {
+        switch (shutdown_reason) {
+                case SR_SIGINT:
+                        writeLog("Caught SIGINT, exiting program.", 0, 0);
+                        break;
+                case SR_SIGKILL:
+                        writeLog("Caught SIGKILL, exiting program.", 0, 0);
+                        break;
+                default:
+                        writeLog("Normal program termination.", 0, 0);
+                        break;
+        }
+        sig_exit_app();
+        if (threadIds) {
+                free(threadIds);
+                threadIds = NULL;
+        }
+
+        flushLog();
+}
+
 int main(int argc, char* argv[]) {
 	#if defined(_BSD_SOURCE) || defined(_SVID_SOURCE)
 		#define HAS_BIRTHTIME 1
 	#else
 		#define HAS_BIRTHTIME 0
 	#endif
-	install_signals();
-	initialLogging();
-	int configResult = loadConfiguration();
-	if (configResult != 0) {
-		logError("Failed to load configuration", 1, 1);
-		return 1;
+	int rc = init_system();
+	if (rc != 0) {
+		return rc;
 	}
-	else
-		printf("Configuration read.\n");
 
-	if (strcmp(hostName, "None") == 0) { 
-		char *tempHost = getHostName();
-		snprintf(hostName, 255, "%s", tempHost);
-		free(tempHost);
-	}
-	writeLog("Initiate logger thread.", 0, 1);
-	initLoggerThread();
-	if (check_plugin_conf_file(pluginDeclarationFile) != 0) {
-                logError("plugins.conf file seems to be corrupt. Program will shut down.", 2, 0);
-                return 2;
-        }
-        threadIds = (unsigned short*)malloc((size_t)MAX_PLUGINS * sizeof(unsigned short));
-    	memset(threadIds, 0, MAX_PLUGINS * sizeof(unsigned short));
-	decCount = countDeclarations(pluginDeclarationFile);
-    	for (int i = 0; i < decCount; i++) {
-        	threadIds[i] = 0;
-    	}
-	g_current_scheduler_cnt = decCount;
-	checkPluginFileStat(pluginDeclarationFile, tPluginFile, 0);
-	logInfo("No errors found in plugins.conf", 0, 0);
-	if (init_plugins() != 0) {
-		logError("Failed to initiate plugins", 2, 0);
-		flushLog();
-		return 2;
-	}
-	flushLog();
-        initScheduler(decCount, initSleep, false);
-	while (!is_stopping) {
-        	scheduleChecks();
-		if (is_stopping) break;
-	}
-	switch (shutdown_reason) {
-        	case SR_SIGINT:
-            		writeLog("Caught SIGINT, exiting program.", 0, 0);
-            		break;
-        	case SR_SIGKILL:
-            		writeLog("Caught SIGKILL, exiting program.", 0, 0);
-            		break;
-        	default:
-            		writeLog("Normal program termination.", 0, 0);
-            		break;
-    	}
-        sig_exit_app();
+	run_check_loop();
+	shutdown_system();
 
    	return 0;
 }
