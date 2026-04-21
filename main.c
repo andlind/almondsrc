@@ -2936,6 +2936,7 @@ void parseClientMessage(char str[], int arr[], bool jwt_valid) {
         enum json_tokener_error jerr;
 
 	args_set = 0;
+	//printf("DEBUG: [parseClientMessage] str = %s\n", str);
         json_tokener *tok = json_tokener_new();
 	if (str != NULL)
         	jobj = json_tokener_parse_ex(tok, str, (size_t)(strlen(str)));
@@ -3728,16 +3729,24 @@ int createSocket(int server_fd) {
 
         // Extract JSON payload
         char *json_start = strchr(client_message, '{');
-        char message[150] = {0};
+        char message[250] = {0};
 
         if (json_start) {
-            size_t len = strlen(json_start);
-            if (len >= sizeof(message)) len = sizeof(message) - 1;
-            memcpy(message, json_start, len);
-            message[len] = '\0';
+        	size_t len = strlen(json_start);
+            	if (len >= sizeof(message)) {
+			len = sizeof(message) - 3;
+			memcpy(message, json_start, len);
+			message[len] = '"';
+			message[len+1] = '}';
+			message[len+2] = '\0';
+		}
+		else {
+            		memcpy(message, json_start, len);
+            		message[len] = '\0';
+		}
         } else {
-            writeLog("JSON payload not found [clientMessage]", 1, 0);
-            message[0] = '\0';
+        	writeLog("JSON payload not found [clientMessage]", 1, 0);
+            	message[0] = '\0';
         }
 
         parseClientMessage(message, params, jwt_valid);
@@ -4015,7 +4024,7 @@ void sig_exit_app() {
         free_kafka_vars();
 	free_iam_roles();
         free_constants();
-        free(threadIds);
+        //free(threadIds);
         freemem();
 
 	destroy_mutexes();

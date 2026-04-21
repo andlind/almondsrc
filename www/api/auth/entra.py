@@ -26,5 +26,5 @@ class EntraIDProvider(OAuthCodeFlow):
             f"?post_logout_redirect_uri={redirect_to}"
         )
 
-    def getScope(self):
+    def get_scope(self):
         return "openid offline_access"
