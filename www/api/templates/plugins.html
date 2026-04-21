@@ -1,4 +1,53 @@
 {% include 'head.html' %}
+<style>
+  .role-restricted-button:disabled,
+  .role-restricted-button[disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background-color: #cccccc !important;
+    color: #666666 !important;
+  }
+  
+  .button-tooltip {
+    position: relative;
+    display: inline-block;
+  }
+  
+  .button-tooltip .tooltiptext {
+    visibility: hidden;
+    width: 250px;
+    background-color: #333;
+    color: #fff;
+    text-align: center;
+    border-radius: 6px;
+    padding: 5px;
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -125px;
+    opacity: 0;
+    transition: opacity 0.3s;
+    font-size: 12px;
+  }
+  
+  .button-tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #333 transparent transparent transparent;
+  }
+  
+  .button-tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+  }
+</style>
+
 <p align="center"><img src="{{ user_image }}" alt="User Image"></p>
 <hr size="1">
 <table style="margin-left:auto;margin-right:auto;border:1px solid #000000; text-align:center; " width="90%">
@@ -27,27 +76,48 @@
 			<!--<td width="90%"><input type="text" size="100" name="val_{{ loop.index -1 }}" value="{{ your_list_element }}"-->
 			<td style="font-weight: bold"> {{ plugin_element }} </td>
 			<td style="padding: 0px">
+				{% if can_use_plugins %}
 			        <form name="update_plugins" method="post" action="/almond/admin">
             			<input type="hidden" name="action_type" value="plugins">
 				<input type="hidden" name="edit_line" value="{{ loop.index -2 }}">
 			        <input type="hidden" name="edit_text" value="{{ plugin_element }}">
 				<input type="submit" value="Edit">
 				</form>
+				{% else %}
+					<div class="button-tooltip">
+						<button disabled class="role-restricted-button">Edit</button>
+						<span class="tooltiptext">You do not have permission to manage plugins</span>
+					</div>
+				{% endif %}
 			</td>
 			<td style="padding: 0px">
+			        {% if can_use_plugins %}
 			        <form name="update_plugins" method="post" action="/almond/admin">
             			<input type="hidden" name="action_type" value="plugins">
 				<input type="hidden" name="delete_line" value="{{ loop.index -2 }}">
                                 <input type="submit" value="Delete">
 				</form>
+				{% else %}
+					<div class="button-tooltip">
+						<button disabled class="role-restricted-button">Delete</button>
+						<span class="tooltiptext">You do not have permission to manage plugins</span>
+					</div>
+				{% endif %}
 			</td>
 			<td style="padding: 0px">
+				{% if can_use_plugins %}
 				<form name="run_plugin" method="post" action="/almond/admin">
 				<input type="hidden" name="action_type" value="plugins">
 				<input type="hidden" name="plugin_id" value="{{ loop.index -1 }}">
 				<input type="hidden" name="execute" value="{{ plugin_element }}">
 				<input type="submit" value="Run">
 				</form>
+				{% else %}
+					<div class="button-tooltip">
+						<button disabled class="role-restricted-button">Run</button>
+						<span class="tooltiptext">You do not have permission to manage plugins</span>
+					</div>
+				{% endif %}
 			</td>
 		</tr>
 		{% endif %}

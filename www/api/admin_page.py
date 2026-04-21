@@ -25,6 +25,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from collections import deque
 from venv import logger
 from datetime import datetime, timedelta
+from jose import jwt
 from api.auth2fa import auth_blueprint
 # If you want to use ROPC login remove comment below
 #from api.auth.keycloak_ropc import KeycloakROPC
@@ -36,6 +37,17 @@ from api.auth.provider_instance import set_provider, get_provider
 from api.auth.keycloak import KeycloakProvider
 from api.auth.token_utils import ensure_fresh_tokens
 from api.auth.factory import ProviderFactory
+from api.login_handler import (
+    handle_oauth_login,
+    handle_local_login,
+    create_session,
+    clear_session,
+    is_logged_in,
+    get_current_user,
+    get_user_roles,
+    is_admin,
+    extract_roles_from_token,
+)
 
 admin_page = Blueprint('admin_page', __name__, template_folder='templates')
 
@@ -47,7 +59,9 @@ scheduler_conf = []
 extra_conf = []
 graph_names = {}
 api_available_conf = ['api.activeMods', 'api.adminUser', 'api.adminPassword', 'api.authProvider', 'api.authType', 'api.bindPort', 'api.dataDir','api.enableAliases', 'api.enableFile', 'api.enableGUI','api.enableLoginRedirect', 'api.enableMods', 'api.enableOauth','api.enableOtelExporter', 'api.enableOtelFileWatcher', 'api.enablePeriodicOtelExport', 'api.enableProxyCleaner','api.enableScraper', 'api.enableSSL','api.isContainer', 'api.isMetricsProxy', 'api.isProxy', 'api.metricsDir', 'api.multiMetrics', 'api.multiServer', 'api.otelExportInterval', 'api.otlpEndpoint', 'api.persistant2fa', 'api.proxyCleanerSeconds', 'api.showDashboard', 'api.sslCertificate', 'api.sslKey', 'api.startPage', 'api.stateType', 'api.useGUI', 'api.userFile', 'api.useSSL', 'api.wsgi', 'data.jsonFile', 'data.metricsFile', 'scheduler.storeDir', 'scheduler.configFile', 'scheduler.dataDir', 'plugins.directory', 'plugins.declaration']
-scheduler_available_conf = ['almond.api', 'almond.port', 'almond.pushInterval', 'almond.pushPort', 'almond.pushUrl', 'almond.standalone', 'almond.useMetricsPush', 'almond.usePush', 'almond.useSSL', 'almond.certificate', 'almond.key', 'data.jsonFile', 'data.saveOnExit', 'data.metricsFile', 'data.metricsOutputPrefix', 'plugins.directory', 'plugins.declaration', 'scheduler.allowAllHosts', 'scheduler.useTLS', 'scheduler.certificate', 'scheduler.key','scheduler.confDir', 'scheduler.kafkaConfigFile', 'scheduler.logDir', 'scheduler.logToStdout', 'scheduler.logPluginOutput', 'scheduler.runGardenerAtStart','scheduler.storeResults', 'scheduler.format', 'scheduler.initSleepMs', 'scheduler.sleepMs', 'scheduler.kafkaAvro', 'scheduler.schemaName', 'scheduler.schemaRegistryUrl', 'scheduler.useExternal','scheduler.truncateLog', 'scheduler.truncateLogInterval', 'scheduler.tuneTimer', 'scheduler.tunerCycle', 'scheduler.tuneMaster', 'scheduler.dataDir', 'scheduler.storeDir', 'scheduler.hostName', 'scheduler.enableGardener', 'scheduler.gardenerScript', 'scheduler.gardenerRunInterval', 'scheduler.quickStart', 'scheduler.metricsOutputPrefix', 'scheduler.enableClearDataCache', 'scheduler.enableKafkaExport', 'scheduler.enableKafkaTag', 'scheduler.enableKafkaId', 'scheduler.kafkaStartId', 'scheduler.kafkaBrokers', 'scheduler.kafkaTopic', 'scheduler.kafkaTag', 'scheduler.enableKafkaSSL', 'scheduler.kafkaCACertificate', 'scheduler.kafkaProducerCertificate', 'scheduler.kafkaSSLKey', 'scheduler.useKafkaConfigFile','scheduler.clearDataCacheInterval', 'scheduler.dataCacheTimeFrame', 'scheduler.type', 'gardener.CleanUpTime']
+
+scheduler_available_conf = ['almond.api', 'almond.enableIamAud', 'almond.enforeIAMRoles', 'almond.iamAud', 'almond.iamIssuer', 'almond.iamPublicKey', 'almond.iamRolesAccepted', 'almond.port', 'almond.pushInterval', 'almond.pushPort', 'almond.pushUrl', 'almond.standalone', 'almond.useMetricsPush', 'almond.usePush', 'almond.useSSL', 'almond.certificate', 'almond.key', 'data.jsonFile', 'data.saveOnExit', 'data.metricsFile', 'data.metricsOutputPrefix', 'plugins.directory', 'plugins.declaration', 'scheduler.allowAllHosts', 'scheduler.useTLS', 'scheduler.certificate', 'scheduler.key','scheduler.confDir', 'scheduler.kafkaConfigFile', 'scheduler.logDir', 'scheduler.logToStdout', 'scheduler.logPluginOutput', 'scheduler.runGardenerAtStart','scheduler.storeResults', 'scheduler.format', 'scheduler.initSleepMs', 'scheduler.sleepMs', 'scheduler.kafkaAvro', 'scheduler.schemaName', 'scheduler.schemaRegistryUrl', 'scheduler.useExternal','scheduler.truncateLog', 'scheduler.truncateLogInterval', 'scheduler.tuneTimer', 'scheduler.tunerCycle', 'scheduler.tuneMaster', 'scheduler.dataDir', 'scheduler.storeDir', 'scheduler.hostName', 'scheduler.enableGardener', 'scheduler.gardenerScript', 'scheduler.gardenerRunInterval', 'scheduler.quickStart', 'scheduler.metricsOutputPrefix', 'scheduler.enableClearDataCache', 'scheduler.enableKafkaExport', 'scheduler.enableKafkaTag', 'scheduler.enableKafkaId', 'scheduler.kafkaStartId', 'scheduler.kafkaBrokers', 'scheduler.kafkaTopic', 'scheduler.kafkaTag', 'scheduler.enableKafkaSSL', 'scheduler.kafkaCACertificate', 'scheduler.kafkaProducerCertificate', 'scheduler.kafkaSSLKey', 'scheduler.useKafkaConfigFile','scheduler.clearDataCacheInterval', 'scheduler.dataCacheTimeFrame', 'scheduler.type', 'gardener.CleanUpTime']
+
 users = {}
 hasToken=False
 usertoken = "None"
@@ -71,6 +85,7 @@ admin_user_file = '/etc/almond/users.conf'
 almond_conf_file = '/etc/almond/almond.conf'
 api_conf_file = '/etc/almond/almond.conf'
 metrics_file_name = 'monitor.metrics'
+executable_roles = []
 start_page = 'admin'
 state_type='systemctl'
 user_secrets = {}
@@ -118,32 +133,34 @@ def load_plugins():
     plugins[0] = header
     f.close()
 
-def external_auth(username, password):
-   # data = {
-   #     "grant_type": "password",
-   #     "client_id": "almondadmin",
-   #     "client_secret": "9eDIcYdgWZ7Uf0TBpsEfG0t9E6a07U9j",
-   #     "username": username,
-   #     "password": password
-   # }
-   # resp = requests.post(
-   #     "http://host.docker.internal:8089/realms/almondmonitor/protocol/openid-connect/token",
-   #     data=data
-   # )
+def load_executable_roles():
+    """Load executable_roles from API config file."""
+    global executable_roles
+    executable_roles = []
+    
+    try:
+        # Try to load from api.conf or almond.conf
+        for config_file in ['/etc/almond/api.conf', '/etc/almond/almond.conf']:
+            if os.path.isfile(config_file):
+                with open(config_file, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith('api.executableRoles=') or line.startswith('executableRoles='):
+                            # Format: api.executableRoles=admin,operator,viewer
+                            # or: executableRoles=admin,operator,viewer
+                            roles_str = line.split('=', 1)[1]
+                            executable_roles = [r.strip() for r in roles_str.split(',') if r.strip()]
+                            logger.info(f"Loaded executable_roles from {config_file}: {executable_roles}")
+                            return
+    except Exception as e:
+        logger.warning(f"Could not load executable_roles from config: {e}")
+        executable_roles = []
 
-   # if resp.status_code == 200:
-   #     return resp.json()  # contains access_token, etc.
-   # return None
-    return auth.login(username=username, password=password)
-
-def authenticate(username, password):
-    global enable_oath
-    if enable_oath:
-        oath = external_auth(username, password)
-        if oath:
-            return {"source": "external", "username": username, "token": oath}
-    if (verify_password(username, password)):
-        return {"source": "local", "username": username}
+def user_has_executable_role(user_roles):
+    """Check if user has any of the executable_roles."""
+    if not executable_roles:
+        return True  # No restrictions if empty
+    return any(role in executable_roles for role in user_roles)
 
 def load_conf(isGlobal):
     global conf
@@ -227,12 +244,17 @@ def load_api_conf():
             for x in pop_list:
                 extra_conf.pop(x)
 
-def set_new_password(username, password):
+def set_new_password(username, password, roles=None):
     global admin_user_file
 
     # Ensure we remove leading/trailing whitespace
     username = username.strip()
     password = password.strip()
+    if roles:
+        roles = [r.strip() for r in roles.split(',') if r.strip()]
+    else:
+        roles = ["admin"]  # default
+
     user = session.get('user', 'Unknown user')
     logger.info(session['user'] + " trying to set new password for user '" + username + "'.")
 
@@ -261,38 +283,58 @@ def set_new_password(username, password):
     # Generate new hash and update the user entry
     new_hash = generate_password_hash(password)
     logger.debug("NEW HASH for user '{}': {}".format(username, new_hash))
-    user_data[username] = new_hash
+    user_data[username] = {
+        "password": new_hash,
+        "roles": roles
+    }
 
     # Write all user credentials back to the file
     with open(admin_user_file, 'w') as file:
-        for user, pwd_hash in user_data.items():
-            file.write(json.dumps({user: pwd_hash}) + "\n")
+        for user, pwd_data in user_data.items():
+            file.write(json.dumps({user: pwd_data}) + "\n")
 
     info = "Credentials updated."
-    logger.info("Password updated for user '{}'.".format(username))
+    logger.info("Password and roles updated for user '{}'.".format(username))
     return info
 
 def get_user_token():
     global usertoken
-    username = session['user']['username']
-    lines = []
-    try:
-        with open("/etc/almond/users.conf", "r") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    entry = json.loads(line)
-                    if username in entry:
-                        usertoken = entry["token"]
-                except json.JSONDecodeError:
-                    logger.warning("[get_user_token] json.JSONDecodeError")
-    except FileNotFoundError:
-        #print(f"File {filename} not found")
-        logger.critical("[get_user_token] Could not find file /etc/almond/tokens.")
-    except Exception as e:
-        logger.info("[get_user_token] No token found for user '%s'", username)
+    username = session.get('user', {}).get('username')
+    if not username:
+        return
+
+    token_files = ["/etc/almond/tokens", "/etc/almond/users.conf"]
+    for token_file in token_files:
+        try:
+            with open(token_file, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    if token_file.endswith('/users.conf') or line.startswith('{'):
+                        try:
+                            entry = json.loads(line)
+                            if username in entry:
+                                usertoken = entry.get("token", usertoken)
+                                return
+                        except json.JSONDecodeError:
+                            if token_file.endswith('/users.conf'):
+                                logger.warning("[get_user_token] json.JSONDecodeError in %s", token_file)
+                            continue
+
+                    parts = line.rsplit(None, 1)
+                    if len(parts) == 2:
+                        line_username, line_token = parts
+                        if line_username == username:
+                            usertoken = line_token
+                            return
+        except FileNotFoundError:
+            continue
+        except Exception as e:
+            logger.info("[get_user_token] No token found for user '%s' in %s: %s", username, token_file, e)
+
+    logger.critical("[get_user_token] Could not find token file /etc/almond/tokens or /etc/almond/users.conf.")
 
 def delete_user_entries():
     new_lines = []
@@ -419,7 +461,7 @@ def read_conf():
             if (x.find('authProvider') > 0):
                 pos = x.find('=')
                 auth_provider_name = x[pos+1:].strip()
-                if not auth_provider_name.lower() in ["keycloak", "entra", "oath0", "okta"]:
+                if not auth_provider_name.lower() in ["keycloak", "entra", "auth0", "okta"]:
                     auth_provider_name = "local"
                 if auth_provider_name != config.AUTH_PROVIDER_NAME:
                     #auth_provider_name = config.AUTH_PROVIDER_NAME
@@ -576,16 +618,34 @@ def get_sys_info():
            }
 
 def get_infostr(data):
-    infostr = ""
     d_array = data.split(';')
-    #for index, x in enumerate(d_array):
-    #    print(f"Position {index}: {x}")
-    s_code = d_array[1]
-    if (len(d_array) > 2):
-        tot_checks = int(d_array[2]) + int(d_array[3]) + int(d_array[4]) + int(d_array[5])
-        infostr = d_array[0] + " has run " + str(tot_checks) + " checks. " + str(d_array[2]) + " where ok, " + str(d_array[3]) + " where warnings, " + str(d_array[4]) + " where criticals and " + str(d_array[5]) + " where unknown."
-    else:
-        infostr = d_array[2]
+
+    # If the array is too short, return a safe fallback
+    if len(d_array) < 3:
+        return "Invalid data"
+
+    # Helper to safely convert values to int
+    def safe_int(value):
+        try:
+            return int(value)
+        except (ValueError, TypeError):
+            return 0
+
+    # Extract values safely
+    ok = safe_int(d_array[2]) if len(d_array) > 2 else 0
+    warn = safe_int(d_array[3]) if len(d_array) > 3 else 0
+    crit = safe_int(d_array[4]) if len(d_array) > 4 else 0
+    unk = safe_int(d_array[5]) if len(d_array) > 5 else 0
+
+    tot_checks = ok + warn + crit + unk
+
+    # Build the info string
+    infostr = (
+        f"{d_array[0]} has run {tot_checks} checks. "
+        f"{ok} were ok, {warn} were warnings, "
+        f"{crit} were criticals and {unk} were unknown."
+    )
+
     return infostr
 
 def load_status_data():
@@ -858,18 +918,28 @@ def verify_password(username, password):
             for line_num, line in enumerate(f, 1):
                 try:
                     user_data = json.loads(line.strip())
-                    #username = list(user_data.keys())[0]
-                    #users[username] = user_data[username]
-                    for user_key, hash_value in user_data.items():
-                        users[user_key] = hash_value
+                    for user_key, value in user_data.items():
+                        if isinstance(value, str):
+                            users[user_key] = {
+                                "password_hash": value,
+                                "roles": ["admin"],
+                            }
+                        elif isinstance(value, dict):
+                            pwd_hash = value.get("password") or value.get("hash")
+                            roles = value.get("roles", []) or []
+                            users[user_key] = {
+                                "password_hash": pwd_hash,
+                                "roles": roles,
+                            }
                 except json.JSONDecodeError as e:
                     print(f"Warning: Invalid JSON format at line {line_num}: {str(e)}")
                     continue
     else:
         users = {}
-    if username in users:
-        return check_password_hash(users.get(username), password)
-    return False
+    user_record = users.get(username)
+    if user_record and check_password_hash(user_record.get("password_hash"), password):
+        return user_record.get("roles", ["admin"])
+    return None
 
 @admin_page.route('/almond/admin', methods=['GET', 'POST'])
 #@auth.login_required
@@ -949,7 +1019,6 @@ def index():
             if enable_login_redirect and enable_oath:
                 return redirect("/login")
             if (request.form['action_type'] == "create_session"):
-                #print ("Login")
                 logger.info("Creating admin login session")
             else:
                 a_auth_type = current_app.config['AUTH_TYPE']
@@ -964,64 +1033,55 @@ def index():
         if action_type == "create_session":
             if enable_oath and enable_login_redirect:
                 return redirect("/login")
+            
             username = request.form['uname'].strip()
             password = request.form['psw'].strip()
-            #user = authenticate(username, password)
+            
+            # Attempt authentication via configured provider
             provider = ProviderFactory.create(auth_provider_name, enable_login_redirect, config)
             token_data = provider.authenticate(username=username, password=password)
-            #if user:
-            #    session['login'] = 'true'
-            #    session['user'] = user
-            #    session['tokens'] = None
-            #    logger.info(f"User {username} logged in via {user['source']} provider.")
+            
+            # Process login result
             if token_data:
-                access_token = token_data.get("access_token")
-                userinfo = provider.get_userinfo(access_token) or {}
-                username_value = (
-                    token_data.get("username") or
-                    userinfo.get("preferred_username") or
-                    userinfo.get("email") or
-                    userinfo.get("sub") or
-                    username  # fallback to submitted username
-                )
-                session["login"] = 'true'
-                session["user"] = {
-                    "username": username_value,
-                    "provider": provider.name
-                }
-                session["tokens"] = {
-                    "access_token": token_data.get("access_token"),
-                    "refresh_token": token_data.get("refresh_token"),
-                    "id_token": token_data.get("id_token")
-                }
-                logger.info(f"User {username} logged in via {provider.name} provider.")
+                # External provider authentication successful
+                user_session = handle_oauth_login(provider, token_data, auth_provider_name)
+                if user_session:
+                    create_session(user_session)
+                    logger.info(f"User {username} logged in. Roles: {user_session.get('roles', [])}")
+                else:
+                    session['login'] = 'false'
+                    session.pop('login', None)
+                    session.pop('user', None)
+                    logger.warning(f"Failed to process login for user {username}")
             else:
-                session['login'] = 'false'
-                session.pop('login', None)
-                session.pop('user', None)
-                session.pop('tokens', None)
-            #if verify_password(username.strip(), password.strip()):
-            #    logger.info("User " + username.strip() + " logged in to new session")
-            #    session['login'] = 'true'
-            #    session['user'] = username.strip()
-            #else:
-            #    logger.warning("Failed login for user " + username.strip())
-            #    session['login'] = 'false'
-            #    session.pop('login', None)
-            #    session.pop('user', None)
+                # Try local authentication as fallback (if enabled)
+                roles = verify_password(username, password)
+                if roles is not None:
+                    user_session = handle_local_login(username, roles)
+                    create_session(user_session)
+                    logger.info(f"User {username} logged in locally")
+                else:
+                    session['login'] = 'false'
+                    session.pop('login', None)
+                    session.pop('user', None)
+                    logger.warning(f"Failed login attempt for user {username}")
         if action_type == 'change_credentials':
             info = ''
             username = request.form['username']
             password = request.form['password']
-            set_new_password(username.strip(), password.strip())
+            roles = request.form.get('roles', '')
+            set_new_password(username.strip(), password.strip(), roles)
             howru_state = check_service_state("howru")
             almond_state = check_service_state("almond")
             data = load_status_data()
             info_data = get_status(data)
+            if "No data file" in info_data:
+                return 403, "No data file"
             status = get_infostr(info_data)
             env_status = get_sys_info()
+            current_user_roles = ','.join(session.get('user', {}).get('roles', []))
             logger.info("Rendering admin.html")
-            return render_template('admin.html', info = info, sys_info=env_status,version=current_version, username=username, passwd=password, logo_image=image_file, avatar=almond_avatar, logo=logo_img, almond_state=almond_state, howru_state=howru_state, status=status)
+            return render_template('admin.html', info = info, sys_info=env_status,version=current_version, username=username, passwd=password, roles=current_user_roles, logo_image=image_file, avatar=almond_avatar, logo=logo_img, almond_state=almond_state, howru_state=howru_state, status=status)
         if action_type == 'plugins':
             if 'delete_line' in request.form:
                 line_id = request.form['delete_line']
@@ -1080,7 +1140,8 @@ def index():
             status = get_infostr(info_data)
             env_status = get_sys_info()
             logger.info("Rendering template admin.html")
-            return render_template('admin.html', version=current_version, info=info, sys_info=env_status, logo_image=image_file, avatar=almond_avatar, logo=logo_img, almond_state=almond_state, howru_state=howru_state, status=status)
+            current_user_roles = ','.join(session.get('user', {}).get('roles', []))
+            return render_template('admin.html', version=current_version, info=info, sys_info=env_status, roles=current_user_roles, logo_image=image_file, avatar=almond_avatar, logo=logo_img, almond_state=almond_state, howru_state=howru_state, status=status)
         if action_type == 'restart_scheduler':
             logger.info("Received action type 'restart scheduler'")
             if state_type == "systemctl":
@@ -1118,7 +1179,10 @@ def index():
             logger.info("Rendering template plugins.html")
             this_data = load_status_data()
             hostname = this_data['host']['name']
-            return render_template('plugins.html', server=hostname, plugins_loaded = plugins, plugins_available = list_available_plugins(), user_image=image_file, avatar=almond_avatar, info=info)
+            user_roles = get_user_roles()
+            load_executable_roles()
+            can_use_plugins = user_has_executable_role(user_roles)
+            return render_template('plugins.html', server=hostname, plugins_loaded = plugins, plugins_available = list_available_plugins(), user_roles=user_roles, can_use_plugins=can_use_plugins, user_image=image_file, avatar=almond_avatar, info=info)
         if action_type == "api":
             logger.info("Received action type 'api'")
             update_lines = []
@@ -1162,16 +1226,14 @@ def index():
             logger.info("Received action type 'deleteplugin'")
             line_id = request.form['line']
             delete_plugin_object(line_id)
-            #return_code = subprocess.call(["/bin/systemctl", "restart", "almond.service"])
             info = "Object deleted. Almond process reloads."
             logger.info(info)
-            #if (return_code == 0):
-            #    info = "Object deleted and process Almond restarted"
-            #else:
-            #    info = "Object deleted but could not start Almond. Wrong config?"
             load_plugins()
             logger.info("Rendering template plugins.html")
-            return render_template('plugins.html', plugins_loaded = plugins, plugins_available = list_available_plugins(), user_image=image_file, avatar=almond_avatar, info=info)
+            user_roles = get_user_roles()
+            load_executable_roles()
+            can_use_plugins = user_has_executable_role(user_roles)
+            return render_template('plugins.html', plugins_loaded = plugins, plugins_available = list_available_plugins(), user_roles=user_roles, can_use_plugins=can_use_plugins, user_image=image_file, avatar=almond_avatar, info=info)
         if action_type == "updateplugin":
             logger.info("Received action type 'update plugin'")
             line_id = request.form['line']
@@ -1179,7 +1241,10 @@ def index():
             update_plugin_object(line_id, plugin_text)
             load_plugins()
             logger.info("Rendering template plugins.html")
-            return render_template('plugins.html', plugins_loaded = plugins, plugins_available = list_available_plugins(), user_image=image_file, avatar=almond_avatar, info="Object updated")
+            user_roles = get_user_roles()
+            load_executable_roles()
+            can_use_plugins = user_has_executable_role(user_roles)
+            return render_template('plugins.html', plugins_loaded = plugins, plugins_available = list_available_plugins(), user_roles=user_roles, can_use_plugins=can_use_plugins, user_image=image_file, avatar=almond_avatar, info="Object updated")
         if (action_type == "addplugin"):
             logger.info("Received action type 'add plugin'")
             plugin_active = True
@@ -1330,8 +1395,22 @@ def index():
         if (action_type == "actionapi"):
             logger.info("Received action_type 'actionapi'")
             action_id = int(request.form["action_id"])
+            session_token = ""
+            if "tokens" in session:
+                session_token = session.get("tokens", {}).get("access_token", "")
+            
+            # Check if token is required for this action
+            token_required_actions = [2, 3, 6, 7, 8, 11]
+            if action_id in token_required_actions:
+                form_token = request.form.get("token", "").strip()
+                if not form_token and not session_token:
+                    logger.warning("Token required for action %d but none provided", action_id)
+                    return render_template('actionapi.html', user_image=image_file, data="Error: Token is required for this action. Please provide a token or log in with OAuth.", errors=1, avatar=almond_avatar)
+            
             action_str = "{\"action\":"
             flags_str = "\"flags\":\""
+            print(action_id)
+            print("\n")
             if (action_id == 1 or action_id == 2 or action_id == 3):
                 name = request.form["name"]
                 flags = request.form["flags"]
@@ -1348,8 +1427,10 @@ def index():
                 else:
                     action_str += "\"runread\""
                 action_str += ", \"id\":\"" + name + "\", " + flags_str
-                if (action_id > 1):
-                    token = request.form["token"]
+                if (action_id > 1 and not "tokens" in session):
+                    print("Form token exists")
+                    print(form_token)
+                    token = request.form.get("token", "").strip() #or session_token
                     action_str += ", \"token\":\"" + token + "\"}"
                 else:
                     action_str += "}"
@@ -1364,21 +1445,30 @@ def index():
                 else:
                     action_str += "\"disable\""
                 feature = request.form["function"]
-                token = request.form["token"]
-                action_str += ", \"name\":\"" + feature + "\", \"token\":\"" + token + "\"}"
+                token = request.form.get("token", "").strip() #or session_token
+                if (token):
+                    action_str += ", \"name\":\"" + feature + "\", \"token\":\"" + token + "\"}"
+                else:
+                    action_str += ", \"name\":\"" + feature + "\"}"
             elif (action_id == 8):
                 variable = request.form["variable"]
                 value = request.form["value"]
-                token = request.form["token"]
-                action_str += "\"setvar\", \"name\":\"" + variable + "\", \"value\":\"" + value + "\", \"token\":\"" + token + "\"}"
+                token = request.form.get("token", "").strip() #or session_token
+                if (token):
+                    action_str += "\"setvar\", \"name\":\"" + variable + "\", \"value\":\"" + value + "\", \"token\":\"" + token + "\"}"
+                else:
+                    action_str += "\"setvar\", \"name\":\"" + variable + "\", \"value\":\"" + value + "\"}"
             elif (action_id == 10):
                 flags = "all"
                 action_str += "\"read\", \"name\":\"check_all\", \"flags\":\"" + flags + "\"}"
             elif (action_id == 11):
                 id = request.form["id"]
                 value = request.form["value"]
-                token = request.form["token"]
-                action_str += "\"maintenance\", \"id\"" + id + "\", \"value\":\"" + value + "\", \"token\":\"" + token + "\"}"
+                token = request.form.get("token", "").strip() #or session_token
+                if (token):
+                    action_str += "\"maintenance\", \"id\":\"" + id + "\", \"value\":\"" + value + "\", \"token\":\"" + token + "\"}"
+                else:
+                    action_str += "\"maintenance\", \"id\":\"" + id + "\", \"value\":\"" + value + "\"}"
             elif (action_id == 12):
                 value = request.form["name"]
                 action_str += "\"almond\", \"name\":\"" + value + "\"}"
@@ -1434,8 +1524,22 @@ def index():
                         print("Network unreachable - Check Docker network configuration")
                     retVal = "{\"connection_error\" : \"Socket connection error.\"}"
                     return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
+                if (session_token): 
+                    payload = ""
+                    header = (
+                        "POST /endpoint HTTP/1.1\r\n"
+                        f"Authorization: Bearer {session_token}\r\n"
+                        "Content-Type: application/json\r\n"
+                        f"Content-Length: {len(action_str)}\r\n"
+                        "\r\n" # The crucial empty line
+                    )
+                    payload = header + action_str
+                else:
+                    payload = action_str
+                #print("DEBUG PAYLOAD")
+                #print(payload)
                 try:
-                    clientSocket.sendall(action_str.encode())
+                    clientSocket.sendall(payload.encode())
                 except socket.error as e:
                     print ("Error sending data: %s" % e)
                     retVal = "{\"connection_error\" : \"Error sending data.\"}"
@@ -1452,8 +1556,8 @@ def index():
                     return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
                 #print(retVal.decode())
             else:
-                print ("Almond api is not enabled.")
-                retVal = "{\"almond_message\":\"Almond API is not enabled.\"}"
+                print ("Almond api is not enabled or has a different authorization provider than what was provided.")
+                retVal = "{\"almond_message\":\"Almond API is not enabled or has different authorization provider.\"}"
                 return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
             data = retVal.decode("utf-8").strip()
             pos = data.find('Content-Length:')
@@ -1491,7 +1595,8 @@ def index():
                 is_container = False
             env_status = get_sys_info()
             logger.info("Rendering template admin.html")
-            return render_template('admin.html', version=current_version, sys_info = env_status, logo_image=image_file, username=username, password=password, avatar=almond_avatar, logo=logo_img, almond_state=almond_state, howru_state=howru_state, status=info)
+            current_user_roles = ','.join(session.get('user', {}).get('roles', []))
+            return render_template('admin.html', version=current_version, sys_info = env_status, logo_image=image_file, username=username, password=password, roles=current_user_roles, avatar=almond_avatar, logo=logo_img, almond_state=almond_state, howru_state=howru_state, status=info)
             #return render_template('status_admin.html', version=current_version, user_image=image_file, server=hostname, monitoring=monitoring, avatar=almond_avatar, info=info)
         else:
             a_auth_type = current_app.config['AUTH_TYPE']
@@ -1536,7 +1641,10 @@ def index():
         logger.info("Rendering template plugins.html")
         this_data = load_status_data()
         hostname = this_data['host']['name']
-        return render_template('plugins.html', plugins_loaded = plugins, plugins_available = available_plugins, user_image=image_file, server=hostname, avatar=almond_avatar, info=info)
+        user_roles = get_user_roles()
+        load_executable_roles()
+        can_use_plugins = user_has_executable_role(user_roles)
+        return render_template('plugins.html', plugins_loaded = plugins, plugins_available = available_plugins, user_roles=user_roles, can_use_plugins=can_use_plugins, user_image=image_file, server=hostname, avatar=almond_avatar, info=info)
     elif page == 'almond':
         load_scheduler_conf()
         if standalone:
@@ -1683,8 +1791,33 @@ def index():
         get_user_token()
         token = usertoken
         usertoken = "None"
+
+        provider = session.get('user', {}).get('provider', 'local')
+        user_roles = get_user_roles()
+        load_executable_roles()
+        can_execute_action = user_has_executable_role(user_roles)
+        action_requires_execute = action in ["2", "3", "6", "7", "8", "11", "15"]
+        can_submit_action = can_execute_action or not action_requires_execute
+
+        oauth_token = None
+        if token == "None" and provider != 'local' and "tokens" in session:
+            tokens = session.get("tokens")
+            if tokens and "access_token" in tokens:
+                oauth_token = tokens["access_token"]
+
         logger.info("Rendering template action.html")
-        return render_template('action.html', logo_image=image_file, avatar=almond_avatar, plugins=item_names, action=action, token=token)
+        return render_template(
+            'action.html',
+            logo_image=image_file,
+            avatar=almond_avatar,
+            plugins=item_names,
+            action=action,
+            token=token,
+            oauth_token=oauth_token,
+            can_execute_action=can_execute_action,
+            can_submit_action=can_submit_action,
+            provider=provider,
+        )
     elif page == 'docs':
         logger.info("Rendering template documentation_a.html")
         return render_template('documentation_a.html', user_image=image_file, avatar=almond_avatar) 

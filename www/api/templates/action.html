@@ -1,27 +1,4 @@
 {% include 'head.html' %}
-        <script languge="Javascript">
-        	function toggleTokenInput(checkbox) {
-               		const tokenInput = document.getElementById('token');
-   			
-                        if (!tokenInput) {
-        			return;
-    			}
-
-                	tokenInput.readonly = checkbox.checked;
-
-                	if(!checkbox.checked) {
-               			tokenInput.value = '';
-				tokenInput.style.color = '#000000';
-               		}
-                        else {
-                            //tokenInput.value = '{{ token }}';
-                            //tokenInput.style.color = 'white';
-                            const savedToken = tokenInput.dataset.savedToken || '';
-        		    tokenInput.value = savedToken;
-                            tokenInput.style.color = 'white';
-                        }
-               	}
-        </script>
 	<p align="center"><img src="{{ logo_image }}" alt="Logo Image"></p>
 	<hr size="1">
 	<table style="margin-left:auto;margin-right:auto;border:1px solid #000000; text-align:center; " width="90%">
@@ -134,24 +111,30 @@
 	{% if (action == "2" or action == "3" or action == "6" or action == "7" or action == "8" or action == "11" or action == "14") %}
 	<tr>
                 <td>
+    			{% if oauth_token and provider != 'local' %}
+    			<p>Your current OAuth login token will be used for this operation.</p>
+    			<span style="display:inline-block; margin-left:10px; padding:2px 6px; background:#2196F3; color:#ffffff; font-size:12px; border-radius:4px; vertical-align:middle;">OAuth session token used</span>
+    			<input type="hidden" name="token" value="{{ oauth_token }}">
+    			{% else %}
     			<label for="token">Token</label>
-    			{% if token == "None" %}
-    			<input type="text" name="token" id="token" size="30">
+    			{% if token != "None" %}
+    			<span style="display:inline-block; margin-left:10px; padding:2px 6px; background:#4CAF50; color:#ffffff; font-size:12px; border-radius:4px; vertical-align:middle;">Saved token available</span>
+    			<br>
+    			{# Saved token - show editable input with saved value #}
+    			<input type="text" name="token" id="token" size="30" value="{{ token|safe }}" {% if not can_submit_action %}disabled{% endif %}>
     			{% else %}
-    			<input type="text" name="token" id="token" size="30" style="color: #ffffff" value="{{ token|safe }}" readonly>
+    			<input type="text" name="token" id="token" size="30" {% if not can_submit_action %}disabled{% endif %}>
     			{% endif %}
-    			<label for="usertoken">Use saved usertoken</label>
-    			{% if token == "None" %}
-    			<input type="checkbox" name="usertoken" disabled>
-    			{% else %}
-    			<input type="checkbox" name="usertoken" checked onchange="toggleTokenInput(this)">
+    			{% endif %}
+    			{% if action not in ["1", "4", "5", "10", "12", "13"] and not can_execute_action %}
+    			<p style="color: #a00; font-weight: bold;">You do not have permission to execute this action.</p>
     			{% endif %}
 		</td>
 	</tr>
 	{% endif %}
 	<tr>
 		<td>
-			<input type="submit" name="submit" id="submit" value="RUN">&nbsp;&nbsp;&nbsp;
+			<input type="submit" name="submit" id="submit" value="RUN" {% if not can_submit_action %}disabled class="role-restricted-button"{% endif %}>&nbsp;&nbsp;&nbsp;
 			<input type="button" name="goback" id="goback" value="Go back" onClick="javascript:history.back()">
 		</td>
 	</tr>

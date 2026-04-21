@@ -25,12 +25,29 @@ from api.otel.otel_exporter import export_otel_data
 from api.otel.otel_exporter import CollectorConnectionError, set_otlp_endpoint
 from api.auth2fa import auth_blueprint
 from api.auth.provider_instance import get_provider
+from api.login_handler import (
+    handle_oauth_login,
+    create_session,
+    set_custom_role_mapping,
+)
 
 app = flask.Flask(__name__)
 app.config["DEBUG"] = True
 app.config.setdefault('IS_CONTAINER', 'false')
 app.config.setdefault('AUTH_TYPE', None)
 app.config.setdefault('AUTH2FA_P', 'false')
+
+# Configure custom role mapping for Keycloak users
+# Maps usernames to roles since Keycloak token doesn't include roles yet
+# These correspond to the roles in the almond-api client
+set_custom_role_mapping({
+    # Use the user's UUID (sub claim) as the key
+    # testuser has UUID: 8d6a4669-9c19-4e41-aa7b-486bf571f833
+    "8d6a4669-9c19-4e41-aa7b-486bf571f833": ["admin", "almond-exec"],
+    # Add other users as needed - use their UUID or username
+    # "another-user-uuid": ["operator"],
+})
+
 app_started = False
 data = None
 settings = None
@@ -877,34 +894,24 @@ def callback():
 
     token_data = get_provider().authenticate(code=code, verifier=verifier)
     if not token_data:
-        logger.warning(f"Could not get token data from  provider '{get_provider().name}'.")
+        logger.warning(f"Could not get token data from provider '{get_provider().name}'.")
         return "Token exchange failed", 400
 
-    #print("TOKEN DATA:", token_data)
-    # Create your session
+    # Store tokens for later token refresh
     session["tokens"] = {
         "access_token": token_data["access_token"],
         "refresh_token": token_data.get("refresh_token"),
         "id_token": token_data.get("id_token"),
     }
 
-    decoded = jwt.decode(token_data["id_token"], options={"verify_signature": False})
-    #print("DECODED:", decoded)
-    username = (
-        decoded.get("preferred_username")
-        or decoded.get("email")
-        or decoded.get("name")
-        or decoded.get("given_name")
-        or decoded.get("sub")
-    )
-    session["user"] = {
-        "username": username,
-        "id_token": token_data.get("id_token"), 
-        "provider": get_provider().name 
-    }
-    session["login"] = "true"
+    # Use the cleaner login handler to process OAuth login and extract roles
+    user_session = handle_oauth_login(get_provider(), token_data, get_provider().name)
+    if not user_session:
+        logger.warning(f"Failed to process login from '{get_provider().name}'")
+        return "Failed to process login", 400
 
-    logger.info(f"User {username} logged in via {get_provider().name}.")
+    create_session(user_session, session["tokens"])
+    logger.info(f"User {user_session['username']} logged in via {get_provider().name}. Roles: {user_session.get('roles', [])}")
 
     return redirect("/almond/admin")
 

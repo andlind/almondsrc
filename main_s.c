@@ -417,7 +417,14 @@ char *load_file_to_string(const char *path) {
         char *buf = malloc(size + 1);
         if (!buf) { fclose(f); return NULL; }
 
-        fread(buf, 1, size, f);
+        size_t bytes_read = fread(buf, 1, size, f);
+        if (bytes_read < size) {
+                if (ferror(f)) {
+                        perror("Error reading file");
+                } else if (feof(f)) {
+                        printf("EOF reached unexpectedly\n");
+                }
+        }
         buf[size] = '\0';
 
         fclose(f);
@@ -3451,16 +3458,24 @@ int createSocket(int server_fd) {
 
         // Extract JSON payload
         char *json_start = strchr(client_message, '{');
-        char message[150] = {0};
+        char message[200] = {0};
 
-        if (json_start) {
-            size_t len = strlen(json_start);
-            if (len >= sizeof(message)) len = sizeof(message) - 1;
-            memcpy(message, json_start, len);
-            message[len] = '\0';
+	if (json_start) {
+                size_t len = strlen(json_start);
+                if (len >= sizeof(message)) {
+                        len = sizeof(message) - 3;
+                        memcpy(message, json_start, len);
+                        message[len] = '"';
+                        message[len+1] = '}';
+                        message[len+2] = '\0';
+                }
+                else {
+                        memcpy(message, json_start, len);
+                        message[len] = '\0';
+                }
         } else {
-            writeLog("JSON payload not found [clientMessage]", 1, 0);
-            message[0] = '\0';
+                writeLog("JSON payload not found [clientMessage]", 1, 0);
+                message[0] = '\0';
         }
 
         parseClientMessage(message, params, jwt_valid);
@@ -3695,7 +3710,7 @@ void sig_exit_app() {
         free(g_plugins);
         //free(outputs);
         free_constants();
-        free(threadIds);
+        //free(threadIds);
         freemem();
 
 	destroy_mutexes();

@@ -17,7 +17,19 @@ class LocalProvider(AuthProvider):
                         continue
                     try:
                         entry = json.loads(line)
-                        users.update(entry)
+                        for username, value in entry.items():
+                            if isinstance(value, str):
+                                users[username] = {
+                                    "password_hash": value,
+                                    "roles": ["operator"],
+                                }
+                            elif isinstance(value, dict):
+                                pwd_hash = value.get("password") or value.get("hash")
+                                roles = value.get("roles", []) or []
+                                users[username] = {
+                                    "password_hash": pwd_hash,
+                                    "roles": roles,
+                                }
                     except json.JSONDecodeError:
                         print(f"Skipping invalid JSON line in {path}: {line}")
         except FileNotFoundError:
@@ -31,12 +43,18 @@ class LocalProvider(AuthProvider):
         if not username or not password:
             return None
 
-        stored_hash = self.users.get(username)
+        user_record = self.users.get(username)
+        if not user_record:
+            return None
+
+        stored_hash = user_record.get("password_hash")
         if not stored_hash:
             return None
 
         if not check_password_hash(stored_hash, password):
             return None
+
+        roles = user_record.get("roles", [])
 
         # Return a token-like structure for consistency
         return {
@@ -44,7 +62,8 @@ class LocalProvider(AuthProvider):
             "access_token": f"local-{username}",
             "refresh_token": None,
             "id_token": None,
-            "provider": "local"
+            "provider": "local",
+            "roles": roles,
         }
 
     def capabilities(self):
