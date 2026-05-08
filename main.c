@@ -6124,7 +6124,7 @@ void writePluginResultToFile(int storeIndex, int update) {
 }
 
 void writeToKafkaTopic(int storeIndex, int update) {
-	char *payload;
+	struct json_object *j_data = json_object_new_object();
 	char *pluginName;
 	char *pluginStatus;
 	char currTime[TIME_BUF_LEN];
@@ -6166,35 +6166,69 @@ void writeToKafkaTopic(int storeIndex, int update) {
         		strcpy(pluginStatus, "UNKNOWN");
         		break;
 	}
-        int count_bytes = strlen(hostName) + strlen(g_plugins[storeIndex]->lastChangeTimestamp) + strlen(g_plugins[storeIndex]->lastRunTimestamp) + strlen(g_plugins[storeIndex]->name) + strlen(g_plugins[storeIndex]->nextRunTimestamp);
+	json_object_object_add(j_data, "lastChange", json_object_new_string(g_plugins[storeIndex]->lastChangeTimestamp));
+    	json_object_object_add(j_data, "lastRun", json_object_new_string(currTime));
+    	json_object_object_add(j_data, "name", json_object_new_string(pluginName));
+    	json_object_object_add(j_data, "nextRun", json_object_new_string(g_plugins[storeIndex]->nextRunTimestamp));
+    	json_object_object_add(j_data, "pluginName", json_object_new_string(g_plugins[storeIndex]->description));
+    	json_object_object_add(j_data, "pluginOutput", json_object_new_string(g_plugins[storeIndex]->output.retString));
+    	json_object_object_add(j_data, "pluginStatus", json_object_new_string(pluginStatus));
+    	json_object_object_add(j_data, "pluginStatusChanged", json_object_new_string(g_plugins[storeIndex]->statusChanged));
+    	json_object_object_add(j_data, "pluginStatusCode", json_object_new_int(g_plugins[storeIndex]->output.retCode));
+
+	/*if (enableCollector) {
+		printf("DEBUG: Collector enabled\n");
+		if (collector_metadata) {
+			printf("DEBUG: collector_metadata enabled\n");
+                        struct json_object *labels = get_labels_by_id(storeIndex);
+                        if (labels) {
+                                json_object_get(labels);
+                                json_object_object_add(j_data, "labels", labels);
+                        }
+                }
+                if (collector_metrics) {
+			printf("DEBUG: collector_metrics enabled\n");
+                        struct json_object *perf = parse_perfdata(g_plugins[storeIndex]->output.retString);
+                        if (perf) {
+                                json_object_object_add(j_data, "metrics", perf);
+                        }
+
+             	}
+	}*/
+
+	struct json_object *j_root = json_object_new_object();
+    	json_object_object_add(j_root, "name", json_object_new_string(hostName));
+        /*int count_bytes = strlen(hostName) + strlen(g_plugins[storeIndex]->lastChangeTimestamp) + strlen(g_plugins[storeIndex]->lastRunTimestamp) + strlen(g_plugins[storeIndex]->name) + strlen(g_plugins[storeIndex]->nextRunTimestamp);
         count_bytes += pluginitemdesc_size + pluginoutput_size;
         count_bytes += strlen(pluginStatus) + strlen(g_plugins[storeIndex]->statusChanged);
-        count_bytes += 185;
+        count_bytes += 185;*/
         int kafka_export_addons = 0;
         if (enableKafkaTag) {
-        	count_bytes += strlen(kafka_tag);
-        	count_bytes += 12; // {"tag":""}
+        	//count_bytes += strlen(kafka_tag);
+        	//count_bytes += 12; // {"tag":""}
         	kafka_export_addons += 10;
         }
         if (enableKafkaId) {
-        	count_bytes += 9; // {"id":""}
-        	int length = snprintf(NULL, 0, "%d", kafka_start_id);
-        	count_bytes += length;
+        	//count_bytes += 9; // {"id":""}
+        	//int length = snprintf(NULL, 0, "%d", kafka_start_id);
+        	//count_bytes += length;
         	kafka_export_addons += 20;
         }
-	payload = malloc((size_t)count_bytes);
+	/*payload = malloc((size_t)count_bytes);
         if (payload == NULL) {
         	fprintf(stderr, "Could not allocate memory for payload.\n");
         	writeLog("Failed to allocate memory [runPlugin:enableKafkaExport:payload]", 2, 0);
         	return;
-        }
+        }*/
         if (kafka_export_addons < 1) {
-        	sprintf(payload, "{\"name\":\"%s\", \"data\": {\"lastChange\":\"%s\", \"lastRun\":\"%s\", \"name\":\"%s\", \"nextRun\":\"%s\", \"pluginName\":\"%s\", \"pluginOutput\":\"%s\", \"pluginStatus\":\"%s\", \"pluginStatusChanged\":\"%s\", \"pluginStatusCode\":\"%d\"}}", hostName, g_plugins[storeIndex]->lastChangeTimestamp, currTime, pluginName, g_plugins[storeIndex]->nextRunTimestamp, g_plugins[storeIndex]->description, g_plugins[storeIndex]->output.retString, pluginStatus, g_plugins[storeIndex]->statusChanged, g_plugins[storeIndex]->output.retCode);
-        	printf("Payload = %s\n", payload);
+        	/*sprintf(payload, "{\"name\":\"%s\", \"data\": {\"lastChange\":\"%s\", \"lastRun\":\"%s\", \"name\":\"%s\", \"nextRun\":\"%s\", \"pluginName\":\"%s\", \"pluginOutput\":\"%s\", \"pluginStatus\":\"%s\", \"pluginStatusChanged\":\"%s\", \"pluginStatusCode\":\"%d\"}}", hostName, g_plugins[storeIndex]->lastChangeTimestamp, currTime, pluginName, g_plugins[storeIndex]->nextRunTimestamp, g_plugins[storeIndex]->description, g_plugins[storeIndex]->output.retString, pluginStatus, g_plugins[storeIndex]->statusChanged, g_plugins[storeIndex]->output.retCode);
+        	printf("Payload = %s\n", payload);*/
+		printf("No add ons\n");
         }
         else {
-       		if (kafka_export_addons == KAFKA_EXPORT_TAG) {
+       		/*if (kafka_export_addons == KAFKA_EXPORT_TAG) {
         		sprintf(payload, "{\"name\":\"%s\", \"tag\":\"%s\", \"data\": {\"lastChange\":\"%s\", \"lastRun\":\"%s\", \"name\":\"%s\", \"nextRun\":\"%s\", \"pluginName\":\"%s\", \"pluginOutput\":\"%s\", \"pluginStatus\":\"%s\", \"pluginStatusChanged\":\"%s\", \"pluginStatusCode\":\"%d\"}}", hostName, kafka_tag, g_plugins[storeIndex]->lastChangeTimestamp, currTime, pluginName, g_plugins[storeIndex]->nextRunTimestamp, g_plugins[storeIndex]->description, g_plugins[storeIndex]->output.retString, pluginStatus, g_plugins[storeIndex]->statusChanged, g_plugins[storeIndex]->output.retCode);
+			json_object_object_add(j_root, "tag", json_object_new_string(kafka_tag));
         	}
         	else {
         		int nKafkaId = kafka_start_id + storeIndex;
@@ -6203,12 +6237,44 @@ void writeToKafkaTopic(int storeIndex, int update) {
         		snprintf(kafka_id, (size_t)length+1, "%d", nKafkaId);
         		if (kafka_export_addons == KAFKA_EXPORT_ID) {
         			sprintf(payload, "{\"name\":\"%s\", \"id\":\"%s\", \"data\": {\"lastChange\":\"%s\", \"lastRun\":\"%s\", \"name\":\"%s\", \"nextRun\":\"%s\", \"pluginName\":\"%s\", \"pluginOutput\":\"%s\", \"pluginStatus\":\"%s\", \"pluginStatusChanged\":\"%s\", \"pluginStatusCode\":\"%d\"}}", hostName, kafka_id, g_plugins[storeIndex]->lastChangeTimestamp, currTime, pluginName, g_plugins[storeIndex]->nextRunTimestamp, g_plugins[storeIndex]->description, g_plugins[storeIndex]->output.retString, pluginStatus, g_plugins[storeIndex]->statusChanged, g_plugins[storeIndex]->output.retCode);
+				json_object_object_add(j_root, "id", json_object_new_int(nKafkaId));
         		}
         		else if (kafka_export_addons == KAFKA_EXPORT_IDTAG) {
         			sprintf(payload, "{\"name\":\"%s\", \"id\":\"%s\",\"tag\":\"%s\", \"data\": {\"lastChange\":\"%s\", \"lastRun\":\"%s\", \"name\":\"%s\", \"nextRun\":\"%s\", \"pluginName\":\"%s\", \"pluginOutput\":\"%s\", \"pluginStatus\":\"%s\", \"pluginStatusChanged\":\"%s\", \"pluginStatusCode\":\"%d\"}}", hostName, kafka_id, kafka_tag, g_plugins[storeIndex]->lastChangeTimestamp, currTime, pluginName, g_plugins[storeIndex]->nextRunTimestamp, g_plugins[storeIndex]->description, g_plugins[storeIndex]->output.retString, pluginStatus, g_plugins[storeIndex]->statusChanged, g_plugins[storeIndex]->output.retCode);
                         }
-                }
+			
+                }*/
+		if (kafka_export_addons == KAFKA_EXPORT_TAG || kafka_export_addons == KAFKA_EXPORT_IDTAG) {
+        		json_object_object_add(j_root, "tag", json_object_new_string(kafka_tag));
+    		}
+
+    		if (kafka_export_addons == KAFKA_EXPORT_ID || kafka_export_addons == KAFKA_EXPORT_IDTAG) {
+        		int nKafkaId = kafka_start_id + storeIndex;
+        		// json-c can handle ints directly, or you can convert to string:
+        		json_object_object_add(j_root, "id", json_object_new_int(nKafkaId)); 
+    		}
 	}
+	json_object_object_add(j_root, "data", j_data);
+	if (enableCollector) {
+                if (collector_metadata) {
+                        struct json_object *labels = get_labels_by_id(storeIndex);
+                        if (labels) {
+                                json_object_get(labels);
+                                json_object_object_add(j_root, "labels", labels);
+                        }
+                }
+                if (collector_metrics) {
+                        struct json_object *perf = parse_perfdata(g_plugins[storeIndex]->output.retString);
+                        if (perf) {
+                                json_object_object_add(j_root, "metrics", perf);
+                        }
+
+                }
+        }
+
+	const char *serialized_json = json_object_to_json_string(j_root);
+	char *payload = strdup(serialized_json);
+	json_object_put(j_root);
 	if (useKafkaConfigFile) {
 		send_message_to_gkafka(payload);
 		free(pluginName);
