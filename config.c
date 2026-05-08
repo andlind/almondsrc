@@ -82,6 +82,50 @@ void process_almond_api_tls(ConfVal value) {
 	}
 }
 
+void process_collector_metrics(ConfVal value) {
+	if ((strcmp(value.strval, "true") == 0) || (strcmp(value.strval, "on") == 0) || (value.intval >= 1)) {
+                collector_metrics = true;
+        }
+	else
+		collector_metrics = false;
+}
+
+void process_collector_metadata(ConfVal value) {
+	if ((strcmp(value.strval, "true") == 0) || (strcmp(value.strval, "on") == 0) || (value.intval >= 1)) {
+                collector_metadata = true;
+        }
+	else
+		collector_metadata = false;
+}
+
+void process_collector_server(ConfVal value) {
+	if ((strcmp(value.strval, "true") == 0) || (strcmp(value.strval, "on") == 0) || (value.intval >= 1)) {
+                collector_server = true;
+        }
+	else
+		collector_server = false;
+}
+
+void process_collector_verbose(ConfVal value) {
+	if ((strcmp(value.strval, "true") == 0) || (strcmp(value.strval, "on") == 0) || (value.intval >= 1)) {
+                collector_verbose = true;
+        }
+	else {
+		collector_verbose = false;
+	}
+}
+
+void process_enable_collector(ConfVal value) {
+   if ((strcmp(value.strval, "true") == 0) || (strcmp(value.strval, "on") == 0) || (value.intval >= 1)) {
+                enableCollector = true;
+		writeLog("Almond collector module activated", 0, 1);
+        }
+	else {
+		enableCollector = false;
+		writeLog("Almond collector module not activated", 0, 1);
+	}
+}
+
 void process_enable_iam_aud(ConfVal value) {
    if ((strcmp(value.strval, "true") == 0) || (strcmp(value.strval, "on") == 0) || (value.intval >= 1)) {
                 enableIamAud = true;

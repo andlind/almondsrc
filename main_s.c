@@ -2,7 +2,7 @@
 #define _XOPEN_SOURCE 700
 #define _DEFAULT_SOURCE
 #ifndef VERSION
-#define VERSION "0.9.28"
+#define VERSION "0.9.30"
 #endif
 #include <stdio.h>
 #include <stdlib.h>
@@ -42,6 +42,7 @@
 #include "configuration.h"
 #include "logger.h"
 #include "plugins.h"
+#include "collect.h"
 #include "api.h"
 #include "main.h"
 #include "jwt_validate.h"
@@ -142,6 +143,7 @@ bool dockerLog = false;
 bool enableGardener = false;
 bool runGardenerAtStart = false;
 bool enableClearDataCache = false;
+bool enableCollector = false;
 bool enableIamAud = false;
 bool enableIamRoles = false;
 bool enableTimeTuner = false;
@@ -154,6 +156,10 @@ bool external_scheduler = false;
 bool use_ssl = false;
 bool truncateLog = false;
 bool timeScheduler = false;
+bool collector_metrics = true;
+bool collector_server = true;
+bool collector_metadata = false;
+bool collector_verbose = false;
 int schedulerSleep = 5000;
 int decCount = 0;
 int timeTunerMaster = 1;
@@ -288,6 +294,7 @@ void run_plugin(PluginItem *item);
 ConfigEntry config_entries[] = {
     {"almond.api", process_almond_api},
     {"almond.certificate", process_almond_certificate},
+    {"almond.enableCollector", process_enable_collector},
     {"almond.enableIamAud", process_enable_iam_aud},
     {"almond.enforceIAMRoles", process_enable_iam_roles},
     {"almond.iamAud", process_iam_aud},
@@ -303,6 +310,10 @@ ConfigEntry config_entries[] = {
     {"almond.useMetricsPush", process_metrics_push},
     {"almond.usePush", process_almond_push},
     {"almond.useSSL", process_almond_api_tls},
+    {"collector.getPluginMetrics", process_collector_metrics},
+    {"collector.getPluginMetaData", process_collector_metadata},
+    {"collector.getServerData", process_collector_server},
+    {"collector.isVerbose", process_collector_verbose},
     {"data.jsonFile", process_json_file},
     {"data.metricsFile", process_metrics_file},
     {"data.metricsOutputPrefix", process_metrics_output_prefix},
@@ -4797,6 +4808,163 @@ void apiReadAll() {
                 apiReadFile(fileName, 0);
 }
 
+/*void collectJsonData(int decLen){
+    char *pluginName = NULL;
+    char plts[32];
+    FILE *tf = NULL;
+    int tmpfd = -1;
+    char tmpname[1024];
+    char targetname[1024];
+    clock_t t;
+
+    if (fileName == NULL || dataDir == NULL) {
+        printf("Variables in collectJsonData is empty.\n");
+        return;
+    }
+
+    pthread_mutex_lock(&update_mtx);
+
+    int written = snprintf(targetname, sizeof(targetname), "%s/%s", dataDir, jsonFileName);
+    if (written < 0) {
+        writeLog("Could not write to json file", 2, 0);
+        pthread_mutex_unlock(&update_mtx);
+        return;
+    }
+    if ((size_t)written >= sizeof(targetname)) {
+        writeLog("Json file name truncated. Name is too long.", 1, 0);
+        pthread_mutex_unlock(&update_mtx);
+        return;
+    }
+
+    written = snprintf(tmpname, sizeof(tmpname), "%s/.%s.tmpXXXXXX", dataDir, jsonFileName);
+    if (written < 0 || (size_t)written >= sizeof(tmpname)) {
+        writeLog("Temp file name truncated. Name is too long.", 1, 0);
+        pthread_mutex_unlock(&update_mtx);
+        return;
+    }
+
+    tmpfd = mkstemp(tmpname);
+    if (tmpfd == -1) {
+        writeLog("Failed to create temp file for JSON output", 2, 0);
+        pthread_mutex_unlock(&update_mtx);
+        return;
+    }
+
+    if (fchmod(tmpfd, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH) == -1) {
+        writeLog("Warning: fchmod on temp file failed", 1, 0);
+    }
+
+    tf = fdopen(tmpfd, "w");
+    if (tf == NULL) {
+        writeLog("fdopen failed for temp file", 2, 0);
+        close(tmpfd);
+        unlink(tmpname);
+        pthread_mutex_unlock(&update_mtx);
+        return;
+    }
+
+    snprintf(infostr, infostr_size, "Collecting data to temp file: %s", tmpname);
+    writeLog(trim(infostr), 0, 0);
+
+    t = clock();
+    fputs("{\n", tf);
+    fprintf(tf, "   \"host\": {\n");
+    fprintf(tf, "      \"name\":\"");
+    fputs(hostName, tf);
+    fprintf(tf, "\",\n");
+    fprintf(tf, "      \"pluginfileupdatetime\":\"");
+    sprintf(plts, "%ld", tPluginFile);
+    fputs(plts, tf);
+    fprintf(tf, "\"\n");
+    fputs("   },\n", tf);
+    fputs("   \"monitoring\": [\n", tf);
+
+    for (int i = 0; i < decLen; i++) {
+        pluginName = strdup(g_plugins[i]->name);
+        if (pluginName == NULL) {
+            fprintf(stderr, "Memory allocation failed.\n");
+            writeLog("Failed to allocate memory [collectJsonData:pluginName]", 2, 0);
+            fclose(tf);
+            unlink(tmpname);
+            pthread_mutex_unlock(&update_mtx);
+            return;
+        }
+        removeChar(pluginName, '[');
+        removeChar(pluginName, ']');
+        fputs("      {\n", tf);
+        fprintf(tf, "         \"name\":\"%s\",\n", pluginName);
+        free(pluginName);
+        pluginName = NULL;
+        fprintf(tf, "         \"pluginName\":\"%s\",\n", g_plugins[i]->description);
+        switch(g_plugins[i]->output.retCode) {
+            case 0:
+               fputs("         \"pluginStatus\":\"OK\",\n", tf);
+               break;
+            case 1:
+               fputs("         \"pluginStatus\":\"WARNING\",\n", tf);
+               break;
+            case 2:
+               fputs("         \"pluginStatus\":\"CRITICAL\",\n", tf);
+               break;
+            default:
+               fputs("         \"pluginStatus\":\"UNKNOWN\",\n", tf);
+               break;
+        }
+        fprintf(tf, "         \"pluginStatusCode\":\"%d\",\n", g_plugins[i]->output.retCode);
+        fprintf(tf, "         \"pluginOutput\":\"%s\",\n", trim(g_plugins[i]->output.retString));
+        fprintf(tf, "         \"pluginStatusChanged\":\"%s\",\n", g_plugins[i]->statusChanged);
+        if (g_plugins[i]->active > 0)
+            fputs("         \"maintenance\":\"false\",\n", tf);
+        else
+            fputs("         \"maintenance\":\"true\",\n", tf);
+        fprintf(tf, "         \"lastChange\":\"%s\",\n", g_plugins[i]->lastChangeTimestamp);
+        fprintf(tf, "         \"lastRun\":\"%s\", \n", g_plugins[i]->lastRunTimestamp);
+        fprintf(tf, "         \"nextRun\":\"%s\"\n", g_plugins[i]->nextRunTimestamp);
+        if (i == decLen-1)
+            fputs("      }\n", tf);
+        else
+            fputs("      },\n", tf);
+    }
+
+    fputs("   ]\n", tf);
+    fputs("}\n", tf);
+
+    if (fflush(tf) != 0) {
+        writeLog("fflush failed on temp file", 2, 0);
+        fclose(tf);
+        unlink(tmpname);
+        pthread_mutex_unlock(&update_mtx);
+        return;
+    }
+
+    if (fsync(fileno(tf)) == -1) {
+        writeLog("fsync failed on temp file", 1, 0);
+    }
+
+    if (fclose(tf) != 0) {
+        writeLog("fclose failed on temp file", 2, 0);
+        unlink(tmpname);
+        pthread_mutex_unlock(&update_mtx);
+        return;
+    }
+    tf = NULL;
+
+    if (rename(tmpname, targetname) != 0) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "rename failed: %s", strerror(errno));
+        writeLog(buf, 2, 0);
+        unlink(tmpname);
+        pthread_mutex_unlock(&update_mtx);
+        return;
+    }
+
+    t = clock() - t;
+    snprintf(infostr, infostr_size, "Data collection took %.0f miliseconds to execute.", (double)t);
+    writeLog(trim(infostr), 0, 0);
+
+    pthread_mutex_unlock(&update_mtx);
+}*/
+
 void collectJsonData(int decLen){
     char *pluginName = NULL;
     char plts[32];
@@ -4857,30 +5025,37 @@ void collectJsonData(int decLen){
         pthread_mutex_unlock(&update_mtx);
         return;
     }
-
     /* write JSON to temp file (same content as before) */
     snprintf(infostr, infostr_size, "Collecting data to temp file: %s", tmpname);
     writeLog(trim(infostr), 0, 0);
 
     t = clock();
-    fputs("{\n", tf);
-    fprintf(tf, "   \"host\": {\n");
-    fprintf(tf, "      \"name\":\"");
-    fputs(hostName, tf);
-    fprintf(tf, "\",\n");
-    fprintf(tf, "      \"pluginfileupdatetime\":\"");
+    // Create JSON objects using json-c
+    struct json_object *root = json_object_new_object();
+    struct json_object *host_obj = json_object_new_object();
+    struct json_object *monitoring_array = json_object_new_array();
+    // Host object
+    json_object_object_add(host_obj, "name", json_object_new_string(hostName));
     sprintf(plts, "%ld", tPluginFile);
-    fputs(plts, tf);
-    fprintf(tf, "\"\n");
-    fputs("   },\n", tf);
-    fputs("   \"monitoring\": [\n", tf);
+    json_object_object_add(host_obj, "pluginfileupdatetime", json_object_new_string(plts));
+    if (enableCollector) {
+        struct json_object *info = get_system_info(collector_verbose);
+        if (info) {
+                json_object_object_add(host_obj, "system", info);
+        }
+    }
+    json_object_object_add(root, "host", host_obj);
 
+    // Monitoring array
     for (int i = 0; i < decLen; i++) {
+        struct json_object *plugin_obj = json_object_new_object();
+
         pluginName = strdup(g_plugins[i]->name);
         if (pluginName == NULL) {
             fprintf(stderr, "Memory allocation failed.\n");
             writeLog("Failed to allocate memory [collectJsonData:pluginName]", 2, 0);
-            /* cleanup and exit */
+            // Cleanup
+            json_object_put(root); // This frees all nested objects
             fclose(tf);
             unlink(tmpname);
             pthread_mutex_unlock(&update_mtx);
@@ -4888,59 +5063,45 @@ void collectJsonData(int decLen){
         }
         removeChar(pluginName, '[');
         removeChar(pluginName, ']');
-        fputs("      {\n", tf);
-        fprintf(tf, "         \"name\":\"%s\",\n", pluginName);
+
+        json_object_object_add(plugin_obj, "name", json_object_new_string(pluginName));
         free(pluginName);
         pluginName = NULL;
-        fprintf(tf, "         \"pluginName\":\"%s\",\n", g_plugins[i]->description);
+
+        json_object_object_add(plugin_obj, "pluginName", json_object_new_string(g_plugins[i]->description));
+
+        const char *status_str;
         switch(g_plugins[i]->output.retCode) {
-            case 0:
-               fputs("         \"pluginStatus\":\"OK\",\n", tf);
-               break;
-            case 1:
-               fputs("         \"pluginStatus\":\"WARNING\",\n", tf);
-               break;
-            case 2:
-               fputs("         \"pluginStatus\":\"CRITICAL\",\n", tf);
-               break;
-            default:
-               fputs("         \"pluginStatus\":\"UNKNOWN\",\n", tf);
-               break;
+            case 0: status_str = "OK"; break;
+            case 1: status_str = "WARNING"; break;
+            case 2: status_str = "CRITICAL"; break;
+            default: status_str = "UNKNOWN"; break;
         }
-        fprintf(tf, "         \"pluginStatusCode\":\"%d\",\n", g_plugins[i]->output.retCode);
-        fprintf(tf, "         \"pluginOutput\":\"%s\",\n", trim(g_plugins[i]->output.retString));
-        fprintf(tf, "         \"pluginStatusChanged\":\"%s\",\n", g_plugins[i]->statusChanged);
-        if (g_plugins[i]->active > 0)
-            fputs("         \"maintenance\":\"false\",\n", tf);
-        else
-            fputs("         \"maintenance\":\"true\",\n", tf);
-        fprintf(tf, "         \"lastChange\":\"%s\",\n", g_plugins[i]->lastChangeTimestamp);
-        fprintf(tf, "         \"lastRun\":\"%s\", \n", g_plugins[i]->lastRunTimestamp);
-        fprintf(tf, "         \"nextRun\":\"%s\"\n", g_plugins[i]->nextRunTimestamp);
-        if (i == decLen-1)
-            fputs("      }\n", tf);
-        else
-            fputs("      },\n", tf);
+        json_object_object_add(plugin_obj, "pluginStatus", json_object_new_string(status_str));
+        json_object_object_add(plugin_obj, "pluginStatusCode", json_object_new_int(g_plugins[i]->output.retCode));
+        json_object_object_add(plugin_obj, "pluginOutput", json_object_new_string(trim(g_plugins[i]->output.retString)));
+        json_object_object_add(plugin_obj, "pluginStatusChanged", json_object_new_string(g_plugins[i]->statusChanged));
+        json_object_object_add(plugin_obj, "maintenance", json_object_new_string(g_plugins[i]->active > 0 ? "false" : "true"));
+        json_object_object_add(plugin_obj, "lastChange", json_object_new_string(g_plugins[i]->lastChangeTimestamp));
+        json_object_object_add(plugin_obj, "lastRun", json_object_new_string(g_plugins[i]->lastRunTimestamp));
+        json_object_object_add(plugin_obj, "nextRun", json_object_new_string(g_plugins[i]->nextRunTimestamp));
+
+        json_object_array_add(monitoring_array, plugin_obj);
     }
 
-    fputs("   ]\n", tf);
-    fputs("}\n", tf);
-
-    /* flush stdio buffers */
-    if (fflush(tf) != 0) {
-        writeLog("fflush failed on temp file", 2, 0);
+    json_object_object_add(root, "monitoring", monitoring_array);
+    // Write JSON to temp file
+    if (json_object_to_file_ext(tmpname, root, JSON_C_TO_STRING_PRETTY) != 0) {
+        writeLog("Failed to write JSON to temp file", 2, 0);
+        json_object_put(root);
         fclose(tf);
         unlink(tmpname);
         pthread_mutex_unlock(&update_mtx);
         return;
     }
 
-    /* ensure data is on disk */
-    if (fsync(fileno(tf)) == -1) {
-        writeLog("fsync failed on temp file", 1, 0);
-        /* continue — depending on your durability needs you may treat this as fatal */
-    }
-
+    // Free the JSON object
+    json_object_put(root);
     /* close FILE* (this also closes the underlying fd) */
     if (fclose(tf) != 0) {
         writeLog("fclose failed on temp file", 2, 0);
@@ -4952,9 +5113,8 @@ void collectJsonData(int decLen){
 
     /* atomically replace target with temp file */
     if (rename(tmpname, targetname) != 0) {
-        char buf[256];
-        snprintf(buf, sizeof(buf), "rename failed: %s", strerror(errno));
-        writeLog(buf, 2, 0);
+        snprintf(infostr, infostr_size, "[Collect data] Rename failed: %s", strerror(errno));
+        writeLog(trim(infostr), 2, 0);
         unlink(tmpname);
         pthread_mutex_unlock(&update_mtx);
         return;
@@ -4966,6 +5126,7 @@ void collectJsonData(int decLen){
 
     pthread_mutex_unlock(&update_mtx);
 }
+
 
 void collectMetrics(int decLen, int style) {
         //char ch = '/';
@@ -7003,7 +7164,7 @@ void initialLogging() {
         printf("Starting almond version %s.\n", VERSION);
         initConstants();
         writeLog("Almond constants initialized.", 0, 1);
-        writeLog("Starting almond (0.9.28)...", 0, 1);
+        writeLog("Starting almond (0.9.30)...", 0, 1);
 }
 
 int closeFileHandler() {

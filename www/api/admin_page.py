@@ -65,7 +65,7 @@ scheduler_available_conf = ['almond.api', 'almond.enableIamAud', 'almond.enforeI
 users = {}
 hasToken=False
 usertoken = "None"
-current_version = '0.9.28'
+current_version = '0.9.30'
 
 auth_provider_name = "local"
 auth_init = False

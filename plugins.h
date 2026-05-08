@@ -1,15 +1,19 @@
 #ifndef ALMOND_PLUGINS_H
 #define ALMOND_PLUGINS_H
 
+#include <json-c/json.h>
 #include "data.h"
 
 // global config
+extern bool enableCollector;
+extern bool collector_metadata;
 extern char* pluginDeclarationFile;
 extern size_t pluginoutput_size;
 extern int g_plugin_count;
 extern PluginItem **g_plugins;
 extern PluginItem *g_plugin_map;
 //extern PluginOutput *g_outputs;
+extern struct json_object *plugin_labels;
 extern int decCount;
 
 int countDeclarations(char *file_name);
