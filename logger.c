@@ -38,14 +38,17 @@ const char* levelString(LogLevel level) {
 void initLogger() {
         char ch = '/';
         
-        if (!logfile) {
+        /*if (!logfile) {
 		fprintf(stderr, "logfile is NULL in initLogger.\n");
     		return;
 	}
 	if (!logDir) {
     		fprintf(stderr, "logDir is NULL in initLogger.\n");
     		return;
-	}	
+	}*/
+        if (!logfile || !logDir || shutdown_phase >= 2) {
+        	return;
+    	}		
         snprintf(logfile, logfile_size, "%s%c%s", logDir, ch, "almond.log");
         pthread_mutex_lock(&log_mutex);
         fptr = fopen(logfile, "a");
@@ -73,6 +76,8 @@ void writeLog(const char *message, LogLevel level, int startup) {
 	}*/
 	if (!message) return;
 	if (shutdown_phase >= 2) return;
+        if (is_stopping && !is_file_open)
+        return;
 	if (!logmessage) {
                 fprintf(stderr, "Logging buffer is not allocated.\n");
                 return;

@@ -8,7 +8,9 @@
 #include <malloc.h>
 #endif
 #include <sys/types.h>
+#include <json-c/json.h>
 #include "data.h"
+#include "collect.h"
 #include "plugins.h"
 
 #define STATUS_SIZE 2
@@ -78,6 +80,10 @@ static PluginItem *parse_declaration_line(const char *line) {
     char *active_str  = strtok(NULL, ";");
     char *interval_str= strtok(NULL, ";");
     if (!description || !command || !active_str || !interval_str) return NULL;
+    char *json_start = strchr(interval_str, '{');
+    if (json_start) {
+    	*json_start = '\0';
+    }
 
     PluginItem *item = calloc(1, sizeof *item);
     if (!item) {
@@ -176,6 +182,10 @@ void load_plugins() {
     free(g_plugins);
     g_plugins      = new_list;
     g_plugin_count = index;
+    if (enableCollector) {
+	 plugin_labels = read_labels(pluginDeclarationFile);
+	 //struct json_object *json = read_labels("/etc/almond/plugins.conf");
+    }
 }
 
 int init_plugins() {
@@ -320,6 +330,12 @@ void update_plugins(void) {
     // 7) Cleanup
     g_plugin_count = decCount;
     free(decls);       // decls holds pointers now owned by g_plugins (or freed above)
+
+    // 8) Update labels
+    if (plugin_labels) {
+    	json_object_put(plugin_labels);   // free old tree
+    }
+    plugin_labels = read_labels(pluginDeclarationFile);  // load new tree
 #ifdef __linux__
     malloc_trim(0);
 #endif

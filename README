@@ -1,0 +1,121 @@
+####################################################################################################
+###               **     **       ****     ****   *******   ****     ** *******                  ###  
+###              ****   /**      /**/**   **/**  **/////** /**/**   /**/**////**                 ###  
+###             **//**  /**      /**//** ** /** **     //**/**//**  /**/**    /**                ###
+###            **  //** /**      /** //***  /**/**      /**/** //** /**/**    /**                ###
+###           **********/**      /**  //*   /**/**      /**/**  //**/**/**    /**                ###
+###          /**//////**/**      /**   /    /**//**     ** /**   //****/**    **                 ###
+###          /**     /**/********/**        /** //*******  /**    //***/*******                  ###
+###         //      // //////// //         //   ///////   //      /// ///////                    ###
+####################################################################################################
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&&&@&&&###&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&BBBGGPPPPP555PPBB####&&&&&&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&&BP5JJJJJYYYYYYYJ??JJJYYYYY5PPB##&&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@#GGGPP5Y55PGB##&&&@@&@&&##BGGPP5YY???JY5G##&&@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@&GY?777JYG#&BBGGB#&#GP55PGB&&#&@@@@@&#BBP5J??Y5GB#&&@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@@@#BPYJ?7!~~~^~7?77!~~!!!!!!77!7?7!77JP@@@@@@@&&GPP5YY5PGB&@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@&G5Y5P777777!!~~^~!7!!!!777??7?Y5J??77!?#@@GYJJJ???J5PPYY5G#&@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@#G55P#@B7~!!!!!!!!~~~~!????JJJJJYB#5YJJJ?7?#57777777!!!75#GYY5G#&@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@&BPYYP555PPYYYJ?777??JJJJJJYJJJYYJY5G5J?????J?J????????????75&&B5Y5G#&@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@&BPYJJGB777!~!7JYPB#####BBBGP5Y5YYYPYJ???JJ????7?Y5YJ?JJ?????77J#@&#PJYG#&@@@@@@@@@@@
+@@@@@@@@@@@@&&BP5JYYPPPGY???7!!!!7?5PB#&&GGG5YYY5B#5Y5PGGPGGGP5YYYJ5P5YJYYYJJ???P#@@BJ?5B#&@@@@@@@@@
+@@@@@@@@@@&#BPYJYYYGGB#&&BGGG5YJJ???7??Y5GGGP5PG#&@BBBBBBBBGGGB#BBGGGB#BPY??PPP5PGG&&BJ7YG#&@@@@@@@@
+@@@@@@@@@@&B5JYJB#GG55YYJYYY55PPPGGGGGGBBB####BPYJJ??JYG#5J?7??5&&#G5G#Y7!77Y&BGB&##@&GY7JB&&@@@@@@@
+@@@@@@@@@&#PJJYPGY???J5P??777!~~!!?J5G##G5PG5?77?JJJYY5GY??JJJ??5GP5PYJJ?JJ?7J?7?BBB&@@BJ7Y&@@@@@@@@
+@@@@@@@@&&GYJY5J?Y55555PBBGP55Y?7!~~~!7?YPP?JY5PGGB####GYYJJJJJJJPY?777?5J7!!7??JPJ7JB#&#J?P@@@@@@@@
+@@@@@@@&&BYJJGYY55P55PB&&&&#BG55P5YJ?JYYJGBGB###&&&&###BP5Y55YYYY?!7???J7!7?JYYY5J?!!!7?JY?YB@@@@@@@
+@@@@@@@@&PJJY&GPGGGBB##B#&&#BBBBBBBBBBGPYJ?J5#5JG#&@&&#PPP555YPJ77?7??J???JYYY555P5JY5YP5J?JP&@@@@@@
+@@@@@@@@#5JJG@@#BBBGGBB&@BY55PGGB&&#PJ7!!!77?5P77??YB@&GPP55PGJ7?????YYY5GGP555PGGGP5Y5555YJY#@@@@@@
+@@@@@@@@GYYYB@@&GYJ&##&##5Y5YY5PP#Y!~~!7!7??J5B57777?YB&BPPPBY7?J???JBBG#BBBGGGBBBGBBBGBB#BPYP&@@@@@
+@@@@@@&&GYJY&@P?77YG777!!!7Y555YYY7!777???JJJY#&Y777?7?5B#B#B?JJYJYPP#&&&#BB##GYJJJJ5B#&#&@#J5#@@@@@
+@@@@@@@@BY?5&GJ???P57777!!!!JPPYYYYJJJ?JJJJJYB@@&Y?777??J5#&#55PPPBB5??J5GB&@&BGGGP5YJYB@@@#YYB@@@@@
+@@@@@@@@BYJ5&PYJJJPBJJJJ???77JPGP55G5YJJYYY5B##&@&PY???JJ?JB@&BBBB#@BJ?????JB@#BBGB#BGP5#@@BYYG&@@@@
+@@@@@@@@B5JY#G5YJYP@BYYYYJJJJY5BGPPB&#GPYJ?7!!7?YPBBGY?????JB&#&&&&@&B5JJJJJJP#&#BB###&#B@@BYJP&&@@@
+@@@@@@@@#5JJBBP5Y5B@@#G55555YY5G&#BBB#5YYYYYY5555PB&@&B5YJY5BBGPP5PPGB#GYJJYYYP&@@&&&##&&@@GJJG#&@@@
+@@@@@@@@&5??P&GPGBB5JJ5GGPPPGGGGPPGB&&B#&#&&&&&&&&&@@@@@&PJYYJJJJJJJ5PG##G5Y5Y5B&GP55#&&&@&PJYB#&@@@
+@@@@@@@&&G?7J&&&#Y?7?7JJ5##BGBBB##&&&##&&&&&##BGPP5555PBJ7!!!!!!?YPYJYY5B@@#P5YJ7~!77P&##&GYJ5BB&@@@
+@@@@@@@@&&PJ?P@&J777??J?J5#&##&&&BG5YY55PPPPPG5YYJJJJJY577JY???777JGB5YY5G5J777777775&&#&#5YYBBB&@@@
+@@@@@@@@@@#5J?B&J7??????JY5#&GPPYJJJJYPPYJ??7?P#######&&B5JJJYJJ?7775&#PJ?77?77??7?P&#&@&PJYGBB#&@@@
+@@@@@@@@@&@#Y?JB5??????JJJJBPJJJJJ???YJJ?YJJJJ7P@@@&&#BGGGPP5555YY?775GJYJ???????YGG55P#GYYB###&@@@@
+@@@@@@@@@&&@GJ?JP5?????JJJ5BYJJ??JJY5JYYYYY5Y5YJPB&&BGPPPGBBGPPP55PYJ?YYJJ?????JPG5YYB#GY5###&&@@@@@
+@@@@@@@@@@@&&BYJ?55JJJJJJYB&G5555PG#YJY555P5YY5YYYYP#&BBGGGB##BGPPPP5Y55J?JJY5GBBPPPG#GY5#&&&@@@@@@@
+@@@@@@@@@@@@&&#5Y?YP55PPYYP55PPG#&@#YYYYYPYYYPPGG5YJ5#&#BBBB#&@&&BBBBGG#GPGB##BGGBGG#PYG&&&@@@@@@@@@
+@@@@@@@@@@@@@&&&GYJJG#GGBJ!!!!77J5BBY5P5GPPPGGGGP5YYY5&@@@&#BP5J?77775&@@&##BBBBB##G55#&&@@@@@@@@@@@
+@@@@@@@@@@@@@@@&&#PYYYG@@&GJ77777??PY5YPPGGGB#BBGPP555B&#PJ7!!!!!!7JYP&@&GGGGGBB#BPPB&&&@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@#PJJYG&@&5??????5PPPGGBB#&BGBGPPPGBGJ7!77?J5PGB&&&#GGGG##&#BP55G#&#&@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@#GY?JP#&#PJ???JYB#B#&@&&##BGGG##P55PGB##&&&&&&#BBBG##&#GYJYP#&&&&&@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@@&B5J?YPB#GYJJY5GP5YJJJYYY55PGB#&@@@@&&&########&#BPYJJ5B&&@@&&&@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@@@@@&BPJJJ5PGPPPB#PG##BBGPP55YJJY5GB&&&&&&&&&&&#PYJY5G#&@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&B55YJY5G###&&&&&&&&&&&&&&&###@@&&##BP5YJYPB#&@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&#BBPGGPGB##&&&&&&&&###BBP55Y5Y5PPGB#&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&&##B##BGGGGGGP555GGGG###&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@&&&&&@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+                      ALMOND MONITORING DAEMON SOURCE INSTALLATION
+
+____________________________________________________________________________________________________
+
+1. PREREQUISITES
+   In order to run the install script you need to have a c compiler, make and automake installed.
+   - gcc
+   - make
+   - automake
+
+   Make sure you have the dependecies for the source installation, meaning headers for:
+   - json-c
+   - ssl
+   - rdkafka
+   - libjwt
+
+   For the default plugins to work you also need to have the following installed:
+   - ksh
+   - sysstat
+   - python3
+   - perl
+   - python3-psutil (pip3 install psutil)
+   - ping
+   - ps
+
+2. RUN THE INSTALL SCRIPT
+   Run the script ./install_almond.sh
+
+   This script will compile and install Almond monitoring daemon and copy initial configuration and
+   plugin files.
+
+   If you want to compile yourself take note below:
+   To compile almond with support for kafka_export, make sure you have the correct dependecies installed and run:
+   gcc -g -Wall main.c api.c config.c logger.c plugins.c mod_kafka.c -pthread -L/usr/lib/x86_64-linux-gnu -I/usr/include/json_c -I/usr/include/librdkafka -std=c99 -O0 -ljson-c -lrdkafka -lssl -ljwt -lcrypto -lz -fstack-protector -o almond
+
+   To compile with Avro support for Kafka, you need to install required dependecies and edit the schema registry path in the mod_avro.c file. You also need to rename mod_avro.c and mod_avro.h to mod_kafka.c and mod_kafka.h, overwriting existing files and then compile with
+   gcc -g -Wall main.c api.c config.c logger.c plugins.c mod_avro.c -pthread -L/usr/lib/x86_64-linux-gnu -I/usr/include/json_c -I/usr/include/librdkafka -I /usr/include/avro -I /usr/include/libserdes -std=c99 -O0 -ljson-c -lserdes -lavro -lrdkafka -lssl -ljwt -lcrypto -lz -fstack-protector -o almond
+   Also make sure to register the schema used by the Almond Kafka producer:
+   curl -X POST http://localhost:18081/subjects/almond-monitor-topic-value/versions \
+     -H "Content-Type: application/vnd.schemaregistry.v1+json" \
+     -d @<(echo '{"schema": '"$(jq -Rs . < plugins_status.avsc)"'}')
+   Also take note that this schema requires you to use kafkaStartId and kafkaTag meta data options.
+
+   To just compile almond without Kafka you need to remove Kafka references in the source code then you write:
+   gcc -g -Wall main_s.c api_s.c config_s.c logger.c plugins.c  -pthread -L/usr/lib/x86_64-linux-gnu -I/usr/include/json_c -std=c99 -O0 -ljson-c  -lssl -ljwt -lcrypto -lz -fstack-protector -o almond
+
+3. START THE ALMOND PROCESS
+   After running the install script you can start Almond with the following command:
+   
+   /opt/almond/start_almond.sh
+
+4. INSTALLING WITH AUTOMAKE
+   Make sure everyting is clean between builds, running autoreconf -fi
+   Other than that is just to run the regular configure, make, make install commands.
+   Configure can be run in three ways:
+   ./configure --prefix=/opt/almond		 	standard installation of Almond with Kafka support
+   ./configure --prefix=/opt/almond --enable-avro	installs Almond with avro support for Kafka
+   ./configure --prefix=/opt/almond --disable-kafka	installs a minimal Almond without support for Kafka
+
+5. PLUGIN NOTICE
+   Some plugins installed by default will have their own prerequisites such as Python and Perl with
+   additional modules. Some plugins are binary and compiled under x86_64/amd64 for Debian and if
+   they are not working you need to download/install/compile them for the distribution and or
+   architecture where you want to run the Almond software.
