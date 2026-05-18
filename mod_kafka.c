@@ -10,6 +10,7 @@
 #include "configuration.h"
 #include "logger.h"
 #include "mod_kafka.h"
+#include "structures.h"
 #include "kafkaapi.h"
 
 #ifndef RD_KAFKA_RESP_ERR__UNKNOWN
@@ -1044,21 +1045,11 @@ int send_message_to_gkafka(const char *payload) {
     return err;
 }
 
-int send_avro_message_to_gkafka(const char *name,
-                                const char *id,
-                                const char *tag,
-                                const char *lastChange,
-                                const char *lastRun,
-                                const char *dataName,
-                                const char *nextRun,
-                                const char *pluginName,
-                                const char *pluginOutput,
-                                const char *pluginStatus,
-                                const char *pluginStatusChanged,
-                                int pluginStatusCode) {
+int send_avro_message_to_gkafka(char *brokers, char *topic, const GKafkaMessage *msg) {
 	writeLog("Writing with schema registry and avro not enabled in this Almond version.", 2, 0);
-	writeLog("To enable Avro recompile Almond with mod_avro.", 0, 0);
+        writeLog("To enable Avro recompile Almond with mod_avro.", 0, 0);
         return -1;
+
 }
 
 int send_message_to_kafka(char *brokers, char *topic, char *payload) {

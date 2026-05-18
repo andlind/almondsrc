@@ -20,6 +20,7 @@ from flask import Blueprint
 from flask import current_app
 from flask_httpauth import HTTPBasicAuth
 from flask import render_template, session, request, make_response, redirect
+from markupsafe import Markup
 import matplotlib.pyplot as plt
 from werkzeug.security import check_password_hash, generate_password_hash
 from collections import deque
@@ -60,7 +61,7 @@ extra_conf = []
 graph_names = {}
 api_available_conf = ['api.activeMods', 'api.adminUser', 'api.adminPassword', 'api.authProvider', 'api.authType', 'api.bindPort', 'api.dataDir','api.enableAliases', 'api.enableFile', 'api.enableGUI','api.enableLoginRedirect', 'api.enableMods', 'api.enableOauth','api.enableOtelExporter', 'api.enableOtelFileWatcher', 'api.enablePeriodicOtelExport', 'api.enableProxyCleaner','api.enableScraper', 'api.enableSSL','api.isContainer', 'api.isMetricsProxy', 'api.isProxy', 'api.metricsDir', 'api.multiMetrics', 'api.multiServer', 'api.otelExportInterval', 'api.otlpEndpoint', 'api.persistant2fa', 'api.proxyCleanerSeconds', 'api.showDashboard', 'api.sslCertificate', 'api.sslKey', 'api.startPage', 'api.stateType', 'api.useGUI', 'api.userFile', 'api.useSSL', 'api.wsgi', 'data.jsonFile', 'data.metricsFile', 'scheduler.storeDir', 'scheduler.configFile', 'scheduler.dataDir', 'plugins.directory', 'plugins.declaration']
 
-scheduler_available_conf = ['almond.api', 'almond.enableIamAud', 'almond.enforeIAMRoles', 'almond.iamAud', 'almond.iamIssuer', 'almond.iamPublicKey', 'almond.iamRolesAccepted', 'almond.port', 'almond.pushInterval', 'almond.pushPort', 'almond.pushUrl', 'almond.standalone', 'almond.useMetricsPush', 'almond.usePush', 'almond.useSSL', 'almond.certificate', 'almond.key', 'data.jsonFile', 'data.saveOnExit', 'data.metricsFile', 'data.metricsOutputPrefix', 'plugins.directory', 'plugins.declaration', 'scheduler.allowAllHosts', 'scheduler.useTLS', 'scheduler.certificate', 'scheduler.key','scheduler.confDir', 'scheduler.kafkaConfigFile', 'scheduler.logDir', 'scheduler.logToStdout', 'scheduler.logPluginOutput', 'scheduler.runGardenerAtStart','scheduler.storeResults', 'scheduler.format', 'scheduler.initSleepMs', 'scheduler.sleepMs', 'scheduler.kafkaAvro', 'scheduler.schemaName', 'scheduler.schemaRegistryUrl', 'scheduler.useExternal','scheduler.truncateLog', 'scheduler.truncateLogInterval', 'scheduler.tuneTimer', 'scheduler.tunerCycle', 'scheduler.tuneMaster', 'scheduler.dataDir', 'scheduler.storeDir', 'scheduler.hostName', 'scheduler.enableGardener', 'scheduler.gardenerScript', 'scheduler.gardenerRunInterval', 'scheduler.quickStart', 'scheduler.metricsOutputPrefix', 'scheduler.enableClearDataCache', 'scheduler.enableKafkaExport', 'scheduler.enableKafkaTag', 'scheduler.enableKafkaId', 'scheduler.kafkaStartId', 'scheduler.kafkaBrokers', 'scheduler.kafkaTopic', 'scheduler.kafkaTag', 'scheduler.enableKafkaSSL', 'scheduler.kafkaCACertificate', 'scheduler.kafkaProducerCertificate', 'scheduler.kafkaSSLKey', 'scheduler.useKafkaConfigFile','scheduler.clearDataCacheInterval', 'scheduler.dataCacheTimeFrame', 'scheduler.type', 'gardener.CleanUpTime']
+scheduler_available_conf = ['almond.api', 'almond.enableCollector', 'almond.enableIamAud', 'almond.enforeIAMRoles', 'almond.iamAud', 'almond.iamIssuer', 'almond.iamPublicKey', 'almond.iamRolesAccepted', 'almond.port', 'almond.pushInterval', 'almond.pushPort', 'almond.pushUrl', 'almond.standalone', 'almond.useMetricsPush', 'almond.usePush', 'almond.useSSL', 'almond.certificate', 'almond.key', 'collector.getPluginMetadata', 'collector.getPluginMetrics', 'collector.getServerData', 'collector.isVerbose', 'data.jsonFile', 'data.saveOnExit', 'data.metricsFile', 'data.metricsOutputPrefix', 'plugins.directory', 'plugins.declaration', 'scheduler.allowAllHosts', 'scheduler.useTLS', 'scheduler.certificate', 'scheduler.key','scheduler.confDir', 'scheduler.kafkaConfigFile', 'scheduler.logDir', 'scheduler.logToStdout', 'scheduler.logPluginOutput', 'scheduler.runGardenerAtStart','scheduler.storeResults', 'scheduler.format', 'scheduler.initSleepMs', 'scheduler.sleepMs', 'scheduler.kafkaAvro', 'scheduler.schemaName', 'scheduler.schemaRegistryUrl', 'scheduler.useExternal','scheduler.truncateLog', 'scheduler.truncateLogInterval', 'scheduler.tuneTimer', 'scheduler.tunerCycle', 'scheduler.tuneMaster', 'scheduler.dataDir', 'scheduler.storeDir', 'scheduler.hostName', 'scheduler.enableGardener', 'scheduler.gardenerScript', 'scheduler.gardenerRunInterval', 'scheduler.quickStart', 'scheduler.metricsOutputPrefix', 'scheduler.enableClearDataCache', 'scheduler.enableKafkaExport', 'scheduler.enableKafkaTag', 'scheduler.enableKafkaId', 'scheduler.kafkaStartId', 'scheduler.kafkaBrokers', 'scheduler.kafkaTopic', 'scheduler.kafkaTag', 'scheduler.enableKafkaSSL', 'scheduler.kafkaCACertificate', 'scheduler.kafkaProducerCertificate', 'scheduler.kafkaSSLKey', 'scheduler.useKafkaConfigFile','scheduler.clearDataCacheInterval', 'scheduler.dataCacheTimeFrame', 'scheduler.type', 'gardener.CleanUpTime']
 
 users = {}
 hasToken=False
@@ -161,6 +162,7 @@ def user_has_executable_role(user_roles):
     if not executable_roles:
         return True  # No restrictions if empty
     return any(role in executable_roles for role in user_roles)
+
 
 def load_conf(isGlobal):
     global conf
@@ -940,6 +942,32 @@ def verify_password(username, password):
     if user_record and check_password_hash(user_record.get("password_hash"), password):
         return user_record.get("roles", ["admin"])
     return None
+
+def beautify_json(text):
+    import re
+    from markupsafe import Markup
+    
+    # 1. Find the JSON part: {"key":"val", "key2":"val2"}
+    json_match = re.search(r'\{(.*?)\}', str(text))
+    if not json_match:
+        return text # Return as is if no JSON found
+
+    inner_content = json_match.group(1)
+    
+    # 2. Find every "key":"value" pair inside that content
+    # This regex looks for: "any_chars" : "any_chars"
+    pair_pattern = r'"([^"]+)"\s*:\s*"([^"]+)"'
+    
+    # Create a list of span boxes for each pair found
+    tags_html = ""
+    for key, value in re.findall(pair_pattern, inner_content):
+        tags_html += f'<span class="plugin-tag">{key}:{value}</span>'
+    
+    # 3. Replace the original {json} block with our new string of boxes
+    # We remove the old {json} string and put the boxes in its place
+    result = re.sub(r'\{.*?\}', tags_html, str(text))
+    
+    return Markup(result)
 
 @admin_page.route('/almond/admin', methods=['GET', 'POST'])
 #@auth.login_required

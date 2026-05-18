@@ -88,6 +88,7 @@
                 </tr>
 		<tr><td>almond.api=</td><td>true</td><td>True means Almond API is enabled, false disabled.</td></tr>
                 <tr><td>almond.certificate=</td><td>-</td><td>Path to server certificate if enabling TLS for Almond API. Alterntative to <i>scheduler.certificate/<i></td></tr>
+                <tr><td>almond.enableCollector=</td><td>true</td><td>Enable or disable the collector module which collects static metadata following settings under <i>collector.*</i>.</td></tr>
                 <tr><td>almond.enableIamAud=</td><td>false</td><td>If using IAM provider setting this value to <i>true</i> will validate that the user token belong to the audience set in <i>almond.iamAud</i>.</td></tr>
                 <tr><td>almond.enforceIAMRoles=</td><td>false</td><td>If using IAM provider setting this value to <i>true</i>, <i>on</i> or <i>1</i> will validate that the user token has a role from the IAM provider matching a value set in <i>almond.iamRolesAccepted</i>.</td></tr>
                 <tr><td>almond.iamAud=</td><td>None</td><td>If using IAM provider here you can set which audience that has the right to execute and change values through the API. Used with <i>almond.enableIamAud</i>.</td></tr>
@@ -138,9 +139,14 @@
 		<tr><td>api.stateType=</td><td>systemctl</td><td>This should be <i>supervisorctl</i> when running with supervisord in Docker containers.<br>Otherwise the default value should be used.</td></tr>
 		<tr><td>api.startPage=</td><td>admin</td><td>Which page should be startpage when using http(s).<br>Allowed values are <i>admin</i>, <i>status</i> and </i>metrics</i>.</td></tr>
 		<tr><td>api.useGUI=</td><td>true</td><td>Changing the value to 0 or <i>false</i> will disable HowRU http pages.</td></tr>
-		<tr><td>api.userFile=</td><td>/etc/almond/users.conf</td><td>The file where HowRu stores login credentials for the admin page..</td></tr>
-                 <tr><td>api.useSSL=</td><td>false</td><td>Changing the value to <i>true</i> will force the API to run through SSL. Make sure you have <i>api.sslCertificate</i> and <i>api.sslKey</i> values in your config.</td></tr>
-                <tr><td>api.wsgi=</td><td>true</td><td>If true HowRU service will run as a production safe wsgi app. If set to false, it will run under as a Flask development service..</td></tr>
+		<tr><td>api.userFile=</td><td>/etc/almond/users.conf</td><td>The file where HowRu stores login credentials for the admin page.</td></tr>
+                <tr><td>api.useSSL=</td><td>false</td><td>Changing the value to <i>true</i> will force the API to run through SSL. Make sure you have <i>api.sslCertificate</i> and <i>api.sslKey</i> values in your config.</td></tr>
+                <tr><td>api.wsgi=</td><td>true</td><td>If true HowRU service will run as a production safe wsgi app. If set to false, it will run under as a Flask development service.</td></tr>
+                <tr><td>collector.getPluginMetadata=</td><td>false</td><td>If collector module is active (<i>almond.enableCollector=true</i>), setting this config entry to true will make the collector add labels in its collection.</td></tr>
+                <tr><td>collector.getPluginMetrics=</td><td>false</td><td>If collector module is active, setting this config entry to true will make the collector add metrics in its collection and all outputs.<br>
+                This could be good for instance with Kafka or if using the API to extract metrics.</td></tr>
+                <tr><td>collector.getServerData=</td><td>true</td><td>If collector module is active, setting this config entry to true will make the collector add system data in its collection.</td></tr>
+                <tr><td>collector.isVerbose=</td><td>false</td><td>If collector module is active and <i>collector.getServerData</i> is enabled, setting this config entry to true will make the collector collect much more static system data to be exported.<br>This is typically interesting if you want to use Almond as a source for your CMDB.</td></tr>
                 <tr><td>data.jsonFile=</td><td>monitor_data.json</td><td>The name of the file where the scheduler writes data and from where the api will read it</td></tr>
                 <tr><td>data.metricsFile=</td><td>monitor.metrics</td><td>The name of the file where the scheduler should write current metrics.</td></tr>
 		<tr><td>data.metricsOutputPrefix=</td><td>almond</td><td>Prefix given to all metrics created by this instance of Almond.</td></tr>
@@ -450,45 +456,47 @@ ould look like:</p>
 		<table>
                 <tr>
                 <td>API call</td><td>Description</td></tr>
-                <tr><td>/api/status</td><td>Short compilation of server state.</td></tr>
-		<tr><td>/api/summary</td><td>Same as above.</td></tr>
-		<tr><td>/api/howru</td><td>Same as above.</td></tr>
-		<tr><td>/api/howareyou</td><td>Same as above.</td></tr>
+                <tr><td>/api/v1/status</td><td>Short compilation of server state.</td></tr>
+		<tr><td>/api/v1/summary</td><td>Same as above.</td></tr>
+		<tr><td>/api/v1/howru</td><td>Same as above.</td></tr>
+		<tr><td>/api/v1/howareyou</td><td>Same as above.</td></tr>
 		<tr><td>/howru/api/howareyou</td><td>Same as above.</td></tr>
 		<tr><td>/howru/monitoring/howareyou</td><td>Same as above.</td></tr>
-		<tr><td>/api/criticals</td><td>Compilation of all plugins in critical state.</td></tr>
+		<tr><td>/api/v1/criticals</td><td>Compilation of all plugins in critical state.</td></tr>
 		<tr><td>/howru/api/criticals</td><td>Same as above.</td></tr>
                 <tr><td>/howru/monitoring/criticals</td><td>Compilation of all plugins in critical state.</td></tr>
-		<tr><td>/api/warnings</td><td>Compilation of all plugins in warning state.</td></tr>
+		<tr><td>/api/v1/warnings</td><td>Compilation of all plugins in warning state.</td></tr>
                 <tr><td>/howru/api/warnings</td><td>Same as above.</td></tr>
                 <tr><td>/howru/monitoring/warnings</td><td>Compilation of all plugins in warning state.</td></tr>
-		<tr><td>/api/ok</td><td>Compilation of all plugins in state ok.</td></tr>
-		<tr><td>/api/oks</td><td>Same as above.</td></tr>
+		<tr><td>/api/v1/ok</td><td>Compilation of all plugins in state ok.</td></tr>
+		<tr><td>/api/v1/oks</td><td>Same as above.</td></tr>
 		<tr><td>/howru/api/ok</td><td>Same as above.</td></tr>
                 <tr><td>/howru/monitoring/ok</td><td>Compilation of all plugins in state ok.</td></tr>
-		<tr><td>/api/changes</td><td>Compilation of changes</td></tr>
+		<tr><td>/api/v1/changes</td><td>Compilation of changes</td></tr>
 		<tr><td>/howru/api/changes</td><td>Same as above</td></tr>
                 <tr><td>/howru/monitoring/changes</td><td>Compilation of changes</td></tr>
-		<tr><td>/api/showall</td><td>All plugin results are shown</td></tr>
-		<tr><td>/api/all</td><td>Same as above</td></tr>
-                <tr><td>/api/json</td><td>Same as above</td></tr>
+		<tr><td>/api/v1/showall</td><td>All plugin results are shown</td></tr>
+		<tr><td>/api/v1/all</td><td>Same as above</td></tr>
+                <tr><td>/api/v1/json</td><td>Same as above</td></tr>
 		<tr><td>/howru/api/showall</td><td>Same as above</td></tr>
 		<tr><td>/howru/api/all</td><td>Same as above</td></tr>
                 <tr><td>/howru/api/json</td><td>Same as above</td></tr>
-                <tr><td>/api/monitoring</td><td>Versatile API that can show all or specific items (if adding &name= or &item=).
-                <br>It can also create check results based on metrics. For instance /api/monitoring?item=check_memory&check will return a check result for <i>check_memory.</i><br>
-                /api/monitoring?item=check_cpu_stats&check&option=CpuSystem&warning=6&critical=10 will create a <i>custom check</i> based on CpuSystem metrics given the warning and critical parameters.<br>
+                <tr><td>/api/v1/monitoring</td><td>Versatile API that can show all or specific items (if adding &name= or &item=).
+                <br>It can also create check results based on metrics. For instance /api/v1/monitoring?item=check_memory&check will return a check result for <i>check_memory.</i><br>
+                /api/v1/monitoring?item=check_cpu_stats&check&option=CpuSystem&warning=6&critical=10 will create a <i>custom check</i> based on CpuSystem metrics given the warning and critical parameters.<br>
                 Finally adding &help will show you which <i>options</i> are available on a given check.</td></tr>
                 <tr><td>/howru/api/monitoring</td><td>Same as above.</td></tr>
 		<tr><td>/howru/monitoring/json</td><td>All plugin results are shown</td></tr>
-		<tr><td>/api/servers</td><td>Results from specifik server in multimode. <i>id</i> or </i>name</i> must be provided.</td></tr>
+		<tr><td>/api/v1/servers</td><td>Results from specifik server in multimode. <i>id</i> or </i>name</i> must be provided.</td></tr>
 		<tr><td>/howru/api/servers</td><td>Same as above</td></tr>
-		<tr><td>/api/<i>alias</i></td><td>Show results from <i>alias</i> as provided in the <i>aliases.conf</i> file.</td></tr>
-		<tr><td>/api/search?name=<i>searchstring</i></td><td>Search results from string</td></tr>
-		<tr><td>/api/querysearch?name=<i>searchstring</i></td><td>Same as above</td></tr>
+		<tr><td>/api/v1/<i>alias</i></td><td>Show results from <i>alias</i> as provided in the <i>aliases.conf</i> file.</td></tr>
+		<tr><td>/api/v1/search?name=<i>searchstring</i></td><td>Search results from string</td></tr>
+		<tr><td>/api/v1/querysearch?name=<i>searchstring</i></td><td>Same as above</td></tr>
 		<tr><td>/howru/api/search?name=<i>searchstring</i></td><td>Same as above</td></tr>
-		<tr><td>/api/query?id=<i>plugin_id</i></td><td>Search result of a specific plugin id</td></tr>
-		<tr><td>/api/plugin?id=<i>plugin_id</i></td><td>Same as above</td></tr>
+		<tr><td>/api/v1/query?id=<i>plugin_id</i></td><td>Search result of a specific plugin id</td></tr>
+		<tr><td>/api/v1/plugin?id=<i>plugin_id</i></td><td>Same as above</td></tr>
+                <tr><td>/api/v1/search?label&key=<i>label_key</i>&value=<i>label_value</td><td>Search for labels in plugin items. Either <i>key</i> or <i>value</i> must be given (or both) to start search.</td></tr>
+                <tr><td>/api/v1/search?system&find=<i>search_string</i></td><td>Seacg for occurance of <i>search_string</i> in collector module system data.</td></tr>
 		<tr><td>/howru/api/plugin?id=<i>plugin_id</i></td><td>Same as above</td></tr>
                 <tr><td>/howru/monitoring/plugin?id=<i>plugin_id</i></td><td>Result of a specific plugin by id </td></tr>
                 <tr><td>/howru/monitoring/plugin?name=<i>plugin_name</i></td><td>Result of specific plugin by plugin name</td></tr>

@@ -32,10 +32,10 @@
 /* #undef HAVE_LIBAVRO */
 
 /* Define to 1 if you have the `rdkafka' library (-lrdkafka). */
-#define HAVE_LIBRDKAFKA 1
+/* #undef HAVE_LIBRDKAFKA */
 
 /* Define to 1 if you have the <librdkafka/rdkafka.h> header file. */
-#define HAVE_LIBRDKAFKA_RDKAFKA_H 1
+/* #undef HAVE_LIBRDKAFKA_RDKAFKA_H */
 
 /* Define to 1 if you have the <libserdes/serdes-avro.h> header file. */
 /* #undef HAVE_LIBSERDES_SERDES_AVRO_H */
@@ -164,7 +164,7 @@
 /* #undef USE_AVRO */
 
 /* Disable KAFKA support */
-/* #undef USE_MINIMAL */
+#define USE_MINIMAL 1
 
 /* Version number of package */
 #define VERSION "0.9.30"

@@ -177,9 +177,9 @@ bool useKafkaConfigFile = false;
 bool use_ssl = false;
 bool truncateLog = false;
 bool timeScheduler = false;
-bool collector_metrics = true;
+bool collector_metrics = false;
 bool collector_server = true;
-bool collector_metadata = true;
+bool collector_metadata = false;
 bool collector_verbose = false;
 int decCount = 0;
 int kafkaexportreqs = 0;
@@ -2739,8 +2739,18 @@ void send_socket_message(int socket, SSL* ssl,  int id, int aflags) {
                                 break;
                         case API_DISABLE_METRICS_PUSH:
                                 use_metrics_push = false;
-                                writeLog("Almond metricd push disabled through API call.", 0, 0);
+                                writeLog("Almond metrics push disabled through API call.", 0, 0);
                                 constructSocketMessage("disable", "Almond metrics push is now disabled.");
+				break;
+                        case API_ENABLE_COLLECTOR:
+				enableCollector = true;
+				writeLog("Collector module enabled through API call.", 0, 0);
+				constructSocketMessage("enable", "Collector module is now enabled.");
+				break;
+			case API_DISABLE_COLLECTOR:
+				enableCollector = false;
+				writeLog("Collector module disabled through API call.", 0, 0);
+				constructSocketMessage("disable", "Collector module is now disabled.");
 				break;
 			case API_SET_PLUGINOUTPUT:
                                 writeLog("Log plugin output toggled through API call.", 0, 0);
@@ -3263,6 +3273,12 @@ void parseClientMessage(char str[], int arr[], bool jwt_valid) {
                                 else if (strcmp(trim(action), "disable") == 0)
                                         api_action = API_DISABLE_METRICS_PUSH;
                         }
+			if (strcmp(trim(name), "collector") == 0) {
+				if (strcmp(trim(action), "enable") == 0)
+					api_action = API_ENABLE_COLLECTOR;
+				else if (strcmp(trim(action), "disable") == 0)
+					api_action = API_DISABLE_COLLECTOR;
+			}
  		}
 		else
 			api_action = API_DENIED;
@@ -6132,6 +6148,11 @@ void writeToKafkaTopic(int storeIndex, int update) {
         time_t tTime = time(NULL);
         struct tm tm = *localtime(&tTime);
 
+	if (kafkaAvro) 
+		writeLog("DEBUG: Kafka Avro is enabled.", 0, 0);
+	else
+		writeLog("DEBUG: Kafka Avro is disabled.", 0, 0);
+
         int len = snprintf(currTime, max_timestamp_size, "%04d-%02d-%02d %02d:%02d:%02d", tm.tm_year + 1900, tm.tm_mon +1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 	if (len >= dest_size) {
 		writeLog("Possible truncation of timestamp in function 'writeToKafkaTopic'.", 1, 0);
@@ -6276,24 +6297,67 @@ void writeToKafkaTopic(int storeIndex, int update) {
 	char *payload = strdup(serialized_json);
 	json_object_put(j_root);
 	if (useKafkaConfigFile) {
-		send_message_to_gkafka(payload);
+		if (kafkaAvro) {
+			int nKafkaId = kafka_start_id + storeIndex;
+                        int length = snprintf(NULL, 0, "%d", nKafkaId);
+                        char* kafka_id = malloc((size_t)length + 1);
+                        snprintf(kafka_id, (size_t)length+1, "%d", nKafkaId);
+			GKafkaMessage msg = {
+                            .name = hostName,
+                            .id = kafka_id,
+                            .tag = kafka_tag,
+                            .lastChange = g_plugins[storeIndex]->lastChangeTimestamp,
+                            .lastRun = currTime,
+                            .dataName = pluginName,
+                            .nextRun = g_plugins[storeIndex]->nextRunTimestamp,
+                            .pluginName = g_plugins[storeIndex]->description,
+                            .pluginOutput = g_plugins[storeIndex]->output.retString,
+                            .pluginStatus = pluginStatus,
+                            .pluginStatusChanged = g_plugins[storeIndex]->statusChanged,
+                            .pluginStatusCode = g_plugins[storeIndex]->output.retCode,
+                            .labels = get_labels_by_id(storeIndex),
+                            .metrics = parse_perfdata(g_plugins[storeIndex]->output.retString)
+                        };
+			send_avro_message_to_gkafka(kafka_brokers, kafka_topic, &msg);
+		}
+		else {
+			send_message_to_gkafka(payload);
+		}
 		free(pluginName);
-		free(pluginStatus);
-		free(payload);
-		pluginName = NULL;
-		pluginStatus = NULL;
-		payload = NULL;
-		return;
+                free(pluginStatus);
+                free(payload);
+                pluginName = NULL;
+                pluginStatus = NULL;
+                payload = NULL;
+                return;
 	}
         if (!enableKafkaSSL) {
-		if (!kafkaAvro)
+		if (!kafkaAvro) {
 			send_message_to_kafka(kafka_brokers, kafka_topic, payload);
+		}
 		else {
 			int nKafkaId = kafka_start_id + storeIndex;
                 	int length = snprintf(NULL, 0, "%d", nKafkaId);
                 	char* kafka_id = malloc((size_t)length + 1);
                 	snprintf(kafka_id, (size_t)length+1, "%d", nKafkaId);
-			send_avro_message_to_kafka(kafka_brokers, kafka_topic, hostName, kafka_id, kafka_tag, g_plugins[storeIndex]->lastChangeTimestamp, currTime, pluginName, g_plugins[storeIndex]->nextRunTimestamp, g_plugins[storeIndex]->description, g_plugins[storeIndex]->output.retString, pluginStatus, g_plugins[storeIndex]->statusChanged, g_plugins[storeIndex]->output.retCode);
+			GKafkaMessage msg = {
+				.name = hostName,
+    				.id = kafka_id,
+    				.tag = kafka_tag,
+    				.lastChange = g_plugins[storeIndex]->lastChangeTimestamp,
+    				.lastRun = currTime,
+    				.dataName = pluginName,
+    				.nextRun = g_plugins[storeIndex]->nextRunTimestamp,
+    				.pluginName = g_plugins[storeIndex]->description,
+    				.pluginOutput = g_plugins[storeIndex]->output.retString,
+    				.pluginStatus = pluginStatus,
+    				.pluginStatusChanged = g_plugins[storeIndex]->statusChanged,
+    				.pluginStatusCode = g_plugins[storeIndex]->output.retCode,
+    				.labels = get_labels_by_id(storeIndex),
+                                .metrics = parse_perfdata(g_plugins[storeIndex]->output.retString)
+			};
+			//send_avro_message_to_kafka(kafka_brokers, kafka_topic, hostName, kafka_id, kafka_tag, g_plugins[storeIndex]->lastChangeTimestamp, currTime, pluginName, g_plugins[storeIndex]->nextRunTimestamp, g_plugins[storeIndex]->description, g_plugins[storeIndex]->output.retString, pluginStatus, g_plugins[storeIndex]->statusChanged, g_plugins[storeIndex]->output.retCode);
+			send_avro_message_to_gkafka(kafka_brokers, kafka_topic, &msg);
 		}
 	}
         else {
