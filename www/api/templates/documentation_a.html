@@ -225,6 +225,16 @@ ould look like:</p>
                 <pre><code>
                 [check_myservice] Control MyOwnService;my_own_control_script.sh;0;1
                 </code></pre>
+                <h3>2.2.1 Using labels in plugins configuration file (plugins.conf)</h3>
+                <p class="doctext">You can add labels to your plugin entries in the <i>plugins.conf</i> file by adding a json structure (or structures) at the end of the plugin item, for an example:</p>
+                <pre><code>
+                {"environment":"test"} {"class":"application"}
+                </code></pre>
+                <p class="doctext">The key/value of the labels are up to you to define. They can be used by the Almond collector module to add additional metadata to outputs. As an example of a plugin item declared correctly:</p>
+		<pre><code>
+		[check_myservice] Control MyOwnService;my_own_control_script.sh;0;1 {"environment":"develop"}
+                </code></pre>
+                <p class="doctext"><b>NOTES</b> Labels are not required for plugins to run.<br>It is not recommended to have more than five labels for a plugin item.</p>
 		<h3>2.3 Almond memory allocation configuration file (memalloc.conf)</h3>
 		<p class="doctext">The memalloc.conf file should consist of either the word <i>enabled</i> or the word</i> disabled</i>.<br>
 		By default &quot;disabled&quot; is written in the file. By changing this to <i>enabled</i> Almond will read how much memory the program will allocate to a number of important variables.<br>

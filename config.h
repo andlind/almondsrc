@@ -5,7 +5,7 @@
 #define HAVE_ARPA_INET_H 1
 
 /* Define to 1 if you have the <avro.h> header file. */
-/* #undef HAVE_AVRO_H */
+#define HAVE_AVRO_H 1
 
 /* Define to 1 if you have the <ctype.h> header file. */
 #define HAVE_CTYPE_H 1
@@ -29,16 +29,16 @@
 #define HAVE_JWT_H 1
 
 /* Define to 1 if you have the `avro' library (-lavro). */
-/* #undef HAVE_LIBAVRO */
+#define HAVE_LIBAVRO 1
 
 /* Define to 1 if you have the `rdkafka' library (-lrdkafka). */
-/* #undef HAVE_LIBRDKAFKA */
+#define HAVE_LIBRDKAFKA 1
 
 /* Define to 1 if you have the <librdkafka/rdkafka.h> header file. */
-/* #undef HAVE_LIBRDKAFKA_RDKAFKA_H */
+#define HAVE_LIBRDKAFKA_RDKAFKA_H 1
 
 /* Define to 1 if you have the <libserdes/serdes-avro.h> header file. */
-/* #undef HAVE_LIBSERDES_SERDES_AVRO_H */
+#define HAVE_LIBSERDES_SERDES_AVRO_H 1
 
 /* Define to 1 if your system has a GNU libc compatible `malloc' function, and
    to 0 otherwise. */
@@ -73,7 +73,7 @@
 #define HAVE_REALLOC 1
 
 /* Define if Serdes is available */
-/* #undef HAVE_SERDES */
+#define HAVE_SERDES 1
 
 /* Define to 1 if you have the <signal.h> header file. */
 #define HAVE_SIGNAL_H 1
@@ -161,10 +161,10 @@
 #define STDC_HEADERS 1
 
 /* Enable AVRO support */
-/* #undef USE_AVRO */
+#define USE_AVRO 1
 
 /* Disable KAFKA support */
-#define USE_MINIMAL 1
+/* #undef USE_MINIMAL */
 
 /* Version number of package */
 #define VERSION "0.9.30"
