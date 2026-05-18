@@ -2136,6 +2136,30 @@ void changeSetValue(int id, int newval) {
 	}
 }
 
+void setCollectorModule(int mode, char* value) {
+        bool setMode = false;
+        if (strcmp(value, "enable") == 0) {
+                setMode = true;
+        }
+        switch (mode) {
+                case 0:
+                        enableCollector = setMode;
+                        break;
+                case 1:
+                        collector_metadata = setMode;
+                        break;
+                case 2:
+                        collector_metrics = setMode;
+                        break;
+                case 3:
+                        collector_server = setMode;
+                        break;
+                case 4:
+                        collector_verbose = setMode;
+                        break;
+        }
+}
+
 void setMaintenanceStatus(int id, char* value) {
 	int maintenance_status_value = 1;
 	if (strcmp(value, "true") == 0) {
@@ -2360,6 +2384,30 @@ void send_socket_message(int socket, SSL* ssl,  int id, int aflags) {
                         case API_SET_PUSH_INTERVAL:
                                 writeLog("Push interval changed through API call.", 1, 0);
                                 constructSocketMessage("pushinterval", "Push interval changed");
+                                break;
+                        case API_COLLECTOR_INVALID:
+                                writeLog("Collector module changes did not update from API call. Wrong or missing params sent.", 1, 0);
+                                constructSocketMessage("collector", "Error: Wrong or invalid parameters");
+                                break;
+                        case API_COLLECTOR_STATE:
+                                writeLog("Collector module enabled or disabled from APU call.", 0, 0);
+                                constructSocketMessage("collector", "Collector state has been updated");
+                                break;
+                        case API_COLLECTOR_METADATA:
+                                writeLog("Collector metadata toggled from API call.", 0, 0);
+                                constructSocketMessage("collector", "getPluginMetadata:enabled/disabled");
+                                break;
+                        case API_COLLECTOR_METRICS:
+                                writeLog("Collector metrics toggled from API call.", 0, 0);
+                                constructSocketMessage("collector", "getPluginMetrics:enabled/disabled");
+                                break;
+                        case API_COLLECTOR_SYSTEM:
+                                writeLog("Collector module 'system info' toggled from API call.", 0, 0);
+                                constructSocketMessage("collector", "getSystemData:enabled/disabled");
+                                break;
+                        case API_COLLECTOR_VERBOSE:
+                                writeLog("Collector verbose flag toggled from API call.", 0, 0);
+                                constructSocketMessage("collector", "isVerbose:true/false");
                                 break;
 			case API_GET_HOSTNAME:
 				apiGetHostName();
@@ -2762,7 +2810,42 @@ void parseClientMessage(char str[], int arr[], bool jwt_valid) {
 				api_action = API_ERROR;
 			}
 		}
-        }	
+        }
+        else if (strcmp(trim(action), "collector") == 0) {
+                if (bExecute != 0) {
+                        if ((strcmp(trim(flags), "enable") == 0) || (strcmp(trim(flags), "disable") == 0)) {
+                                if ((strcmp(trim(name), "metadata") == 0) || (strcmp(trim(name), "metrics") == 0) ||
+                                    (strcmp(trim(name), "system") == 0) || (strcmp(trim(name), "verbose") == 0)) {
+                                        if (strcmp(trim(name), "metadata") == 0) {
+                                                setCollectorModule(1, trim(flags));
+                                                api_action = API_COLLECTOR_METADATA;
+                                        }
+                                        else if (strcmp(trim(name), "metrics") == 0) {
+                                                setCollectorModule(2, trim(flags));
+                                                api_action = API_COLLECTOR_METRICS;
+                                        }
+                                        else if (strcmp(trim(name), "system") == 0) {
+                                                setCollectorModule(3, trim(flags));
+                                                api_action = API_COLLECTOR_SYSTEM;
+                                        }
+                                        else {
+                                                setCollectorModule(4, trim(flags));
+                                                api_action = API_COLLECTOR_VERBOSE;
+                                        }
+                                }
+                                else {
+                                        setCollectorModule(0, trim(flags));
+                                        api_action = API_COLLECTOR_STATE;
+                                }
+                        }
+                        else {
+                                // No valid flags
+                                api_action = API_COLLECTOR_INVALID;
+                        }
+                }
+                else
+                        api_action = API_DENIED;
+        }
 	else if ((strcmp(trim(action), "enable") == 0) || (strcmp(trim(action), "disable") == 0)) {
 		printf("Action is enable or disable\n");
  		if (bExecute != 0) {
