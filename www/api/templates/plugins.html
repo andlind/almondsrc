@@ -1,5 +1,10 @@
 {% include 'head.html' %}
 <style>
+  .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
+  .modal-content { background: #fff; margin: 10% auto; padding: 20px; width: 400px; border-radius: 8px; border: 1px solid #d7ccc8; }
+  .input-row { margin-bottom: 10px; display: flex; gap: 10px; }
+  .input-row input { padding: 5px; border: 1px solid #ccc; border-radius: 4px; flex: 1; }
+  .modal-buttons { margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; }
   .role-restricted-button:disabled,
   .role-restricted-button[disabled] {
     opacity: 0.5;
@@ -46,8 +51,64 @@
     visibility: visible;
     opacity: 1;
   }
-</style>
 
+  .plugin-tag {
+    display: inline-block;
+    background-color: #f5f5dc; 
+    background-color: #fec883;
+    color: #5d4037;           /* Deep brown text for contrast */
+    padding: 2px 10px;
+    margin-left: 8px;
+    border-radius: 8px;       /* Rounded corners */
+    font-size: 0.85em;
+    font-weight: 600;         /* Makes the text pop slightly */
+    border: 1px solid #d7ccc8; /* Slightly darker brown border */
+    font-family: 'Segoe UI', Tahoma, Geneva, sans-serif;
+    vertical-align: middle;
+  }
+</style>
+{#
+<script language="Javascript">
+  let currentLineIndex = null;
+
+  function openEditModal(lineIndex) {
+    currentLineIndex = lineIndex;
+    document.getElementById('editModal').style.display = 'block';
+  }
+
+  function closeModal() {
+    document.getElementById('editModal').style.display = 'none';
+  }
+
+  async function saveTags() {
+    const keys = document.querySelectorAll('.tag-key');
+    const vals = document.querySelectorAll('.tag-val');
+    let dataObject = {};
+
+    keys.forEach((keyInput, i) => {
+        if (keyInput.value.trim() !== "") {
+            dataObject[keyInput.value] = vals[i].value;
+        }
+    });
+
+    // Send to Flask
+    const response = await fetch('/almond/update_tags', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+            line_index: currentLineIndex,
+            tags: dataObject
+        })
+    });
+
+    if (response.ok) {
+        location.reload(); // Refresh to see the new light brown box!
+    } else {
+        alert("Error saving data. Check JSON format.");
+    }
+  }
+</script>
+#}
 <p align="center"><img src="{{ user_image }}" alt="User Image"></p>
 <hr size="1">
 <table style="margin-left:auto;margin-right:auto;border:1px solid #000000; text-align:center; " width="90%">
@@ -74,7 +135,7 @@
 		<tr>
 			<td width="5%"> {{ loop.index -1 }}.</td>
 			<!--<td width="90%"><input type="text" size="100" name="val_{{ loop.index -1 }}" value="{{ your_list_element }}"-->
-			<td style="font-weight: bold"> {{ plugin_element }} </td>
+			<td style="font-weight: bold"> {{ plugin_element | beautify_json }} </td>
 			<td style="padding: 0px">
 				{% if can_use_plugins %}
 			        <form name="update_plugins" method="post" action="/almond/admin">
@@ -161,5 +222,25 @@
 	<script language="javascript">document.write('<a href="' + document.referrer + '">Go back</a>');
 	</script>
 	</p>
-         <p>&nbsp;</p>
+        <p>&nbsp;</p>
+{#
+        <div id="editModal" class="modal">
+          <div class="modal-content">
+            <h3>Update Plugin Tags</h3>
+            <div id="inputContainer">
+               <!-- We'll generate 5 rows of Label: Value -->
+               {% for i in range(5) %}
+               <div class="input-row">
+                  <input type="text" class="tag-key" placeholder="Label (e.g. class)">
+                  <input type="text" class="tag-val" placeholder="Value (e.g. network)">
+              </div>
+              {% endfor %}
+            </div>
+            <div class="modal-buttons">
+              <button onclick="saveTags()">Save to File</button>
+              <button onclick="closeModal()">Cancel</button>
+            </div>
+          </div>
+        </div>
+#}
 {% include 'foot.html' %}

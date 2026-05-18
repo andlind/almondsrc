@@ -232,6 +232,7 @@ unsigned short *threadIds = NULL;
 int logmessage_id[5];
 int logrecord = 0;
 int shutdown_phase = 0;
+struct json_object *plugin_labels = NULL;
 volatile sig_atomic_t is_stopping = 0;
 volatile sig_atomic_t shutdown_reason = SR_NORMAL;
 static volatile sig_atomic_t already_exiting = 0;
@@ -2302,6 +2303,16 @@ void send_socket_message(int socket, SSL* ssl,  int id, int aflags) {
                                 writeLog("Almond metricd push disabled through API call.", 0, 0);
                                 constructSocketMessage("disable", "Almond metrics push is now disabled.");
                                 break;
+                        case API_ENABLE_COLLECTOR:
+                                enableCollector = true;
+                                writeLog("Collector module enabled through API call.", 0, 0);
+                                constructSocketMessage("enable", "Collector module is now enabled.");
+                                break;
+                        case API_DISABLE_COLLECTOR:
+                                enableCollector = false;
+                                writeLog("Collector module disabled through API call.", 0, 0);
+                                constructSocketMessage("disable", "Collector module is now disabled.");
+                                break;
 			case API_SET_PLUGINOUTPUT:
                                 writeLog("Log plugin output toggled through API call.", 0, 0);
 				constructSocketMessage("set", "Log plugin output toggled.");
@@ -2796,6 +2807,12 @@ void parseClientMessage(char str[], int arr[], bool jwt_valid) {
                                         api_action = API_ENABLE_METRICS_PUSH;
                                 else if (strcmp(trim(action), "disable") == 0)
                                         api_action = API_DISABLE_METRICS_PUSH;
+                        }
+			if (strcmp(trim(name), "collector") == 0) {
+				if (strcmp(trim(action), "enable") == 0)
+                                        api_action = API_ENABLE_COLLECTOR;
+                                else if (strcmp(trim(action), "disable") == 0)
+                                        api_action = API_DISABLE_COLLECTOR;
                         }
  		}
 		else

@@ -87,10 +87,10 @@ NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
 bin_PROGRAMS = almond$(EXEEXT)
-#am__append_1 = main_s.c api_s.c $(COMMON_SOURCES)
-am__append_2 = main.c api.c $(COMMON_SOURCES) mod_kafka.c
-am__append_3 = -I/usr/include/librdkafka
-am__append_4 = -lrdkafka
+am__append_1 = main_s.c api_s.c $(COMMON_SOURCES)
+#am__append_2 = main.c api.c $(COMMON_SOURCES) mod_kafka.c
+#am__append_3 = -I/usr/include/librdkafka
+#am__append_4 = -lrdkafka
 #am__append_5 = main.c api.c  $(COMMON_SOURCES) mod_avro.c
 #am__append_6 = -I/usr/include/librdkafka -I/usr/include/avro -I/usr/include/libserdes
 #am__append_7 = -lrdkafka -lserdes -lavro
@@ -114,11 +114,11 @@ am__almond_SOURCES_DIST = main_s.c api_s.c plugins.c logger.c config.c \
 am__objects_1 = almond-plugins.$(OBJEXT) almond-logger.$(OBJEXT) \
 	almond-config.$(OBJEXT) almond-collect.$(OBJEXT) \
 	almond-jwt_validate.$(OBJEXT)
-#am__objects_2 = almond-main_s.$(OBJEXT) \
-#	almond-api_s.$(OBJEXT) $(am__objects_1)
-am__objects_3 = almond-main.$(OBJEXT) \
-	almond-api.$(OBJEXT) $(am__objects_1) \
-	almond-mod_kafka.$(OBJEXT)
+am__objects_2 = almond-main_s.$(OBJEXT) \
+	almond-api_s.$(OBJEXT) $(am__objects_1)
+#am__objects_3 = almond-main.$(OBJEXT) \
+#	almond-api.$(OBJEXT) $(am__objects_1) \
+#	almond-mod_kafka.$(OBJEXT)
 #am__objects_4 = almond-main.$(OBJEXT) \
 #	almond-api.$(OBJEXT) $(am__objects_1) \
 #	almond-mod_avro.$(OBJEXT)
@@ -245,7 +245,7 @@ INSTALL_STRIP_PROGRAM = $(install_sh) -c -s
 JWT_LIBS = -ljwt
 LDFLAGS =  -L/usr/lib64 -L/usr/local/lib -L/usr/lib
 LIBOBJS = 
-LIBS = -lrdkafka 
+LIBS = 
 LTLIBOBJS = 
 MAKEINFO = ${SHELL} /workspace/almond-0.9.30/missing makeinfo
 MKDIR_P = /usr/bin/mkdir -p

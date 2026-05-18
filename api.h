@@ -33,6 +33,8 @@
 #define API_DISABLE_PUSH 61
 #define API_ENABLE_METRICS_PUSH 62
 #define API_DISABLE_METRICS_PUSH 63
+#define API_ENABLE_COLLECTOR 64
+#define API_DISABLE_COLLECTOR 65
 #define API_SET_SCHEDULER_TYPE 69
 #define API_SET_PLUGINOUTPUT 70
 #define API_SET_SAVEONEXIT 71
@@ -75,6 +77,7 @@
 // External declarations for globals used in API
 extern SSL_CTX *ctx;
 extern SSL *ssl;
+extern bool enableCollector;
 extern char *server_message;
 extern char *client_message;
 extern char *almondCertificate;

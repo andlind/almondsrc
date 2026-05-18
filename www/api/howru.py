@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 from venv import logger
 from flask import Flask, request, abort, jsonify, render_template, redirect, url_for, send_from_directory, session, make_response
 from werkzeug.datastructures import MultiDict
+from api.admin_page import beautify_json
 from api.admin_page import admin_page
 from api.otel.nagios_to_otel import nagios_to_otel
 from api.otel.otel_exporter import export_otel_data
@@ -36,6 +37,7 @@ app.config["DEBUG"] = True
 app.config.setdefault('IS_CONTAINER', 'false')
 app.config.setdefault('AUTH_TYPE', None)
 app.config.setdefault('AUTH2FA_P', 'false')
+app.jinja_env.filters['beautify_json'] = beautify_json
 
 # Configure custom role mapping for Keycloak users
 # Maps usernames to roles since Keycloak token doesn't include roles yet
@@ -600,6 +602,37 @@ def parse_value(value: str):
         return float(number), unit or None
     return None, None
 
+def deep_search(data, query, path=""):
+    results = []
+
+    if isinstance(data, dict):
+        for key, value in data.items():
+            new_path = f"{path}.{key}" if path else key
+
+            # Match key
+            if query.lower() in key.lower():
+                results.append({
+                    "name": new_path,
+                    "value": value
+                })
+
+            # Match value
+            if isinstance(value, (str, int, float)) and query.lower() in str(value).lower():
+                results.append({
+                    "name": new_path,
+                    "value": value
+                })
+
+            # Recurse
+            results.extend(deep_search(value, query, new_path))
+
+    elif isinstance(data, list):
+        for index, item in enumerate(data):
+            new_path = f"{path}[{index}]"
+            results.extend(deep_search(item, query, new_path))
+
+    return results
+
 def api_list_jobs(sorted=False):
     global multi_server, data, logger
     x = 0
@@ -810,6 +843,160 @@ def init_wsgi():
                 server_list.append(server_name)
             server_list_loaded = 1
     wsgi_init = True
+
+def api_search_labels(key, value, server, verbose=False):
+    global data, multi_server
+    
+    results = []
+
+    if server is None:
+        # all servers (or not multimode)
+        if multi_server:
+            results = []
+            for x in data['server']:
+                server_matches = []
+                host_name = x['host']['name']
+                obj = x['monitoring']
+                for y in obj:
+                    labels = y['labels']
+                    if not labels or labels == "none" or not isinstance(labels, dict):
+                        continue
+                    name = y['name']
+                    if key is None:
+                        if value in labels.values():
+                            server_matches.append(y if verbose else {"name": name, "labels": labels})
+                    elif value is None:
+                        if key in labels:
+                            server_matches.append(y if verbose else {"name": name, "labels": labels})
+                    else:
+                        if labels.get(key) == value:
+                            server_matches.append(y if verbose else {"name": name, "labels": labels})
+                
+                if server_matches:    
+                    results.append({
+                        "server": host_name,
+                        "matches": server_matches
+                    })
+
+            if key is None:
+                response = {
+                    "value": value,
+                    "results": results
+                }
+            elif value is None:
+                response = {
+                    "key": key,
+                    "results": results
+                }
+            else:
+                response = {
+                    "keypair": f"{key}={value}",
+                    "results": results
+            }
+            return response
+
+        else:
+            obj = data['monitoring']
+            for x in obj:
+                labels = x['labels']
+                if not labels or labels == "none":
+                    continue
+                name = x['name']
+                if key is None:
+                    if value in labels.values():
+                        if verbose:
+                            results.append(x)
+                        else:
+                            results.append({"name":name, "labels":labels})
+                elif value is None:
+                    if key in labels:
+                        if verbose:
+                            results.append(x)
+                        else:
+                            results.append({"name":name, "labels":labels})
+                else:
+                    if labels.get(key) == value:
+                        if verbose:
+                            results.append(x)
+                        else:
+                            results.append({"name":name, "labels":labels})
+            if key is None:
+                    response = {
+                        "value": value,
+                        "results": results
+                    }
+            elif value is None:
+                    response = {
+                        "key": key,
+                        "results": results
+                    }
+            else:
+                    response = {
+                        "keypair": f"{key}={value}",
+                        "results": results
+                    }
+            return response
+    else:
+        if not multi_server:
+            results = {
+                "server": server,
+                "return_code": 2,
+                "message": "As proxy is not activated, the server variable is not used. Run command without server variable for local output."
+            }
+            return results
+        # get server
+        requested_server = server
+        for x in data['server']:
+            this_server = x['host']['name']
+            server = []
+            if (this_server == requested_server) or (requested_server == 'all'):
+                server_found = 1
+                s_name = {
+                    'name': this_server
+                    }
+                server.append(s_name)
+                obj = x['monitoring']
+                for y in obj:
+                    labels = y['labels']
+                    if not labels or labels == "none":
+                        continue
+                    name = y['name']
+                    if key is None:
+                        if value in labels.values():
+                            if verbose:
+                                server.append(y)
+                            else:
+                                server.append({"name":name, "labels":labels})
+                    elif value is None:
+                        if key in labels:
+                            if verbose:
+                                server.append(y)
+                            else:
+                                server.append({"name":name, "labels":labels})
+                    else:
+                        if labels.get(key) == value:
+                            if verbose:
+                                server.append(y)
+                            else:
+                                server.append({"name":name, "labels":labels})
+                results.append(server)
+        if key is None:
+            response = {
+                "value": value,
+                "results": results
+            }
+        elif value is None:
+            response = {
+                "key": key,
+                "results": results
+            }
+        else:
+            response = {
+                "keypair": f"{key}={value}",
+                "results": results
+            }
+        return response
+    return
 
 @app.before_request
 def limit_remote_addr():
@@ -1332,11 +1519,11 @@ def api_howareyou(response=True):
                 if (name == servername):
                     mon = serv['monitoring']
                     for status in mon:
-                        if (status['pluginStatusCode'] == "0"):
+                        if (int(status['pluginStatusCode']) == 0):
                             ok = ok + 1
-                        elif (status['pluginStatusCode'] == "1"):
+                        elif (int(status['pluginStatusCode']) == 1):
                             warn = warn + 1
-                        elif (status['pluginStatusCode'] == "2"):
+                        elif (int(status['pluginStatusCode']) == 2):
                             crit = crit + 1
                         else:
                             unknown = unknown + 1
@@ -1384,11 +1571,11 @@ def api_howareyou(response=True):
             name = name_o['name']
             obj = data['monitoring']
             for status in obj:
-                if (status['pluginStatusCode'] == "0"):
+                if (int(status['pluginStatusCode']) == 0):
                     ok = ok + 1
-                elif (status['pluginStatusCode'] == "1"):
+                elif (int(status['pluginStatusCode']) == 1):
                     warn = warn + 1
-                elif (status['pluginStatusCode'] == "2"):
+                elif (int(status['pluginStatusCode']) == 2):
                     crit = crit + 1
                 else:
                     unknown = unknown + 1
@@ -1420,11 +1607,11 @@ def api_howareyou(response=True):
                name =  name_o['name']
                obj = serv['monitoring']
                for status in obj:
-                   if (status['pluginStatusCode'] == "0"):
+                   if (int(status['pluginStatusCode']) == 0):
                        ok = ok + 1
-                   elif (status['pluginStatusCode'] == "1"):
+                   elif (int(status['pluginStatusCode']) == 1):
                        warn = warn + 1
-                   elif (status['pluginStatusCode'] == "2"):
+                   elif (int(status['pluginStatusCode']) == 2):
                        crit = crit +1
                    else:
                        unknown = unknown +1
@@ -1461,11 +1648,11 @@ def api_howareyou(response=True):
         logger.info("Running api_howareyou (single server mode)")
         obj = data['monitoring']
         for status in obj:
-            if (status['pluginStatusCode'] == "0"):
+            if (int(status['pluginStatusCode']) == 0):
                 ok = ok + 1
-            elif (status['pluginStatusCode'] == "1"):
+            elif (int(status['pluginStatusCode']) == 1):
                 warn = warn + 1
-            elif (status['pluginStatusCode'] == "2"):
+            elif (int(status['pluginStatusCode']) == 2):
                 crit = crit +1
             else:
                 unknown = unknown +1
@@ -1541,7 +1728,7 @@ def api_show_oks():
                     res_set.append({'name':s['host']['name']})
                     obj = s['monitoring']
                     for i in obj:
-                        if (i['pluginStatusCode'] == "0"):
+                        if (int(i['pluginStatusCode']) == 0):
                             res_set.append(i)
                     results.append(res_set)
                     server_found = True
@@ -1552,7 +1739,7 @@ def api_show_oks():
                 res_set.append({'name':s['host']['name']})
                 obj = s['monitoring']
                 for i in obj:
-                    if (i['pluginStatusCode'] == "0"):
+                    if (int(i['pluginStatusCode']) == 0):
                         res_set.append(i)
                 results.append(res_set);
         if (name_is_set == True and server_found == False):
@@ -1567,7 +1754,7 @@ def api_show_oks():
         results.append({'name':data['host']['name']})
         obj = data['monitoring']
         for i in obj:
-            if (i['pluginStatusCode'] == "0"):
+            if (int(i['pluginStatusCode']) == 0):
                 results.append(i)
 
     return jsonify(results)
@@ -1620,7 +1807,7 @@ def api_show_not_oks():
                 res_set.append({'name':s['host']['name']})
                 obj = s['monitoring']
                 for i in obj:
-                    if (i['pluginStatusCode'] != "0"):
+                    if (int(i['pluginStatusCode']) != 0):
                         res_set.append(i)
                 results.append(res_set);
         if (name_is_set == True and server_found == False):
@@ -1635,7 +1822,7 @@ def api_show_not_oks():
         results.append({'name': data['host']['name']})
         obj = data['monitoring']
         for i in obj:
-            if (int(i['pluginStatusCode']) >0):
+            if (int(i['pluginStatusCode']) > 0):
                 results.append(i)
 
     return jsonify(results)
@@ -1683,7 +1870,7 @@ def api_show_warnings():
                     res_set.append({'name':s['host']['name']})
                     obj = s['monitoring']
                     for i in obj:
-                        if (i['pluginStatusCode'] == "1"):
+                        if (int(i['pluginStatusCode']) == 1):
                             res_set.append(i)
                     results.append(res_set)
                     server_found = True
@@ -1694,7 +1881,7 @@ def api_show_warnings():
                 res_set.append({'name': s['host']['name']})
                 obj = s['monitoring']
                 for i in obj:
-                   if (i['pluginStatusCode'] == "1"):
+                   if (int(i['pluginStatusCode']) == 1):
                        res_set.append(i)
                 results.append(res_set);
         if (name_is_set == True and server_found == False):
@@ -1709,7 +1896,7 @@ def api_show_warnings():
         results.append({'name': data['host']['name']})
         obj = data['monitoring']
         for i in obj:
-            if (i['pluginStatusCode'] == "1"):
+            if (int(i['pluginStatusCode']) == 1):
                 results.append(i)
 
     return jsonify(results)
@@ -1756,7 +1943,7 @@ def api_show_criticals():
                     res_set.append({'name': s['host']['name']})
                     obj = s['monitoring']
                     for i in obj:
-                        if (i['pluginStatusCode'] == "2"):
+                        if (int(i['pluginStatusCode']) == 2):
                             res_set.append(i)
                     results.append(res_set)
                     name_found = 1
@@ -1767,7 +1954,7 @@ def api_show_criticals():
                 res_set.append({'name': s['host']['name']})
                 obj = s['monitoring']
                 for i in obj:
-                    if (i['pluginStatusCode'] == "2"):
+                    if (int(i['pluginStatusCode']) == 2):
                         res_set.append(i)
                 results.append(res_set);
         if (name_is_set > 0 and name_found == 0):
@@ -1783,7 +1970,7 @@ def api_show_criticals():
        results.append({'name': data['host']['name']})
        obj = data['monitoring']
        for i in obj:
-           if (i['pluginStatusCode'] == "2"):
+           if (int(i['pluginStatusCode']) == 2):
                results.append(i)
 
     return jsonify(results)
@@ -1872,6 +2059,25 @@ def api_show_plugin(search=0, id=-1):
                 server = request.args['server']
             else:
                 server = 'all'
+            if 'system' in request.args:
+                output = []
+                if 'find' in request.args:
+                    search_str = request.args['find']
+                    for x in data['server']:
+                        this_server = x['host']['name']
+                        matches = deep_search(x['host']['system'], search_str)
+                        if matches:
+                            output.append({
+                                "host": this_server,
+                                "matches": matches
+                            })
+                    if not output:
+                        return jsonify({"info": "No search hits found"})        
+                    else:
+                        return jsonify(output)
+                else:
+                    return jsonify({"info":"System search requires search parameter", "return_code":"2"})
+
             if 'name' in request.args:
                 name = request.args['name']
             elif 'index' in request.args:
@@ -1883,6 +2089,25 @@ def api_show_plugin(search=0, id=-1):
                 server = request.args['server']
             else:
                 server = 'all'
+            if 'system' in request.args:
+                output = []
+                if 'find' in request.args:
+                    search_str = request.args.get("find")
+                    for x in data['server']:
+                        this_server = x['host']['name']
+                        matches = deep_search(x['host']['system'], search_str)
+                        if matches:
+                            output.append({
+                                "host": this_server,
+                                "matches": matches
+                            })
+                    if not output:
+                        return jsonify({"info": "No search hits found"}) 
+                    else:
+                        return jsonify(output)
+                else:
+                    return jsonify({"info":"System search requires search parameter", "return_code":"2"})
+
             if 'name' in request.args:
                 name = request.args.getlist('name')[0]
             elif 'index' in request.args:
@@ -1891,6 +2116,15 @@ def api_show_plugin(search=0, id=-1):
                 name = request.args.getlist('query')[0]
             elif 'find' in request.args:
                 name = request.args.getlist('find')[0]
+            elif 'labels' in request.args or 'label' in request.args:
+                if any(k in request.args for k in ("key", "value", "server")):
+                    this_key = request.args.get("key")
+                    this_value = request.args.get("value")
+                    this_server = request.args.get("server")
+                    if any(v in request.args for v in ("verbose", "show", "print")):
+                        return jsonify(api_search_labels(this_key, this_value, this_server, True))
+                    else:
+                        return jsonify(api_search_labels(this_key, this_value, this_server));
             if (name == "") and (index_name == ""):
                 if 'id' in request.args:
                     id = int(request.args['id']) 
@@ -1972,6 +2206,22 @@ def api_show_plugin(search=0, id=-1):
     # else
     results.append({'name': data['host']['name']})
     if (search == 0):
+        if 'system' in request.args:
+            output = []
+            if 'find' in request.args:
+                search_str = request.args.get("find")
+                matches = deep_search(data, search_str)
+                if matches:
+                    output.append({
+                        "search": matches
+                    })
+                else:
+                    output.append({
+                        "search": "No search results"
+                    })
+                return jsonify(output)
+            else:
+                return jsonify({"info":"No search string for system search found", "return_code":"2"})
         if 'name' in request.args:
             name = request.args['name']
         elif 'index' in request.args:
@@ -1982,6 +2232,23 @@ def api_show_plugin(search=0, id=-1):
             if (id < 0):
                 do_start = False
     else:
+        if 'system' in request.args:
+            output = []
+            if 'find' in request.args:
+                search_str = request.args.get("find")
+                matches = deep_search(data, search_str)
+
+                if matches:  # Only include hosts with results
+                    output.append({
+                        "search": matches
+                    })
+                else:
+                    output.append({
+                         "search": "No search result"
+                    })
+                return jsonify(output)
+            else:
+               return jsonify({"info":"No search string for system search found", "return_code":"2"})
         if 'find' in request.args:
             name = request.args['find']
         elif 'query' in request.args:
@@ -1992,6 +2259,17 @@ def api_show_plugin(search=0, id=-1):
             index_name = request.args['index']
         elif 'id' in request.args:
             id = int(request.args['id'])
+        elif 'labels' in request.args or 'label' in request.args:
+            if any(k in request.args for k in ("key", "value", "server")):
+                this_key = request.args.get("key")
+                this_value = request.args.get("value")
+                this_server = request.args.get("server")
+                if any(v in request.args for v in ("verbose", "show", "print")):
+                    return jsonify(api_search_labels(this_key, this_value, this_server, True))
+                else:
+                    return jsonify(api_search_labels(this_key, this_value, this_server));
+            else:
+                do_start = False
         else:
             if (id < 0):
                 do_start = False
@@ -2015,7 +2293,7 @@ def api_show_plugin(search=0, id=-1):
         info = [
            { 'returnCode' :'2',
                 'monitoring':
-                   {'info': 'No id or name provided for plugin'
+                   {'info': 'No id or name provided for plugin or not enough parameters for seach'
                    }
            }
         ]
