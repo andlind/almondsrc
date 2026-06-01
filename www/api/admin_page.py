@@ -71,7 +71,7 @@ current_version = '0.9.30'
 auth_provider_name = "local"
 auth_init = False
 enable_gui = True
-enable_oath = False
+enable_oauth = False
 enable_login_redirect = False
 standalone = True
 almond_api = False
@@ -398,7 +398,7 @@ def rewrite_config(conf, newlines):
 def read_conf():
     global standalone
     global enable_gui
-    global enable_oath
+    global enable_oauth
     global enable_login_redirect
     global jasonFile
     global store_dir
@@ -468,13 +468,13 @@ def read_conf():
                 if auth_provider_name != config.AUTH_PROVIDER_NAME:
                     #auth_provider_name = config.AUTH_PROVIDER_NAME
                     print("INFO: api.authProvider overrides value set in auth_config.py")
-            if (x.find('enableOath') > 0):
+            if (x.find('enableOauth') > 0):
                 pos = x.find('=')
-                oath_enabled = x[pos+1:].strip().lower()
-                if oath_enabled in ["1", "true", "on"]:
-                    enable_oath = True
+                oauth_enabled = x[pos+1:].strip().lower()
+                if oauth_enabled in ["1", "true", "on"]:
+                    enable_oauth = True
                 else:
-                    enable_oath = False
+                    enable_oauth = False
             if (x.find('enableLoginRedirect') > 0):
                 pos = x.find('=')
                 enable_redirect = x[pos+1:].strip().lower()
@@ -994,7 +994,7 @@ def index():
     global hasToken
     global usertoken
     global is_container
-    global enable_oath
+    global enable_oauth
     global enable_login_redirect
     global logger
     global logger_enabled
@@ -1034,7 +1034,7 @@ def index():
 
     if ('action_type' in request.form):
         if 'login' in session:
-            if enable_login_redirect and enable_oath:
+            if enable_login_redirect and enable_oauth:
                 tokens = session.get("tokens")
                 if tokens:
                     updated = ensure_fresh_tokens(get_provider(), tokens)
@@ -1044,7 +1044,7 @@ def index():
             session['login'] = 'true'
             session['user'] = session['user']
         else:
-            if enable_login_redirect and enable_oath:
+            if enable_login_redirect and enable_oauth:
                 return redirect("/login")
             if (request.form['action_type'] == "create_session"):
                 logger.info("Creating admin login session")
@@ -1059,7 +1059,7 @@ def index():
                     return render_template('login_a.html', logon_image=logon_img)
         action_type = request.form['action_type']
         if action_type == "create_session":
-            if enable_oath and enable_login_redirect:
+            if enable_oauth and enable_login_redirect:
                 return redirect("/login")
             
             username = request.form['uname'].strip()
@@ -1598,7 +1598,7 @@ def index():
         logger.info("Checking session page")
         #if session.get("login") == "true" and "user" in session:
         if 'login' in session:
-            if enable_login_redirect and enable_oath:
+            if enable_login_redirect and enable_oauth:
                 tokens = session.get("tokens")
                 if tokens:
                     updated = ensure_fresh_tokens(get_provider(), tokens)
@@ -1628,7 +1628,7 @@ def index():
             #return render_template('status_admin.html', version=current_version, user_image=image_file, server=hostname, monitoring=monitoring, avatar=almond_avatar, info=info)
         else:
             a_auth_type = current_app.config['AUTH_TYPE']
-            if enable_login_redirect and enable_oath:
+            if enable_login_redirect and enable_oauth:
                 return redirect("/login")
             if (a_auth_type == "2fa"):
                 #logger.info("Rendering template login_fa.html")
@@ -1648,13 +1648,13 @@ def index():
             session['user'] = session['user']
         else:
             logger.info("No login in session. Rendering template login_a.html")
-            if enable_login_redirect and enable_oath:
+            if enable_login_redirect and enable_oauth:
                 return redirect("/login")
             return render_template('login_a.html', logon_image=logon_img) 
     # page = request.args.get('page')
     if page == 'login':
         almond_img = '/static/almond.png'
-        if enable_login_redirect and enable_oath:
+        if enable_login_redirect and enable_oauth:
             return redirect("/login")
         logger.info("Rendering template login_a.html")
         return render_template('login_a.html', logon_image=almond_img)
@@ -1981,7 +1981,7 @@ def index():
 
         session.pop('login', None)
         session.pop('user', None)
-        if enable_login_redirect and enable_oath:
+        if enable_login_redirect and enable_oauth:
             return redirect("/login")
         if (a_auth_type == "2fa"):
             session.pop('authenticated', None)

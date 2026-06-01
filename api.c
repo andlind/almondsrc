@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include "config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,7 +17,6 @@
 #include "configuration.h"
 #include "logger.h"
 #include "plugins.h"
-#include "mod_kafka.h"
 #include "utils.h"
 #include "api.h"
 #include "version.h"

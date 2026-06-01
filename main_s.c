@@ -4,6 +4,7 @@
 #ifndef VERSION
 #define VERSION "0.9.30"
 #endif
+#include "config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
