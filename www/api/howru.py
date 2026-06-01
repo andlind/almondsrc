@@ -88,7 +88,7 @@ run_with_wsgi=False
 wsgi_init=False
 is_container=False
 otlp_export_interval = 60
-persistant_2fa=False
+persistent_2fa=False
 show_dashboard=False
 sleep_time = 5
 proxy_cleaner_seconds = 360
@@ -255,7 +255,7 @@ def load_aliases():
 
 def load_conf():
     global bindPort, multi_server, multi_metrics, metrics_dir, enable_file, enable_cleaner, data_file, data_dir, enable_ssl,start_page, enable_gui, enable_mods, export_file,full_metrics_file_name
-    global ssl_certificate, run_with_wsgi, ssl_key, enable_scraper, proxy_cleaner_seconds, mods_list, admin_auth_type, is_container, persistant_2fa, show_dashboard, enable_otlp_exporter
+    global ssl_certificate, run_with_wsgi, ssl_key, enable_scraper, proxy_cleaner_seconds, mods_list, admin_auth_type, is_container, persistent_2fa, show_dashboard, enable_otlp_exporter
     global enable_otlp_file_watch, enable_otlp_periodic_export, otlp_export_interval
  
     config = {}
@@ -376,9 +376,9 @@ def load_conf():
     else:
         is_container = False
     #persistant_2fa = bool(int(config.get('api.persistant2fa',0)))
-    two_factor_auth_per = config.get('api.persistant2fa', 'false')
+    two_factor_auth_per = config.get('api.persistent2fa', 'false')
     if two_factor_auth_per in ["1", "true", "yes", "on"]:
-        persistant_2fa = True
+        persistent_2fa = True
     else:
         pesistant_2fa = False
     proxy_dashboard = config.get('api.showDashboard', 'true')
@@ -2998,7 +2998,7 @@ def main():
         app.config['IS_CONTAINER'] = 'true'
     else:
         app.config['IS_CONTAINER'] = 'false'
-    if persistant_2fa:
+    if persistent_2fa:
         app.config['AUTH2FA_P'] = 'true'
     else:
         app.config['AUTH2FA_P'] = 'false'

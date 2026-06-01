@@ -162,6 +162,233 @@ void to_uppercase(char *str) {
         }
 }
 
+char *load_file(const char *filename, size_t *len_out) {
+        FILE *fp = fopen(filename, "rb");
+        if (!fp) return NULL;
+
+        fseek(fp, 0, SEEK_END);
+        long len = ftell(fp);
+        rewind(fp);
+
+        char *buf = malloc(len + 1);
+        if (!buf) return NULL;
+
+        size_t read = fread(buf, 1, len, fp);
+        if (read != len) {
+                writeLog("Mod_avro load_file read longer than buffer.", 1, 0);
+                perror("Reading longer than buffer size [mod_avro->load_file]");
+        }
+        fclose(fp);
+
+        buf[len] = '\0';
+        if (len_out) *len_out = len;
+        return buf;
+}
+
+static int serialize_and_send(char *dummy_topic, const GKafkaMessage *msg) {
+    char errstr[512];
+    //char info[812];
+    void *buffer = NULL;
+    size_t length = 0;
+    avro_value_t v, data, record;
+    rd_kafka_resp_err_t err = RD_KAFKA_RESP_ERR_NO_ERROR;
+
+    if (schemaRegistryUrl == NULL) {
+        writeLog("No url to schema registry found in config.", 2, 0);
+        return -1;
+    }
+
+    // --- SETUP SERDES (Schema Registry SSL) ---
+    serdes_conf_t *sconf = serdes_conf_new(errstr, sizeof(errstr), "schema.registry.url", schemaRegistryUrl, NULL);
+
+    // If your registry is HTTPS and requires the same certs as Kafka:
+    if (kafkaCALocation) serdes_conf_set(sconf, "ssl.ca.location", kafkaCALocation, NULL, 0);
+    if (kafkaSSLCertificate) serdes_conf_set(sconf, "ssl.certificate.location", kafkaSSLCertificate, NULL, 0);
+    if (kafka_SSLKey) serdes_conf_set(sconf, "ssl.key.location", kafka_SSLKey, NULL, 0);
+
+    serdes_t *serdes = serdes_new(sconf, NULL, 0);
+    size_t schema_len;
+    char *schema_buf = load_file("plugin_status.avsc", &schema_len); // Adjust path if needed
+    if (!schema_buf) {
+        writeLog("Failed to load plugin_status.avsc", 2, 0);
+        serdes_destroy(serdes);
+        return -1;
+    }
+
+    serdes_schema_t *schema = serdes_schema_add(serdes, schemaName, -1,
+                                               schema_buf, schema_len,
+                                               errstr, sizeof(errstr));
+    if (!schema) {
+        fprintf(stderr, "Failed to register schema: %s\n", errstr);
+        free(schema_buf);
+        serdes_destroy(serdes);
+        return -1;
+    }
+
+    avro_schema_t avro_schema = serdes_schema_avro(schema);
+    avro_value_iface_t *iface = avro_generic_class_from_schema(avro_schema);
+    avro_generic_value_new(iface, &record);
+
+    // --- SET FIXED FIELDS ---
+    // Top-level fields
+    avro_value_get_by_name(&record, "name", &v, NULL); avro_value_set_string(&v, msg->name);
+    avro_value_get_by_name(&record, "id", &v, NULL);   avro_value_set_string(&v, msg->id);
+    avro_value_get_by_name(&record, "tag", &v, NULL);  avro_value_set_string(&v, msg->tag);
+
+    // Nested "data" record fields
+    avro_value_get_by_name(&record, "data", &data, NULL);
+    avro_value_get_by_name(&data, "lastChange", &v, NULL);          avro_value_set_string(&v, msg->lastChange);
+    avro_value_get_by_name(&data, "lastRun", &v, NULL);             avro_value_set_string(&v, msg->lastRun);
+    avro_value_get_by_name(&data, "name", &v, NULL);                avro_value_set_string(&v, msg->dataName);
+    avro_value_get_by_name(&data, "nextRun", &v, NULL);             avro_value_set_string(&v, msg->nextRun);
+    avro_value_get_by_name(&data, "pluginName", &v, NULL);          avro_value_set_string(&v, msg->pluginName);
+    avro_value_get_by_name(&data, "pluginOutput", &v, NULL);        avro_value_set_string(&v, msg->pluginOutput);
+    avro_value_get_by_name(&data, "pluginStatus", &v, NULL);        avro_value_set_string(&v, msg->pluginStatus);
+    avro_value_get_by_name(&data, "pluginStatusChanged", &v, NULL); avro_value_set_string(&v, msg->pluginStatusChanged);
+    avro_value_get_by_name(&data, "pluginStatusCode", &v, NULL);    avro_value_set_int(&v, msg->pluginStatusCode);
+
+    // --- SET DYNAMIC LABELS ---
+    /*if (msg->labels && avro_value_get_by_name(&data, "labels", &labels_map, NULL) == 0) {
+        json_object_object_foreach(msg->labels, key, val) {
+            avro_value_t element;
+            const char *val_str = json_object_get_string(val);
+            if (avro_value_add(&labels_map, key, &element, NULL, NULL) == 0) {
+                avro_value_set_string(&element, val_str);
+            }
+        }
+    }*/
+
+    // --- SET DYNAMIC METRICS ---
+    //avro_value_t metrics_map;
+    /*if (msg->metrics && avro_value_get_by_name(&data, "metrics", &metrics_map, NULL) == 0) {
+        json_object_object_foreach(msg->metrics, key, val) {
+            avro_value_t element;
+            const char *val_str = json_object_get_string(val);
+            if (avro_value_add(&metrics_map, key, &element, NULL, NULL) == 0) {
+                avro_value_set_string(&element, val_str);
+            }
+        }
+    }*/
+
+    // --- SET DYNAMIC LABELS (Now at TOP LEVEL) ---
+    if (msg->labels != NULL && json_object_get_type(msg->labels) == json_type_object) {
+        avro_value_t labels_map;
+        // We now look in 'record' (top level) instead of 'data'
+        if (avro_value_get_by_name(&record, "labels", &labels_map, NULL) == 0) {
+            json_object_object_foreach(msg->labels, key, val) {
+                avro_value_t element;
+                const char *val_str = json_object_get_string(val);
+                if (val_str && avro_value_add(&labels_map, key, &element, NULL, NULL) == 0) {
+                    avro_value_set_string(&element, val_str);
+                }
+            }
+        }
+    }
+
+    // --- SET DYNAMIC METRICS (Now at TOP LEVEL) ---
+    /*if (msg->metrics != NULL && json_object_get_type(msg->metrics) == json_type_object) {
+        avro_value_t metrics_map;
+        // We now look in 'record' (top level) instead of 'data'
+        if (avro_value_get_by_name(&record, "metrics", &metrics_map, NULL) == 0) {
+            json_object_object_foreach(msg->metrics, key, val) {
+                avro_value_t element;
+                const char *val_str = json_object_get_string(val);
+                if (val_str && avro_value_add(&metrics_map, key, &element, NULL, NULL) == 0) {
+                    avro_value_set_string(&element, val_str);
+                }
+            }
+        }
+    }*/
+
+   // --- SET DYNAMIC METRICS (Map of Maps) ---
+   if (msg->metrics != NULL && json_object_get_type(msg->metrics) == json_type_object) {
+        avro_value_t metrics_map;
+
+        if (avro_value_get_by_name(&record, "metrics", &metrics_map, NULL) == 0) {
+                json_object_object_foreach(msg->metrics, key, val) {
+                        // We expect 'val' to be an object: {"value": "1.2", "unit": "percent"}
+                        if (json_object_get_type(val) == json_type_object) {
+                                avro_value_t inner_map;
+                                // 1. Add the Metric Name (e.g., CpuIdle) as a new Map inside metrics
+                                if (avro_value_add(&metrics_map, key, &inner_map, NULL, NULL) == 0) {
+                                // 2. Loop through the inner JSON object
+                                        json_object_object_foreach(val, inner_key, inner_val) {
+                                                avro_value_t element;
+                                                const char *inner_str = json_object_get_string(inner_val);
+                                                // 3. Add the attributes (value, unit, etc.) to the inner map
+                                                if (inner_str && avro_value_add(&inner_map, inner_key, &element, NULL, NULL) == 0) {
+                                                        avro_value_set_string(&element, inner_str);
+                                                }
+                                        }
+                                }
+                        }
+                }
+        }
+    }
+
+    // --- SERIALIZE & PRODUCE ---
+    // DEBUG
+    char debug_msg[1024]; // Buffer for debug logs
+
+    // 1. Check if the producer even exists
+    if (global_producer == NULL) {
+        writeLog("[DEBUG] CRITICAL: global_producer is NULL in serialize_and_send! Check extern linkage.", 1, 0);
+        // Cleanup and return early to prevent further issues
+        avro_value_iface_decref(iface);
+        avro_value_decref(&record);
+        if (schema_buf) free(schema_buf);
+        serdes_destroy(serdes);
+        return -1;
+    }
+
+    serdes_err_t serr = serdes_schema_serialize_avro(schema, &record, &buffer, &length, errstr, sizeof(errstr));
+    if (serr != SERDES_ERR_OK) {
+        fprintf(stderr, "serialize_avro failed: %s\n", serdes_err2str(serr));
+        snprintf(debug_msg, sizeof(debug_msg), "[DEBUG] Avro Serialization FAILED: %s", serdes_err2str(serr));
+        writeLog(debug_msg, 1, 0);
+    } else {
+        snprintf(debug_msg, sizeof(debug_msg), "[DEBUG] Serialization SUCCESS. Buffer size: %zu bytes. Topic: %s", length, topic);
+        writeLog(debug_msg, 0, 0);
+        if (use_transactions) rd_kafka_begin_transaction(global_producer);
+
+        retry:
+        err = rd_kafka_producev(global_producer,
+                                RD_KAFKA_V_TOPIC(topic),
+                                RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
+                                RD_KAFKA_V_VALUE(buffer, length),
+                                RD_KAFKA_V_END);
+
+        if (err) {
+                snprintf(debug_msg, sizeof(debug_msg), "[DEBUG] rd_kafka_producev FAILED: %s", rd_kafka_err2str(err));
+                writeLog(debug_msg, 1, 0);
+        }
+        if (err == RD_KAFKA_RESP_ERR__QUEUE_FULL) {
+            rd_kafka_poll(global_producer, 1000);
+            goto retry;
+        }
+
+        if (use_transactions) {
+                writeLog("[DEBUG] Committing Transaction", 0, 0);
+                rd_kafka_commit_transaction(global_producer, timeout_ms);
+        }
+        else {
+                //rd_kafka_poll(global_producer, 0);
+                int events = rd_kafka_poll(global_producer, 100);
+                snprintf(debug_msg, sizeof(debug_msg), "[DEBUG] Poll triggered, processed %d events", events);
+                writeLog(debug_msg, 0, 0);
+        }
+    }
+
+    // --- CLEANUP ---
+    avro_value_iface_decref(iface);
+    avro_value_decref(&record);
+    if (buffer) free(buffer);
+    if (schema_buf) free(schema_buf);
+    serdes_destroy(serdes);
+    return (serr == SERDES_ERR_OK && !err) ? 0 : -1;
+}
+
+
 void processIntConfigInfo(char* name, int value) {
         snprintf(info, INFO_STR_SIZE, "[mod_kafka] %s is set to %d.", name, value);
         writeLog(triminfo(info), 0, 1);
@@ -758,29 +985,6 @@ int loadKafkaConfig() {
         return 1;
 }
 
-char *load_file(const char *filename, size_t *len_out) {
-	FILE *fp = fopen(filename, "rb");
-    	if (!fp) return NULL;
-
-    	fseek(fp, 0, SEEK_END);
-    	long len = ftell(fp);
-    	rewind(fp);
-
-    	char *buf = malloc(len + 1);
-    	if (!buf) return NULL;
-
-    	size_t read = fread(buf, 1, len, fp);
-    	if (read != len) {
-		writeLog("Mod_avro load_file read longer than buffer.", 1, 0);
-		perror("Reading longer than buffer size [mod_avro->load_file]");
-    	}
-    	fclose(fp);
-
-    	buf[len] = '\0';
-    	if (len_out) *len_out = len;
-    	return buf;
-}
-
 static void dr_msg_cb(rd_kafka_t *rk, const rd_kafka_message_t *rkmessage, void *opaque) {
 	char info[810];
 	if (rkmessage->err) {
@@ -1001,209 +1205,6 @@ int send_message_to_gkafka(const char *payload) {
 int send_avro_message_to_gkafka(char *brokers, char *topic, const GKafkaMessage *msg) {
     // brokers is ignored here because global_producer is already connected to them
     return serialize_and_send(topic, msg);
-}
-
-static int serialize_and_send(char *dummy_topic, const GKafkaMessage *msg) {
-    char errstr[512];
-    //char info[812];
-    void *buffer = NULL;
-    size_t length = 0;
-    avro_value_t v, data, record;
-    rd_kafka_resp_err_t err = RD_KAFKA_RESP_ERR_NO_ERROR;
-
-    if (schemaRegistryUrl == NULL) {
-        writeLog("No url to schema registry found in config.", 2, 0);
-        return -1;
-    }
-
-    // --- SETUP SERDES (Schema Registry SSL) ---
-    serdes_conf_t *sconf = serdes_conf_new(errstr, sizeof(errstr), "schema.registry.url", schemaRegistryUrl, NULL);
-    
-    // If your registry is HTTPS and requires the same certs as Kafka:
-    if (kafkaCALocation) serdes_conf_set(sconf, "ssl.ca.location", kafkaCALocation, NULL, 0);
-    if (kafkaSSLCertificate) serdes_conf_set(sconf, "ssl.certificate.location", kafkaSSLCertificate, NULL, 0);
-    if (kafka_SSLKey) serdes_conf_set(sconf, "ssl.key.location", kafka_SSLKey, NULL, 0);
-
-    serdes_t *serdes = serdes_new(sconf, NULL, 0);
-    size_t schema_len;
-    char *schema_buf = load_file("plugin_status.avsc", &schema_len); // Adjust path if needed
-    if (!schema_buf) {
-        writeLog("Failed to load plugin_status.avsc", 2, 0);
-        serdes_destroy(serdes);
-        return -1;
-    }
-
-    serdes_schema_t *schema = serdes_schema_add(serdes, schemaName, -1, 
-                                               schema_buf, schema_len, 
-                                               errstr, sizeof(errstr));
-    if (!schema) {
-        fprintf(stderr, "Failed to register schema: %s\n", errstr);
-        free(schema_buf);
-        serdes_destroy(serdes);
-        return -1;
-    }
-
-    avro_schema_t avro_schema = serdes_schema_avro(schema);
-    avro_value_iface_t *iface = avro_generic_class_from_schema(avro_schema);
-    avro_generic_value_new(iface, &record);
-
-    // --- SET FIXED FIELDS ---
-    // Top-level fields
-    avro_value_get_by_name(&record, "name", &v, NULL); avro_value_set_string(&v, msg->name);
-    avro_value_get_by_name(&record, "id", &v, NULL);   avro_value_set_string(&v, msg->id);
-    avro_value_get_by_name(&record, "tag", &v, NULL);  avro_value_set_string(&v, msg->tag);
-
-    // Nested "data" record fields
-    avro_value_get_by_name(&record, "data", &data, NULL);
-    avro_value_get_by_name(&data, "lastChange", &v, NULL);          avro_value_set_string(&v, msg->lastChange);
-    avro_value_get_by_name(&data, "lastRun", &v, NULL);             avro_value_set_string(&v, msg->lastRun);
-    avro_value_get_by_name(&data, "name", &v, NULL);                avro_value_set_string(&v, msg->dataName);
-    avro_value_get_by_name(&data, "nextRun", &v, NULL);             avro_value_set_string(&v, msg->nextRun);
-    avro_value_get_by_name(&data, "pluginName", &v, NULL);          avro_value_set_string(&v, msg->pluginName);
-    avro_value_get_by_name(&data, "pluginOutput", &v, NULL);        avro_value_set_string(&v, msg->pluginOutput);
-    avro_value_get_by_name(&data, "pluginStatus", &v, NULL);        avro_value_set_string(&v, msg->pluginStatus);
-    avro_value_get_by_name(&data, "pluginStatusChanged", &v, NULL); avro_value_set_string(&v, msg->pluginStatusChanged);
-    avro_value_get_by_name(&data, "pluginStatusCode", &v, NULL);    avro_value_set_int(&v, msg->pluginStatusCode);
-
-    // --- SET DYNAMIC LABELS ---
-    /*if (msg->labels && avro_value_get_by_name(&data, "labels", &labels_map, NULL) == 0) {
-        json_object_object_foreach(msg->labels, key, val) {
-            avro_value_t element;
-            const char *val_str = json_object_get_string(val);
-            if (avro_value_add(&labels_map, key, &element, NULL, NULL) == 0) {
-                avro_value_set_string(&element, val_str);
-            }
-        }
-    }*/
-
-    // --- SET DYNAMIC METRICS ---
-    //avro_value_t metrics_map;
-    /*if (msg->metrics && avro_value_get_by_name(&data, "metrics", &metrics_map, NULL) == 0) {
-        json_object_object_foreach(msg->metrics, key, val) {
-            avro_value_t element;
-            const char *val_str = json_object_get_string(val);
-            if (avro_value_add(&metrics_map, key, &element, NULL, NULL) == 0) {
-                avro_value_set_string(&element, val_str);
-            }
-        }
-    }*/
-
-    // --- SET DYNAMIC LABELS (Now at TOP LEVEL) ---
-    if (msg->labels != NULL && json_object_get_type(msg->labels) == json_type_object) {
-        avro_value_t labels_map;
-        // We now look in 'record' (top level) instead of 'data'
-        if (avro_value_get_by_name(&record, "labels", &labels_map, NULL) == 0) {
-            json_object_object_foreach(msg->labels, key, val) {
-                avro_value_t element;
-                const char *val_str = json_object_get_string(val);
-                if (val_str && avro_value_add(&labels_map, key, &element, NULL, NULL) == 0) {
-                    avro_value_set_string(&element, val_str);
-                }
-            }
-        }
-    }
-
-    // --- SET DYNAMIC METRICS (Now at TOP LEVEL) ---
-    /*if (msg->metrics != NULL && json_object_get_type(msg->metrics) == json_type_object) {
-        avro_value_t metrics_map;
-        // We now look in 'record' (top level) instead of 'data'
-        if (avro_value_get_by_name(&record, "metrics", &metrics_map, NULL) == 0) {
-            json_object_object_foreach(msg->metrics, key, val) {
-                avro_value_t element;
-                const char *val_str = json_object_get_string(val);
-                if (val_str && avro_value_add(&metrics_map, key, &element, NULL, NULL) == 0) {
-                    avro_value_set_string(&element, val_str);
-                }
-            }
-        }
-    }*/
-
-   // --- SET DYNAMIC METRICS (Map of Maps) ---
-   if (msg->metrics != NULL && json_object_get_type(msg->metrics) == json_type_object) {
-   	avro_value_t metrics_map;
-    
-    	if (avro_value_get_by_name(&record, "metrics", &metrics_map, NULL) == 0) {
-        	json_object_object_foreach(msg->metrics, key, val) {
-            		// We expect 'val' to be an object: {"value": "1.2", "unit": "percent"}
-            		if (json_object_get_type(val) == json_type_object) {
-                		avro_value_t inner_map;
-                		// 1. Add the Metric Name (e.g., CpuIdle) as a new Map inside metrics
-                		if (avro_value_add(&metrics_map, key, &inner_map, NULL, NULL) == 0) {
-                    		// 2. Loop through the inner JSON object
-                    			json_object_object_foreach(val, inner_key, inner_val) {
-                        			avro_value_t element;
-                        			const char *inner_str = json_object_get_string(inner_val);
-                        			// 3. Add the attributes (value, unit, etc.) to the inner map
-                        			if (inner_str && avro_value_add(&inner_map, inner_key, &element, NULL, NULL) == 0) {
-                            				avro_value_set_string(&element, inner_str);
-                        			}
-                    			}
-                		}	
-            		}
-        	}
-    	}
-    }
-
-    // --- SERIALIZE & PRODUCE ---
-    // DEBUG
-    char debug_msg[1024]; // Buffer for debug logs
-
-    // 1. Check if the producer even exists
-    if (global_producer == NULL) {
-        writeLog("[DEBUG] CRITICAL: global_producer is NULL in serialize_and_send! Check extern linkage.", 1, 0);
-        // Cleanup and return early to prevent further issues
-        avro_value_iface_decref(iface);
-        avro_value_decref(&record);
-        if (schema_buf) free(schema_buf);
-        serdes_destroy(serdes);
-        return -1;
-    }
-
-    serdes_err_t serr = serdes_schema_serialize_avro(schema, &record, &buffer, &length, errstr, sizeof(errstr));
-    if (serr != SERDES_ERR_OK) {
-        fprintf(stderr, "serialize_avro failed: %s\n", serdes_err2str(serr));
-	snprintf(debug_msg, sizeof(debug_msg), "[DEBUG] Avro Serialization FAILED: %s", serdes_err2str(serr));
-    	writeLog(debug_msg, 1, 0);
-    } else {
-	snprintf(debug_msg, sizeof(debug_msg), "[DEBUG] Serialization SUCCESS. Buffer size: %zu bytes. Topic: %s", length, topic);
-    	writeLog(debug_msg, 0, 0);
-        if (use_transactions) rd_kafka_begin_transaction(global_producer);
-
-        retry:
-        err = rd_kafka_producev(global_producer,
-                                RD_KAFKA_V_TOPIC(topic),
-                                RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
-                                RD_KAFKA_V_VALUE(buffer, length),
-                                RD_KAFKA_V_END);
-
-	if (err) {
-		snprintf(debug_msg, sizeof(debug_msg), "[DEBUG] rd_kafka_producev FAILED: %s", rd_kafka_err2str(err));
-        	writeLog(debug_msg, 1, 0);
-	}
-        if (err == RD_KAFKA_RESP_ERR__QUEUE_FULL) {
-            rd_kafka_poll(global_producer, 1000);
-            goto retry;
-        }
-
-        if (use_transactions) {
-		writeLog("[DEBUG] Committing Transaction", 0, 0);
-            	rd_kafka_commit_transaction(global_producer, timeout_ms);
-	}
-        else {
-        	//rd_kafka_poll(global_producer, 0);
-		int events = rd_kafka_poll(global_producer, 100);
-		snprintf(debug_msg, sizeof(debug_msg), "[DEBUG] Poll triggered, processed %d events", events);
-        	writeLog(debug_msg, 0, 0);
-	}
-    }
-
-    // --- CLEANUP ---
-    avro_value_iface_decref(iface);
-    avro_value_decref(&record);
-    if (buffer) free(buffer);
-    if (schema_buf) free(schema_buf);
-    serdes_destroy(serdes); 
-    return (serr == SERDES_ERR_OK && !err) ? 0 : -1;
 }
 
 int send_ssl_avro_message_to_gkafka(char *brokers, char *ca, char *cert, char *key, char *topic, const GKafkaMessage *msg) {
