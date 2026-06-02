@@ -1,4 +1,10 @@
 <!DOCTYPE html>
+{% set ns = namespace(has_labels=false) %}
+{% for obj in monitoring %}
+    {% if obj.labels %}
+        {% set ns.has_labels = true %}
+    {% endif %}
+{% endfor %}
 <html lang="en">
 <head>
     <title>HowRU Details</title>
@@ -28,6 +34,15 @@
             padding: 20px;
             text-align: center;
             transition: background 0.3s, color 0.3s;
+        }
+        .label-box {
+    	    display: inline-block;
+            padding: 2px 6px;
+            margin-left: 6px;
+            background-color: #ffbd68;
+            border-radius: 4px;
+            font-size: 10px;
+            color: #333;
         }
         .toggle-btn {
             position: fixed;
@@ -93,12 +108,37 @@
                 <th>Status</th>
                 <th>Last run</th>
                 <th>Plugin output</th>
+                <th align="right">
+                    <label>
+                        <input type="checkbox" id="toggle-labels"
+                            {% if not ns.has_labels %} disabled{% endif %}>
+                            Show labels
+                     </label>
+                </th>
             </tr>
         </thead>
+        <script>
+            document.addEventListener("DOMContentLoaded", function () {
+            	const checkbox = document.getElementById("toggle-labels");
+                const toggle = () => {
+                	const labels = document.querySelectorAll(".label-box");
+                 	labels.forEach(lb => lb.style.display = checkbox.checked ? "inline-block" : "none");
+              	};
+           	checkbox.addEventListener("change", toggle);
+           	toggle();  // initialize
+            });
+        </script>
         <tbody>
         {% for obj in monitoring %}
             <tr>
-                <td>{{ obj['pluginName'] }}</td>
+                <td>{{ obj['pluginName'] }}
+                     {% if obj.labels %}
+                         <br>
+                         {% for key, value in obj.labels.items() %}
+                    		<span class="label-box">{{ key }}:{{ value }}</span>
+                         {% endfor %}
+                     {% endif %}
+                </td>
                 {% if obj['pluginStatus'] == 'OK' %}
                     <td class="status-ok">{{ obj['pluginStatus'] }}</td>
                 {% elif obj['pluginStatus'] == 'WARNING' %}
@@ -109,7 +149,7 @@
                     <td class="status-unknown">{{ obj['pluginStatus'] }}</td>
                 {% endif %}
                 <td>{{ obj['lastRun'] }}</td>
-                <td class="plugin-output">{{ obj['pluginOutput'] }}</td>
+                <td class="plugin-output" colspan="2">{{ obj['pluginOutput'] }}</td>
             </tr>
         {% endfor %}
         </tbody>
@@ -121,7 +161,7 @@
         <a href="/docs">Documentation</a>
     </div>
      <p align="center">
-        <script language="javascript">document.write('<a href="' + document.referrer + '">Go back</a>');
+        <script language="javascript">document.write('<a href="/howru/monitoring/status">Go back</a>');
       	</script>
     </p>
     <footer style="margin-top:20px; font-size:0.85rem;">
