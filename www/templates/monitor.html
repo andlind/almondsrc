@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>HowRU Monitor Dashboard</title>
+    <meta http-equiv="refresh" content="60">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .server-link {
+      	 	display: inline-block;       /* ensures padding applies consistently */
+    		color: #0d6efd;              /* Bootstrap primary */
+    		font-weight: 500;
+    		text-decoration: none;
+    		padding: 4px 8px;            /* always present */
+    		border-radius: 6px;          /* always present */
+    		transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+	}
+
+	.server-link:hover {
+    		color: #fff;
+    		background-color: #0d6efd;
+	}
+	.table td, .table th {
+    		border: none;   /* removes default cell borders */
+	}
+	.table-danger {
+    		background-color: #f8d7da !important;
+	}
+	.table-warning {
+    		background-color: #fff3cd !important;
+	}
+	.table-success {
+    		background-color: #d1e7dd !important;
+	}
+	.row-critical {
+		outline: 2px solid #dc3545;   /* red outline */
+		outline-offset: -2px;         /* keeps it tight to the row */
+	}
+	.row-warning {
+		outline: 2px solid #ffc107;   /* yellow outline */
+		outline-offset: -2px;
+	}
+	.row-critical:hover, 
+        .row-warning:hover {
+    		background-color: #f9f9f9; /* light gray, keeps it subtle */
+	}
+	.user-image {
+		border: 2px solid black;
+		border-radius: 10px;
+	}
+    </style>
+</head>
+<body class="bg-light">
+        <p align="center"><img src="{{ user_image }}" alt="User Image" class="user-image"></p>
+        <p align="center" style="font-family: Vedana; font-size: 14px; font-weight: bold">HowRU is running on this server</p>
+        <hr size="1">
+<div class="container my-5">
+    <h1 class="mb-4 text-center">HowRU Multiserver Dashboard</h1>
+
+    <!-- Summary Widgets -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card text-white bg-success shadow">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Total OK</h5>
+                    <h2>{{ total_ok }}</h2>
+                    <h4>{{ ok_percentage }}</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card text-white bg-danger shadow">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Total Non-OK</h5>
+                    <h2>{{ total_non_ok }}</h2>
+                    <h4>{{ e_percentage }}</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Server Table -->
+    <div class="card shadow">
+        <div class="card-body">
+            <table class="table table-hover table-bordered text-center">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Server</th>
+                        <th>Total Checks</th>
+                        <th class="text-success">OK</th>
+                        <th class="text-warning">Warning</th>
+                        <th class="text-danger">Critical</th>
+                        <th class="text-secondary">Unknown</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for server in servers %}
+                    <!--<tr>-->
+                    <tr class="
+       			{% if server['monitor_results']['critical'] > 0 %}
+            			row-critical
+        		{% elif server['monitor_results']['warning']> 0 %}
+            			row-warning
+        		{% endif %}
+    		    ">
+                        <td><a href="/howru/monitoring/details?name={{ server['name'] }}" class="server-link">{{ server.name }}</a></td>
+                        <td>{{ server['total_count'] }}</td>
+                        <td class="text-success">{{ server['monitor_results']['ok'] }}</td>
+                        <td class="text-warning">{{ server['monitor_results']['warning'] }}</td>
+                        <td class="text-danger">{{ server['monitor_results']['critical'] }}</td>
+                        <td class="text-secondary">{{ server['monitor_results']['unknown'] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

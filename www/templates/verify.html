@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Inter", "Segoe UI", Arial, Helvetica, sans-serif;
+  background-color: #491c0f;
+  color: #ffffff;
+}
+img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+}
+.content-box {
+  background: #ffffff;
+  margin: 5% auto;
+  padding: 32px 36px;
+  border-radius: 18px;
+  width: 92%;
+  max-width: 540px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.18);
+  color: #333;
+}
+.content-box h1 {
+  font-size: 26px;
+  font-weight: 700;
+  margin-top: 0;
+  margin-bottom: 12px;
+  color: #2d1c13;
+}
+.content-box p {
+  font-size: 15px;
+  line-height: 1.65;
+  color: #555;
+  margin: 0 0 20px;
+}
+.content-box label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: #333;
+}
+.content-box input[type="text"] {
+  width: 100%;
+  padding: 12px 14px;
+  margin-bottom: 22px;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 15px;
+}
+.content-box input[type="submit"],
+.content-box .btn {
+  width: 100%;
+  padding: 13px 18px;
+  background: #5a2e1f;
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.15s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 8px 18px rgba(0,0,0,0.12);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.content-box input[type="submit"]:hover,
+.content-box .btn:hover {
+  background: #6c3a28;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px rgba(0,0,0,0.16);
+}
+.content-box .note {
+  margin-top: 24px;
+  padding: 18px 20px;
+  border-radius: 12px;
+  background: #f8f7ed;
+  color: #4a3b2d;
+  border: 1px solid #e2dccf;
+}
+.content-box .note a {
+  color: #5a2e1f;
+  text-decoration: none;
+  font-weight: 700;
+}
+.content-box .note a:hover {
+  text-decoration: underline;
+}
+</style>
+</head>
+<body>
+<p align="center"><img src=" {{ logon_image }} " alt="Logon image" style="max-width: 240px;"></p>
+<div class="content-box">
+  <h1>🔐 Verify Two-Factor Authentication</h1>
+  <p>Enter the one-time token from your authenticator app to complete sign in.</p>
+  <form method="post" action="/verify_2fa">
+    <label for="token">2FA token</label>
+    <input id="token" name="token" type="text" autocomplete="one-time-code" required>
+    <input type="submit" value="Verify">
+  </form>
+  <div class="note">
+    <p><strong>Note:</strong> If 2FA is not enabled for your account, visit <a href="/almond/admin/enable_2fa/{{ username }}">Enable Two-Factor Authentication</a>.</p>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>HowRU Metrics</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #f4f6f9;
+            --text-color: #333;
+            --card-bg: #fff;
+            --accent: #491c0f;
+            --header-bg: linear-gradient(90deg, #491c0f, #6b2a1a);
+        }
+        body.dark {
+            --bg-color: #1e1e2f;
+            --text-color: #e0e0e0;
+            --card-bg: #2a2a3d;
+            --accent: #d07c65;
+            --header-bg: linear-gradient(90deg, #6b2a1a, #a34d36);
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            transition: background 0.3s, color 0.3s;
+            text-align: center;
+        }
+        .toggle-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .toggle-btn:hover {
+            opacity: 0.9;
+        }
+        .logo {
+            max-width: 300px;
+            height: auto;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            margin-bottom: 15px;
+        }
+        h1 {
+            background: var(--header-bg);
+            color: #fff;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .styled-table {
+            border-collapse: collapse;
+            margin: 20px auto;
+            font-size: 0.95em;
+            min-width: 400px;
+            background: var(--card-bg);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .styled-table caption {
+            font-size: 1rem;
+            font-weight: 600;
+            text-decoration: underline;
+            padding: 10px;
+        }
+        select, input[type="submit"] {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #ccc;
+            font-size: 0.95rem;
+            margin: 8px 0;
+        }
+        input[type="submit"] {
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        input[type="submit"]:hover {
+            opacity: 0.9;
+        }
+        footer {
+            margin-top: 30px;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <button class="toggle-btn">Toggle Theme</button>
+
+    <img src="{{ user_image }}" alt="User Image" class="logo">
+    <p style="font-size: 14px; font-weight: bold;">HowRU is running on this server</p>
+    <h1>Available Metrics</h1>
+
+    <form name="metricSelection" method="get" action="show_metrics">
+        <table class="styled-table" width="75%">
+            <caption>Choose a Metric</caption>
+            <tr>
+                <td>
+                    <select name="metric">
+                        <option value="-1" selected>Metrics</option>
+                        {% for m in metrics_list %}
+                            <option value="{{ m }}">{{ m }}</option>
+                        {% endfor %}
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <input type="submit" value="Select">
+                </td>
+            </tr>
+        </table>
+    </form>
+
+    <div class="mt-3">
+        <a href="/howru/settings/plugins">Plugin settings</a> |
+        <a href="/howru/settings/scheduler">Scheduler settings</a> |
+        <a href="/docs">Documentation</a>
+    </div>
+
+    <footer>
+        HowRU &copy; Almond Monitor —
+        <a href="mailto:info@almondmonitor.com">info@almondmonitor.com</a>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const body = document.body;
+            const toggleBtn = document.querySelector('.toggle-btn');
+            if (localStorage.getItem('theme') === 'dark') {
+                body.classList.add('dark');
+            }
+            toggleBtn.addEventListener('click', () => {
+                body.classList.toggle('dark');
+                localStorage.setItem('theme', body.classList.contains('dark') ? 'dark' : 'light');
+            });
+        });
+    </script>
+</body>
+</html>

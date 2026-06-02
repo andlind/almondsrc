@@ -1,0 +1,61 @@
+{% include 'head.html' %}
+	<p align="center"><img src="{{ logo_image }}" alt="Logo Image"></p>
+	<hr size="1">
+	<table style="margin-left:auto;margin-right:auto;border:1px solid #000000; text-align:center; " width="90%">
+	<tr style="text-align:center">
+		<td>
+			<p style="font-family: Verdana; color: #491c0f; font-size: 22px;font-weight:bold">Run Howru Monitoring API Query</p>
+		</td>
+	</tr>
+	</table>
+	<form name="monitoring_api" method="post" action="/almond/admin?page=query&aid={{ action }}">
+	<input type="hidden" name="page" value="query">
+	<input type="hidden" name="aid" value="{{ action }}">
+	<table width="60%" align="center" style="margin-left:auto; margin-right:auto;">
+	<tr>
+		<td>
+			<label for="item">Item:</label>
+			<select name="item" id="item">
+                                {% for plugin in plugins %}
+                                <option value="{{ plugin }}" name="{{plugin}}">{{plugin}}</option>
+                                {% endfor %}
+                        </select>
+		</td>
+	</tr>
+	<tr>
+		<td>
+			<label for="check">Run as check</label>&nbsp;&nbsp;<input type="checkbox" name="check" id="check"/>
+		</td>
+	</tr>
+	<tr>
+                <td>
+			<label for="option">Option:</label>&nbsp;&nbsp;<input type="text" id="option" name="option" maxlength=30 />
+		</td>
+		
+	</tr>
+        <tr>
+                <td>
+                        <label for="warning">Warning parameter:</label>&nbsp;&nbsp;
+                        <input type="text" name="warning" id="warning" maxlength=20 />
+                </td>
+        </tr>
+	<tr>
+                <td>
+    			<label for="critical">Critical parameter:</label>&nbsp;&nbsp;
+			<input type="text" name="critical" id="critical" maxlength=20 />
+		</td>
+	</tr>
+        <tr>
+		<td>
+			<label for="help">Show option help</label>&nbsp;&nbsp;
+			<input type="checkbox" name="help" id="help"/>
+	<tr>
+		<td>
+			<input type="submit" name="submit" id="submit" value="RUN">&nbsp;&nbsp;&nbsp;
+			<input type="button" name="goback" id="goback" value="Go back" onClick="javascript:history.back()">
+		</td>
+	</tr>
+	</table>
+	</form>
+	<p>&nbsp;</p>
+{% include 'foot.html' %}
