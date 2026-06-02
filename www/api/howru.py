@@ -380,7 +380,7 @@ def load_conf():
     if two_factor_auth_per in ["1", "true", "yes", "on"]:
         persistent_2fa = True
     else:
-        pesistant_2fa = False
+        pesistent_2fa = False
     proxy_dashboard = config.get('api.showDashboard', 'true')
     if proxy_dashboard in ["0", "false", "no", "off"]:
         show_dashboard = False
@@ -858,7 +858,7 @@ def api_search_labels(key, value, server, verbose=False):
                 host_name = x['host']['name']
                 obj = x['monitoring']
                 for y in obj:
-                    labels = y['labels']
+                    labels = y.get('labels')
                     if not labels or labels == "none" or not isinstance(labels, dict):
                         continue
                     name = y['name']
@@ -2063,8 +2063,15 @@ def api_show_plugin(search=0, id=-1):
                 output = []
                 if 'find' in request.args:
                     search_str = request.args['find']
+                    #return (deep_seach(data, search_str))
                     for x in data['server']:
-                        this_server = x['host']['name']
+                        host = x.get('host')
+                        if not host:
+                            continue
+                        system = host.get('system')
+                        if not system:
+                            continue
+                        this_server = host.get('name')
                         matches = deep_search(x['host']['system'], search_str)
                         if matches:
                             output.append({
@@ -2094,8 +2101,15 @@ def api_show_plugin(search=0, id=-1):
                 if 'find' in request.args:
                     search_str = request.args.get("find")
                     for x in data['server']:
+                        host = x.get('host')
+                        if not host:
+                            continue
+                        system = host.get('system')
+                        if not system:
+                            continue
                         this_server = x['host']['name']
-                        matches = deep_search(x['host']['system'], search_str)
+                       
+                        matches = deep_search(system, search_str)
                         if matches:
                             output.append({
                                 "host": this_server,
@@ -2259,6 +2273,12 @@ def api_show_plugin(search=0, id=-1):
             index_name = request.args['index']
         elif 'id' in request.args:
             id = int(request.args['id'])
+        elif 'system' in request.args:
+            if 'find' in request.args:
+                search_str = request.args.get("find")
+                return (deep_search(data, search_str))
+            else:
+               return jsonify({"info":"No search string for system search found", "return_code":"2"})
         elif 'labels' in request.args or 'label' in request.args:
             if any(k in request.args for k in ("key", "value", "server")):
                 this_key = request.args.get("key")
