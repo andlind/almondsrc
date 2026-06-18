@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Monitoring Dashboard</title>
+
+  <!-- Load Tailwind first -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Then apply config -->
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      safelist: [
+        'bg-green-500',
+        'bg-red-500',
+        'bg-yellow-500',
+        'bg-blue-500'
+      ]
+    }
+  </script>
+  <!--<script src="https://cdn.tailwindcss.com"></script>-->
+  <style>
+  .fade-slide {
+    opacity: 0;
+    transform: translateY(10px);
+    animation: fadeSlideIn 0.4s ease forwards;
+  }
+
+  @keyframes fadeSlideIn {
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  </style>
+</head>
+
+<body class="bg-gray-100 dark:bg-gray-900 dark:text-gray-200 p-6 transition-colors">
+{% set has_hw = (
+    data.host.system.cpu or
+    data.host.system.memory or
+    data.host.system.disks or
+    data.host.system.bios or
+    data.host.system.chassis or
+    data.host.system.virtualization or
+    data.host.system.pci or
+    data.host.system.usb or
+    data.host.system.network
+) %}
+  <!-- Top Bar -->
+  <div class="max-w-4xl mx-auto mb-4 flex justify-between items-center">
+
+    <!-- Back Button -->
+    <a href="/howru/monitoring/status"
+       class="inline-flex items-center px-4 py-2 
+          bg-white dark:bg-gray-800 
+          text-gray-800 dark:text-gray-200 
+          shadow rounded-lg
+          hover:bg-gray-50 dark:hover:bg-gray-700 
+          transition">
+      ← Back
+    </a>
+
+
+    <!-- Theme Toggle Button -->
+    <button class="toggle-btn px-4 py-2 
+                bg-white dark:bg-gray-800
+                text-gray-800 dark:text-gray-200
+                shadow rounded-lg
+                hover:bg-gray-50 dark:hover:bg-gray-700 
+                transition">
+      Toggle Theme
+    </button>
+  </div>
+
+  <!-- Logo -->
+  <div class="flex justify-center mb-8">
+    <img src="{{ url_for('static', filename='howru_logo.png') }}"
+         alt="Logo"
+         class="h-24 w-auto drop-shadow-lg">
+  </div>
+
+  <!-- PAGE WRAPPER (important!) -->
+  <!--<div class="max-w-4xl mx-auto space-y-6 bg-gray-100 dark:bg-gray-900 transition-colors">-->
+  <div class="max-w-4xl mx-auto space-y-6 transition-colors px-4">
+
+    <!-- Host Info -->
+    <div class="bg-white dark:bg-gray-800 shadow-md rounded-xl p-6 transition-colors">
+      <h1 class="text-xl font-bold mb-4 text-gray-900 dark:text-gray-100">Host Information</h1>
+
+      <p class="text-gray-700 dark:text-gray-300"><strong>Name:</strong> {{ data.host.name }}</p>
+      <p class="text-gray-700 dark:text-gray-300"><strong>Plugin File Update:</strong> {{ data.host.pluginfileupdatetime }}</p>
+
+      <h2 class="font-semibold mt-4 text-gray-900 dark:text-gray-100">Operating System</h2>
+      <p class="text-gray-700 dark:text-gray-300"><strong>System:</strong> {{ data.host.system.os.sysname }}</p>
+      <p class="text-gray-700 dark:text-gray-300"><strong>Release:</strong> {{ data.host.system.os.release }}</p>
+      <p class="text-gray-700 dark:text-gray-300"><strong>Machine:</strong> {{ data.host.system.os.machine }}</p>
+      <p class="text-gray-700 dark:text-gray-300"><strong>Version:</strong> {{ data.host.system.os.version }}</p>
+    <!--</div>-->
+    <!--<button onclick="document.getElementById('hw-details').classList.toggle('hidden')"
+        class="px-4 py-2 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 
+               shadow rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition">
+          Show Hardware Details
+    </button>-->
+    <button id="hw-toggle"
+        {% if not has_hw %}disabled{% endif %}
+        onclick="if (!this.disabled) toggleHardwareDetails()"
+        class="flex items-center gap-2 px-4 py-2 
+               bg-white dark:bg-gray-800 
+               text-gray-800 dark:text-gray-200
+               shadow rounded-lg
+               hover:bg-gray-50 dark:hover:bg-gray-700 
+               {% if not has_hw %}
+                 opacity-40 cursor-not-allowed hover:bg-white dark:hover:bg-gray-800
+               {% endif %}">
+               <!--transition">-->
+      <span id="hw-arrow" class="transition-transform duration-300">
+        ▶
+      </span>
+      <span id="hw-text">
+      {% if has_hw %}
+        Show Hardware Details
+      {% else %}
+        No Hardware Details Available
+      {% endif %}
+      </span>
+    </button>
+
+    {% if has_hw %}
+    <div id="hw-details"
+     class="max-h-0 overflow-hidden transition-all duration-500 space-y-6 mt-4">
+
+      {% if data.host.system.cpu %}
+      <div class="bg-white dark:bg-gray-800 shadow-md rounded-xl p-4 transition-colors fade-slide">
+        <!--<h2 class="font-semibold text-gray-900 dark:text-gray-100">CPU</h2>-->
+        <h2 class="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
+        🧠  CPU
+	</h2>
+        <p class="text-gray-700 dark:text-gray-300"><strong>Model:</strong> {{ data.host.system.cpu.model }}</p>
+        <p class="text-gray-700 dark:text-gray-300"><strong>Vendor:</strong> {{ data.host.system.cpu.vendor }}</p>
+        <p class="text-gray-700 dark:text-gray-300"><strong>Cores:</strong> {{ data.host.system.cpu.cores }}</p>
+      </div>
+      {% endif %}
+
+      {% if data.host.system.memory %}
+      <div class="bg-white dark:bg-gray-800 shadow-md rounded-xl p-4 transition-colors fade-slide">
+        <h2 class="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
+        💾  Memory
+        </h2>
+        <p class="text-gray-700 dark:text-gray-300"><strong>Type:</strong> {{ data.host.system.memory.type }}</p>
+      </div>
+      {% endif %}
+
+      {% if data.host.system.disks %}
+      <div class="bg-white dark:bg-gray-800 shadow-md rounded-xl p-4 transition-colors fade-slide">
+        <h2 class="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
+   	 📀  Disks
+  	</h2>
+        <div class="space-y-2">
+          {% for disk in data.host.system.disks %}
+            <div class="border-b border-gray-300 dark:border-gray-700 pb-2">
+            <p class="text-gray-700 dark:text-gray-300"><strong>Name:</strong> {{ disk.name }}</p>
+            <p class="text-gray-700 dark:text-gray-300"><strong>Model:</strong> {{ disk.model }}</p>
+            <p class="text-gray-700 dark:text-gray-300"><strong>Type:</strong> {{ disk.type }}</p>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if data.host.system.bios %}
+      <div class="bg-white dark:bg-gray-800 shadow-md rounded-xl p-4 transition-colors fade-slide">
+        <h2 class="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
+        🧬  BIOS
+        </h2>
+        <p class="text-gray-700 dark:text-gray-300"><strong>Vendor:</strong> {{ data.host.system.bios.vendor }}</p>
+        <p class="text-gray-700 dark:text-gray-300"><strong>Version:</strong> {{ data.host.system.bios.version }}</p>
+      </div>
+      {% endif %}
+
+      {% if data.host.system.virtualization %}
+      <div class="bg-white dark:bg-gray-800 shadow-md rounded-xl p-4 transition-colors fade-slide">
+        <h2 class="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
+        🖥️  Virtualization
+        </h2>
+        <p class="text-gray-700 dark:text-gray-300">{{ data.host.system.virtualization }}</p>
+      </div>
+      {% endif %}
+
+      {% if data.host.system.pci %}
+      <div class="bg-white dark:bg-gray-800 shadow-md rounded-xl p-4 transition-colors fade-slide max-h-64 overflow-auto">
+        <h2 class="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
+         🔌  PCI Devices
+        </h2>
+        <div class="space-y-2">
+          {% for dev in data.host.system.pci %}
+          <div class="border-b border-gray-300 dark:border-gray-700 pb-2">
+            <p class="text-gray-700 dark:text-gray-300"><strong>Address:</strong> {{ dev.address }}</p>
+            <p class="text-gray-700 dark:text-gray-300"><strong>Vendor:</strong> {{ dev.vendor }}</p>
+            <p class="text-gray-700 dark:text-gray-300"><strong>Device:</strong> {{ dev.device }}</p>
+            <p class="text-gray-700 dark:text-gray-300"><strong>Class:</strong> {{ dev.class }}</p>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if data.host.system.usb %}
+      <div class="bg-white dark:bg-gray-800 shadow-md rounded-xl p-4 transition-colors fade-slidemax-h-64 overflow-auto">
+        <h2 class="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
+          🧷  USB Devices
+        </h2>
+        <div class="space-y-2">
+          {% for dev in data.host.system.usb %}
+          <div class="border-b border-gray-300 dark:border-gray-700 pb-2">
+            <p class="text-gray-700 dark:text-gray-300"><strong>Path:</strong> {{ dev.path }}</p>
+            <p class="text-gray-700 dark:text-gray-300"><strong>Vendor:</strong> {{ dev.vendor }}</p>
+            <p class="text-gray-700 dark:text-gray-300"><strong>Product:</strong> {{ dev.product }}</p>
+            <p class="text-gray-700 dark:text-gray-300"><strong>Class:</strong> {{ dev.class }}</p>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if data.host.system.network %}
+      <div class="bg-white dark:bg-gray-800 shadow-md rounded-xl p-4 transition-colors fade-slide">
+        <h2 class="flex items-center gap-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
+         🌐 Network Interfaces
+        </h2>
+        {% for iface in data.host.system.network %}
+        <p class="text-gray-700 dark:text-gray-300"><strong>Name:</strong> {{ iface.name }}</p>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+     </div>
+    {% endif %}
+    </div>
+    <!-- Monitoring Section -->
+    <h2 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">Monitoring Checks</h2>
+
+    <div class="space-y-4">
+      {% for check in data.monitoring %}
+      <div class="bg-white dark:bg-gray-800 shadow-md rounded-xl p-4 transition-colors">
+
+        <!-- Header row -->
+        <div class="flex justify-between items-center cursor-pointer"
+             onclick="document.getElementById('details-{{ loop.index }}').classList.toggle('hidden')">
+
+          <div>
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">{{ check.name }}</h3>
+            <p class="text-sm text-gray-500 dark:text-gray-400">{{ check.pluginName }}</p>
+          </div>
+
+          {% set color = 'green' if check.pluginStatus == 'OK' else 'red' %}
+          <span class="px-3 py-1 rounded-full text-white bg-{{ color }}-500">
+            {{ check.pluginStatus }}
+          </span>
+        </div>
+
+        <!-- Details -->
+        <div id="details-{{ loop.index }}" class="hidden mt-4 text-sm text-gray-700 dark:text-gray-300">
+          <p><strong>Last Run:</strong> {{ check.lastRun }}</p>
+          <p><strong>Next Run:</strong> {{ check.nextRun }}</p>
+          <p><strong>Maintenance:</strong> {{ check.maintenance }}</p>
+
+          <p class="mt-2"><strong>Output:</strong></p>
+          <pre class="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg whitespace-pre-wrap break-words break-all max-h-48 overflow-auto transition-colors">
+{{- check.pluginOutput | trim -}}
+          </pre>
+        </div>
+
+      </div>
+      {% endfor %}
+    </div>
+
+  </div>
+
+  <!-- Theme Toggle Script -->
+  <script>
+  document.addEventListener("DOMContentLoaded", () => {
+    const body = document.body;
+    const toggleBtn = document.querySelector('.toggle-btn');
+
+    if (localStorage.getItem('theme') === 'dark') {
+      body.classList.add('dark');
+    }
+
+    toggleBtn.addEventListener('click', () => {
+      body.classList.toggle('dark');
+      localStorage.setItem('theme',
+        body.classList.contains('dark') ? 'dark' : 'light'
+      );
+    });
+  });
+</script>
+<script>
+  function toggleHardwareDetails() {
+    const section = document.getElementById('hw-details');
+    const buttonText = document.getElementById('hw-text');
+    const arrow = document.getElementById('hw-arrow');
+
+    const isClosed = section.style.maxHeight === "" || section.style.maxHeight === "0px";
+
+    if (isClosed) {
+      // Expand
+      section.style.maxHeight = section.scrollHeight + "px";
+      buttonText.textContent = "Hide Hardware Details";
+      arrow.style.transform = "rotate(90deg)";
+    } else {
+      // Collapse
+      section.style.maxHeight = "0px";
+      buttonText.textContent = "Show Hardware Details";
+      arrow.style.transform = "rotate(0deg)";
+    }
+  }
+</script>
+</body>
+</html>
+

@@ -1120,7 +1120,7 @@ def logout(username=None):
 
 @app.route('/docs', methods=['GET'])
 def documentation():
-    full_filename = '/static/howru.png'
+    full_filename = '/static/howru_logo.png'
     if not enable_gui:
         return render_template("403.html")
     return render_template("documentation.html", user_image = full_filename)
@@ -2687,7 +2687,7 @@ def api_show_status():
     if not os.path.isfile(data_file):
         return render_template("index_w.html", user_image = almond_image)
     this_data = api_howareyou(False)
-    full_filename = '/static/howru.png'
+    full_filename = '/static/howru_logo.png'
     image_icon = '/static/green.png'
 
     if not enable_gui:
@@ -2741,7 +2741,7 @@ def api_show_details():
     global multi_server
     global logger
     this_data = api_json(False)
-    full_filename = '/static/howru.png'
+    full_filename = '/static/howru_logo.png'
 
     if not enable_gui:
         return render_template("403.html")
@@ -2786,6 +2786,13 @@ def api_show_graph():
     plt.ylabel('Memory used')
     plt.savefig('static/charts/chart.png')
     return render_template("graph.html", user_image = full_filename, name="Memory usage", url="/static/charts/chart.png")
+
+@app.route('/howru/dashboard', methods=['GET'])
+@app.route('/howru/monitoring/dashboard', methods=['GET'])
+def dashboard():
+    global data
+    load_data()
+    return render_template("dashboard.html", data=data)
 
 @app.route('/metrics', methods=['GET'])
 def api_prometheus_export():
