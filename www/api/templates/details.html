@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 {% set ns = namespace(has_labels=false) %}
 {% for obj in monitoring %}
-    {% if obj.labels %}
+    {% if obj.labels and obj.labels is mapping %}
         {% set ns.has_labels = true %}
     {% endif %}
 {% endfor %}
@@ -132,7 +132,7 @@
         {% for obj in monitoring %}
             <tr>
                 <td>{{ obj['pluginName'] }}
-                     {% if obj.labels %}
+                     {% if obj.labels and obj.labels is mapping %}
                          <br>
                          {% for key, value in obj.labels.items() %}
                     		<span class="label-box">{{ key }}:{{ value }}</span>
