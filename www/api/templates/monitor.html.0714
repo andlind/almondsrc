@@ -8,47 +8,64 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
         .server-link {
-      	 	display: inline-block;       /* ensures padding applies consistently */
-    		color: #0d6efd;              /* Bootstrap primary */
-    		font-weight: 500;
-    		text-decoration: none;
-    		padding: 4px 8px;            /* always present */
-    		border-radius: 6px;          /* always present */
-    		transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
-	}
+            display: inline-block;       /* ensures padding applies consistently */
+            color: #0d6efd;              /* Bootstrap primary */
+            font-weight: 500;
+            text-decoration: none;
+            padding: 4px 8px;            /* always present */
+            border-radius: 6px;          /* always present */
+            transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+        }
 
-	.server-link:hover {
-    		color: #fff;
-    		background-color: #0d6efd;
-	}
-	.table td, .table th {
-    		border: none;   /* removes default cell borders */
-	}
-	.table-danger {
-    		background-color: #f8d7da !important;
-	}
-	.table-warning {
-    		background-color: #fff3cd !important;
-	}
-	.table-success {
-    		background-color: #d1e7dd !important;
-	}
-	.row-critical {
-		outline: 2px solid #dc3545;   /* red outline */
-		outline-offset: -2px;         /* keeps it tight to the row */
-	}
-	.row-warning {
-		outline: 2px solid #ffc107;   /* yellow outline */
-		outline-offset: -2px;
-	}
-	.row-critical:hover, 
+        .server-link:hover {
+            color: #fff;
+            background-color: #0d6efd;
+        }
+        .table td, .table th {
+            border: none;   /* removes default cell borders */
+        }
+        .table-danger {
+            background-color: #f8d7da !important;
+        }
+        .table-warning {
+            background-color: #fff3cd !important;
+        }
+        .table-success {
+            background-color: #d1e7dd !important;
+        }
+        .row-critical {
+            outline: 2px solid #dc3545;   /* red outline */
+            outline-offset: -2px;         /* keeps it tight to the row */
+        }
+        .row-warning {
+            outline: 2px solid #ffc107;   /* yellow outline */
+            outline-offset: -2px;
+        }
+        .row-critical:hover, 
         .row-warning:hover {
-    		background-color: #f9f9f9; /* light gray, keeps it subtle */
-	}
-	.user-image {
-		border: 2px solid black;
-		border-radius: 10px;
-	}
+            background-color: #f9f9f9; /* light gray, keeps it subtle */
+        }
+        .user-image {
+            border: 2px solid black;
+            border-radius: 10px;
+        }
+
+        /* --- Custom Brown Button Styles --- */
+        .btn-brown {
+            background-color: #795548; /* Warm brown */
+            color: #ffffff !important;  /* Force white text */
+            border: 1px solid #5d4037;
+            transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+        }
+        .btn-brown:hover {
+            background-color: #5d4037; /* Darker brown on hover */
+            border-color: #4e342e;
+            color: #ffffff !important;
+        }
+        .btn-brown:active {
+            background-color: #4e342e;
+            border-color: #3e2723;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -58,7 +75,6 @@
 <div class="container my-5">
     <h1 class="mb-4 text-center">HowRU Multiserver Dashboard</h1>
 
-    <!-- Summary Widgets -->
     <div class="row mb-4">
         <div class="col-md-6">
             <div class="card text-white bg-success shadow">
@@ -80,7 +96,6 @@
         </div>
     </div>
 
-    <!-- Server Table -->
     <div class="card shadow">
         <div class="card-body">
             <table class="table table-hover table-bordered text-center">
@@ -97,24 +112,22 @@
                 </thead>
                 <tbody>
                     {% for server in servers %}
-                    <!--<tr>-->
                     <tr class="
-       			{% if server['monitor_results']['critical'] > 0 %}
-            			row-critical
-        		{% elif server['monitor_results']['warning']> 0 %}
-            			row-warning
-        		{% endif %}
-    		    ">
+                    {% if server['monitor_results']['critical'] > 0 %}
+                        row-critical
+                    {% elif server['monitor_results']['warning']> 0 %}
+                        row-warning
+                    {% endif %}
+                    ">
                         <td><a href="/howru/monitoring/details?name={{ server['name'] }}" class="server-link">{{ server.name }}</a></td>
-                        <td><a href="/howru/monitoring/dashboard?name={{ server['name'] }}"
-                        class="btn btn-sm rounded-pill px-4 shadow-sm fw-semibold text-decoration-none"
-                        style="background-color: #C19A6B; border-color: #C19A6B; color: #3E2723;">
-                        Dashboard</a></td>
-                        <!--<td><a href="/howru/monitoring/dashboard?name={{ server['name'] }}"
-                        class="btn btn-sm rounded-pill px-4 shadow-sm fw-semibold text-decoration-none text-white"
-                        style="background-color: #8B4513; border-color: #8B4513;">
-                        Dashboard
-                        </a></td>-->
+                        
+                        <td>
+                            <a href="/howru/monitoring/dashboard?name={{ server['name'] }}" 
+                               class="btn btn-sm btn-brown rounded-pill px-4 shadow-sm fw-semibold text-decoration-none">
+                               Dashboard
+                            </a>
+                        </td>
+                        
                         <td>{{ server['total_count'] }}</td>
                         <td class="text-success">{{ server['monitor_results']['ok'] }}</td>
                         <td class="text-warning">{{ server['monitor_results']['warning'] }}</td>
@@ -127,12 +140,6 @@
         </div>
     </div>
 </div>
-<div class="card shadow">
-  <div class="card shadow d-flex justify-content-center align-items-center p-4">
-    <a href="{{ url_for('api_show_tags') }}" class="btn btn-primary">
-        Search labels
-    </a>
-  </div>
-</div>
+
 </body>
 </html>

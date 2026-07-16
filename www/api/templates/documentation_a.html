@@ -125,7 +125,8 @@
 		<tr><td>api.dataDir=</td><td>/opt/almond/data</td><td>The directory from where the api should read (the) data file(s).</td></tr>
                 <tr><td>api.isContainer=</td><td>false</td><td>If your Almond runs in a docker container you should change this value to <i>true</i>, else HowRU will not be able to talk to Almond API.</td></tr>
                 <tr><td>api.isMetricsProxy=</td><td>false</td><td>Changing the value to <i>true</i> will allow the HowRU API to read metrics from multiple servers.</td></tr>
-                <tr><td>api.isProxy=</td><td>false</td><td>Changing the value to <i>true</i> will allow the HowRU API to read output from multiple servers.</td></tr>
+                <tr><td>api.isProxy=</td><td>false</td><td>Changing the value to <i>true</i> will allow the HowRU API to read output from multiple servers.<br>
+                <b>Note!</b>Using up to 1000 servers have been verified with no or little latency for HowRU Proxy/API.</td></tr>
                 <tr><td>api.metricsDir=</td><td>/opt/almond/data/metrics</td><td>The directory where Almond stores metrics, used by HowRU to forward through API calls.</td></tr>
 		<tr><td>api.multiMetrics=</td><td>false</td><td>Changing the value to 1 will allow the api to read metrics from multiple servers. Same as <i>api.isMetricsProxy</i>.</td></tr>
                 <tr><td>api.multiServer=</td><td>false</td><td>Changing the value to 1 will allow the api to read output from multiple servers. Older entry for <i>api.isProxy</i>.</td></tr>

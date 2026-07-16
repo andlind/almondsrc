@@ -55,7 +55,7 @@
 	        {% endif %}
 			    {% if not obj['pluginName'] == 'Not loaded' %}
 			    <td><a href="/almond/admin?page=graph&name={{obj['pluginName']}}"> {{ obj['pluginName'] }} </a>
-                            {% if obj.labels %}
+                            {% if obj.labels is mapping %}
                                <br>
                                {% for key, value in obj.labels.items() %}
             				<span class="label-box">{{ key }}:{{ value }}</span>
