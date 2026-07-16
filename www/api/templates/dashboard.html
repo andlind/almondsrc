@@ -37,17 +37,20 @@
 </head>
 
 <body class="bg-gray-100 dark:bg-gray-900 dark:text-gray-200 p-6 transition-colors">
-{% set has_hw = (
-    data.host.system.cpu or
-    data.host.system.memory or
-    data.host.system.disks or
-    data.host.system.bios or
-    data.host.system.chassis or
-    data.host.system.virtualization or
-    data.host.system.pci or
-    data.host.system.usb or
-    data.host.system.network
-) %}
+{% set has_hw = false %}
+{% if data.host.system is defined %}
+    {% set has_hw = (
+        data.host.system.cpu or
+        data.host.system.memory or
+        data.host.system.disks or
+        data.host.system.bios or
+        data.host.system.chassis or
+        data.host.system.virtualization or
+        data.host.system.pci or
+        data.host.system.usb or
+        data.host.system.network
+    ) %}
+{% endif %}
   <!-- Top Bar -->
   <div class="max-w-4xl mx-auto mb-4 flex justify-between items-center">
 
@@ -93,10 +96,11 @@
       <p class="text-gray-700 dark:text-gray-300"><strong>Plugin File Update:</strong> {{ data.host.pluginfileupdatetime }}</p>
 
       <h2 class="font-semibold mt-4 text-gray-900 dark:text-gray-100">Operating System</h2>
-      <p class="text-gray-700 dark:text-gray-300"><strong>System:</strong> {{ data.host.system.os.sysname }}</p>
-      <p class="text-gray-700 dark:text-gray-300"><strong>Release:</strong> {{ data.host.system.os.release }}</p>
-      <p class="text-gray-700 dark:text-gray-300"><strong>Machine:</strong> {{ data.host.system.os.machine }}</p>
-      <p class="text-gray-700 dark:text-gray-300"><strong>Version:</strong> {{ data.host.system.os.version }}</p>
+      <p class="text-gray-700 dark:text-gray-300"><strong>System:</strong> 
+      {{ data.host.system.os.sysname if data.host.system is defined else 'N/A' }}
+      <p class="text-gray-700 dark:text-gray-300"><strong>Release:</strong> {{ data.host.system.os.release if data.host.system is defined else 'N/A' }}</p>
+      <p class="text-gray-700 dark:text-gray-300"><strong>Machine:</strong> {{ data.host.system.os.machine if data.host.system is defined else 'N/A'}}</p>
+      <p class="text-gray-700 dark:text-gray-300"><strong>Version:</strong> {{ data.host.system.os.version if data.host.system is defined else 'N/A'}}</p>
     <!--</div>-->
     <!--<button onclick="document.getElementById('hw-details').classList.toggle('hidden')"
         class="px-4 py-2 bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 

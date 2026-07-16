@@ -15,6 +15,7 @@ import re
 import shutil
 import os, os.path
 import jwt
+import copy
 import matplotlib.pyplot as plt
 from venv import logger
 from flask import Flask, request, abort, jsonify, render_template, redirect, url_for, send_from_directory, session, make_response
@@ -2771,6 +2772,97 @@ def api_show_details():
         monitoring = this_data['monitoring']
         return render_template("details.html", user_image=full_filename, server=hostname, monitoring=monitoring)
 
+@app.route('/howru/monitoring/tags', methods=['GET', 'POST'])
+@app.route('/api/v1/tags', methods=['GET'])
+@app.route('/api/v1/labels', methods=['GET'])
+@app.route('/api/tags', methods=['GET'])
+@app.route('/monitoring/tags', methods=['GET', 'POST'])
+def api_show_tags():
+    global multi_server
+    global logger
+    global data
+
+    if not multi_server:
+        response = {
+            "response": "Tag search is only available for proxy installations",
+            "info": "You can see local tags under the plugins tab",
+            "return_code": 2
+        }
+        return jsonify(response), 404
+    useTemplate = False if request.path.startswith('/api') else True
+    logo_file = '/static/howru_logo.png'
+    load_data()
+    tag_name = request.values.get('name') or request.values.get('key')
+    tag_value = request.values.get('value')
+    state_param = request.values.get('state')
+    if state_param and state_param.isdigit():
+        state_code = int(state_param)
+    else:
+        state_code = 1972
+    unique_labels = set()
+    for server in data.get("server", []):
+        if not isinstance(server, dict):
+            print("DEBUG: Is not a dict")
+            continue
+        monitoring_list = server.get("monitoring", [])
+        for monitor in monitoring_list:
+            labels = monitor.get("labels")
+            if isinstance(labels, dict):
+                unique_labels.update(labels.keys())
+    unique_labels_list = sorted(list(unique_labels))
+    if tag_name:
+        matching_servers = []
+        for server in data.get("server", []):
+            monitoring_list = server.get("monitoring", [])
+            matching_monitors = []
+            for monitor in monitoring_list:
+                labels = monitor.get("labels")
+                label_match = False
+                if isinstance(labels, dict): 
+                    if (tag_value):
+                        if labels.get(tag_name) == tag_value:
+                            label_match = True
+                            #matching_monitors.append(monitor)
+                    else:
+                        if tag_name in labels:
+                            label_match = True
+                            #matching_monitors.append(monitor)
+                if label_match:
+                    if state_code != 1972:
+                        plugin_status = monitor.get("pluginStatusCode")
+                        if plugin_status is not None and int(plugin_status) == state_code:
+                            matching_monitors.append(monitor)
+                    else:
+                        matching_monitors.append(monitor)
+            if matching_monitors:
+                server_copy = copy.deepcopy(server)
+                server_copy["monitoring"] = matching_monitors
+                matching_servers.append(server_copy)
+        if not useTemplate:
+            if not matching_servers:
+                if state_code == 1972:
+                    error_response = {
+                        "response": f"No match for '{tag_name}':'{tag_value}'",
+                        "available_keys": unique_labels_list
+                    }
+                else:
+                    error_response = {
+                        "response": f"No match for '{tag_name}':'{tag_value}' with plugin status code '{state_param}'",
+                    }
+                return jsonify(error_response), 404
+            return jsonify(matching_servers)
+        else:
+            return render_template('labelsearch.html', user_image=logo_file, data=matching_servers)
+    if useTemplate:
+        return render_template('tags.html', user_image=logo_file, labels=unique_labels_list)
+    else:
+        response = {
+            "response": "No key and value to process labels where passed to the server",
+            "return_code": 2,
+            "availabe_keys": unique_labels_list
+        }
+        return jsonify(response)
+
 @app.route('/monitoring/graph', methods=['GET', 'POST'])
 @app.route('/howru/monitoring/graph', methods=['GET', 'POST'])
 def api_show_graph():
@@ -2791,8 +2883,19 @@ def api_show_graph():
 @app.route('/howru/monitoring/dashboard', methods=['GET'])
 def dashboard():
     global data
+    global multi_server
+
     load_data()
-    return render_template("dashboard.html", data=data)
+    if not multi_server:
+        #load_data()
+        return render_template("dashboard.html", data=data)
+    else:
+        servername = request.args.get("name")
+        for x in data['server']:
+            this_name = x['host']['name']
+            if servername == this_name:
+                return render_template("dashboard.html", data=x)
+        return "403: No server found"
 
 @app.route('/metrics', methods=['GET'])
 def api_prometheus_export():

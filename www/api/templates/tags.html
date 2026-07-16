@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Server Monitoring Tag Search</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background-color: #f4f7f6;
+        }
+        .form-container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        h2 { color: #333; margin-top: 0; }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        select, input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        input[type="submit"] {
+            background-color: #491c0f;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+        }
+        input[type="submit"]:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+<img src="{{ user_image }}" alt="User Image" class="logo">
+<div class="form-container">
+    <h2>Search Monitoring Labels</h2>
+    <form method="POST" action="">
+        
+        <div class="form-group">
+            <label for="key">Select Tag Key (Required):</label>
+            <select name="key" id="key" required>
+                <option value="" disabled selected>-- Select a key --</option>
+                {% for label in labels %}
+                    <option value="{{ label }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="value">Tag Value (Optional):</label>
+            <input type="text" name="value" id="value" placeholder="e.g. demo, production">
+        </div>
+
+        <div class="form-group">
+            <label for="state">Monitor State (Optional):</label>
+            <select name="state" id="state">
+                <option value="1972">All States</option>
+                <option value="0">0 (OK)</option>
+                <option value="1">1 (Warning)</option>
+                <option value="2">2 (Critical)</option>
+                <option value="3">3 (Unknown)</option>
+            </select>
+        </div>
+
+        <input type="submit" value="Label search">
+    </form>
+</div>
+<div style="text-align: center; width: 100%; margin: 20px 0;">
+    <a href="{{ url_for('api_show_status') }}" 
+       class="text-decoration-none text-muted d-inline-flex align-items-center gap-2"
+       style="margin: 0 auto; display: inline-flex !important;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+            <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8z"/>
+        </svg>
+        Go back 
+    </a>
+</div>
+</body>
+</html>
