@@ -2,7 +2,7 @@
 #define _XOPEN_SOURCE 700
 #define _DEFAULT_SOURCE
 #ifndef VERSION
-#define VERSION "0.9.30"
+#define VERSION "26.1.0"
 #endif
 #include "config.h"
 #include <stdio.h>
@@ -7265,7 +7265,7 @@ void initialLogging() {
         printf("Starting almond version %s.\n", VERSION);
         initConstants();
         writeLog("Almond constants initialized.", 0, 1);
-        writeLog("Starting almond (0.9.30)...", 0, 1);
+        writeLog("Starting almond (26.1.0)...", 0, 1);
 }
 
 int closeFileHandler() {
