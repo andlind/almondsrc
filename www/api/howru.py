@@ -13,10 +13,17 @@ import subprocess
 import hashlib
 import re
 import shutil
+import smtplib
+import tempfile
+import urllib.request
+import urllib.error
 import os, os.path
 import jwt
 import copy
+import requests
 import matplotlib.pyplot as plt
+from email.mime.text import MIMEText
+from urllib.parse import urlparse
 from venv import logger
 from flask import Flask, request, abort, jsonify, render_template, redirect, url_for, send_from_directory, session, make_response
 from werkzeug.datastructures import MultiDict
@@ -95,6 +102,127 @@ sleep_time = 5
 proxy_cleaner_seconds = 360
 aliases = []
 valid_aliases = []
+proxy_alert_state = {}
+proxy_alert_state_file = "/opt/almond/data/proxy_alert_state.json"
+
+# ============================================================================
+# PROXY ALERTING FEATURE
+# ============================================================================
+# Purpose: Fallback alerting when native C program alerting is unavailable
+#
+# Use Case 1 (Primary): Direct Almond host monitoring
+#   - Almond (C code) runs on the monitored server
+#   - Uses alerting.conf and C-level alert parameters
+#   - Sends alerts directly via SMTP, Slack, etc.
+#
+# Use Case 2 (Fallback): Proxy aggregation with restricted network access
+#   - Multiple hosts push JSON data to HowRU proxy
+#   - C program alerting unavailable due to:
+#     * DMZ rules / network policies prevent outbound alerts
+#     * Containerized hosts without direct access to SMTP/webhooks
+#     * Data collected by remote agents (no local C program)
+#   - HowRU proxy collects aggregated data and sends alerts on behalf of hosts
+#   - Uses proxyalert.conf with server-scoped routing
+#
+# Design: Completely independent from C program alerting
+#   - Separate config file (proxyalert.conf vs alerting.conf)
+#   - Default-off (api.useProxyAlerting=false prevents interference)
+#   - Only active in multi_server/proxy mode
+#   - State tracking prevents alert spam during polling cycles
+# ============================================================================
+use_proxy_alerting = False
+
+
+def normalize_alert_route_config(config):
+    if not isinstance(config, dict):
+        return {"defaults": {}, "checks": {}, "servers": {}}
+    defaults = {}
+    checks = {}
+    servers = {}
+    for key, value in config.items():
+        if not isinstance(key, str):
+            continue
+        if key.startswith("server."):
+            remainder = key[len("server."):]
+            if "." not in remainder:
+                continue
+            server_ref, rest = remainder.split(".", 1)
+            server_map = servers.setdefault(server_ref, {"checks": {}})
+            check_map = server_map["checks"]
+            if rest.startswith("check."):
+                inner = rest[len("check."):]
+                if "." in inner:
+                    check_ref, field = inner.split(".", 1)
+                    check_map.setdefault(check_ref, {})[field] = value
+                else:
+                    check_map.setdefault(inner, {})["enabled"] = value
+                continue
+            if "." in rest:
+                check_ref, field = rest.split(".", 1)
+                check_map.setdefault(check_ref, {})[field] = value
+            else:
+                check_map.setdefault(rest, {})["enabled"] = value
+            continue
+        if key.startswith("check."):
+            remainder = key[len("check."):]
+            if "." in remainder:
+                check_ref, field = remainder.split(".", 1)
+                checks.setdefault(check_ref, {})[field] = value
+            continue
+        defaults[key] = value
+    return {"defaults": defaults, "checks": checks, "servers": servers}
+
+
+def find_proxy_alert_route(config, server_name=None, check_name=None, check_index=None):
+    if not isinstance(config, dict):
+        return {}
+    route = {}
+    server_map = config.get("servers", {})
+    if server_name:
+        candidates = []
+        if check_index is not None:
+            candidates.append(str(check_index))
+        if check_name:
+            candidates.extend([str(check_name), str(check_name).lower()])
+        target = server_map.get(str(server_name), {})
+        check_map = target.get("checks", {})
+        for candidate in candidates:
+            if candidate in check_map:
+                route.update(check_map[candidate])
+    check_map = config.get("checks", {})
+    candidates = []
+    if check_index is not None:
+        candidates.append(str(check_index))
+    if check_name:
+        candidates.extend([str(check_name), str(check_name).lower()])
+    for candidate in candidates:
+        if candidate in check_map:
+            route.update(check_map[candidate])
+    return route
+
+
+def resolve_proxy_alert_state_file():
+    global proxy_alert_state_file
+    candidates = [
+        proxy_alert_state_file,
+        "/opt/almond/data/proxy_alert_state.json",
+        os.path.join(os.getcwd(), "proxy_alert_state.json"),
+        os.path.join(tempfile.gettempdir(), "almond_proxy_alert_state.json"),
+    ]
+    for candidate in candidates:
+        directory = os.path.dirname(candidate)
+        if directory and not os.path.isdir(directory):
+            try:
+                os.makedirs(directory, exist_ok=True)
+            except OSError:
+                continue
+        try:
+            with open(candidate, "a", encoding="utf-8"):
+                pass
+            return candidate
+        except OSError:
+            continue
+    return candidates[-1]
 
 ok_quotes = ["I'm ok, thanks for asking!", "I'm all fine, hope you are too!", "I think I never felt better!", "I feel good, I knew that I would", "I feel happy from head to feet"]
 warn_quotes = ["I'm so so", "I think someone should check me out", "Something is itching, scratch my back!", "I think I'm having a cold", "I'm not feeling all well"]
@@ -102,7 +230,7 @@ crit_quotes = ["I'm not fine", "I feel sick, please call the doctor", "Not good,
 
 MAX_META_READ = 64 * 1024  # read first 64 KB for metadata
 
-current_version = '0.9.30'
+current_version = '26.2.0'
 __STARTED__ = datetime.datetime.now()
 
 app.secret_key = 'BAD_SECRET_KEY'
@@ -120,6 +248,327 @@ def findPos(entry):
 def parse_line(line):
     key, value = line.strip().split('=', 1)
     return key.strip(), value.strip()
+
+def bool_from_value(value):
+    return str(value).strip().lower() in ["1", "true", "yes", "on"]
+
+
+def load_proxy_alert_config():
+    global use_proxy_alerting
+    config = {}
+    if not use_proxy_alerting:
+        return config
+    path = "/etc/almond/proxyalert.conf"
+    if not os.path.isfile(path):
+        return config
+    try:
+        with open(path, "r", encoding="utf-8") as conf:
+            for line in conf:
+                raw = line.strip()
+                if not raw or raw.startswith("#") or "=" not in raw:
+                    continue
+                key, value = parse_line(raw)
+                config[key] = value
+    except OSError as exc:
+        logger.warning(f"Unable to read proxy alert config: {exc}")
+    return config
+
+
+def load_proxy_alert_state():
+    global proxy_alert_state_file
+    proxy_alert_state_file = resolve_proxy_alert_state_file()
+    if not os.path.isfile(proxy_alert_state_file):
+        return {}
+    try:
+        with open(proxy_alert_state_file, "r", encoding="utf-8") as state_file:
+            raw = json.load(state_file)
+            return raw if isinstance(raw, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_proxy_alert_state(state):
+    global proxy_alert_state_file
+    proxy_alert_state_file = resolve_proxy_alert_state_file()
+    try:
+        directory = os.path.dirname(proxy_alert_state_file)
+        if directory and not os.path.isdir(directory):
+            os.makedirs(directory, exist_ok=True)
+        with open(proxy_alert_state_file, "w", encoding="utf-8") as state_file:
+            json.dump(state, state_file, sort_keys=True)
+    except OSError as exc:
+        logger.warning(f"Unable to persist proxy alert state: {exc}")
+
+
+def send_slack_alert(webhook_url, message):
+    if not webhook_url:
+        return False
+    payload = json.dumps({"text": message}).encode("utf-8")
+    req = urllib.request.Request(webhook_url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            response.read()
+        logger.info("Slack alert sent successfully.")
+        return True
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        logger.warning(f"Could not send Slack alert: {exc}")
+        return False
+
+
+def format_alert_email_html(server_name, check_name, status_code, output, message, status_label):
+    status_colors = {"OK": "#28a745", "WARNING": "#ffc107", "CRITICAL": "#dc3545", "UNKNOWN": "#6c757d"}
+    color = status_colors.get(status_label, "#999999")
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    html_body = f"""
+    <html>
+    <head>
+        <style>
+            body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333; }}
+            .container {{ max-width: 600px; margin: 0 auto; border: 1px solid #ddd; border-radius: 5px; overflow: hidden; }}
+            .header {{ background-color: {color}; color: white; padding: 20px; text-align: center; }}
+            .header h1 {{ margin: 0; font-size: 24px; }}
+            .status-badge {{ display: inline-block; background-color: {color}; color: white; padding: 5px 15px; border-radius: 3px; font-weight: bold; margin-top: 10px; }}
+            .content {{ padding: 20px; }}
+            .field {{ margin-bottom: 15px; }}
+            .field-label {{ font-weight: bold; color: #555; }}
+            .field-value {{ color: #333; padding: 5px 0; }}
+            .output-box {{ background-color: #f5f5f5; border-left: 4px solid {color}; padding: 10px; margin-top: 10px; font-family: monospace; white-space: pre-wrap; word-wrap: break-word; }}
+            .footer {{ background-color: #f9f9f9; padding: 10px 20px; border-top: 1px solid #ddd; font-size: 12px; color: #666; text-align: center; }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>Almond Monitoring Alert</h1>
+                <div class="status-badge">{status_label}</div>
+            </div>
+            <div class="content">
+                <div class="field">
+                    <div class="field-label">Server:</div>
+                    <div class="field-value">{server_name}</div>
+                </div>
+                <div class="field">
+                    <div class="field-label">Check:</div>
+                    <div class="field-value">{check_name}</div>
+                </div>
+                <div class="field">
+                    <div class="field-label">Status:</div>
+                    <div class="field-value">{status_label}</div>
+                </div>
+                <div class="field">
+                    <div class="field-label">Message:</div>
+                    <div class="field-value">{message}</div>
+                </div>
+                {f'<div class="field"><div class="field-label">Details:</div><div class="output-box">{output}</div></div>' if output else ''}
+                <div class="field">
+                    <div class="field-label">Timestamp:</div>
+                    <div class="field-value">{timestamp}</div>
+                </div>
+            </div>
+            <div class="footer">
+                <p>This is an automated alert from Almond monitoring system (proxy mode).</p>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
+    return html_body.strip()
+
+
+def send_email_alert(smtp_url, username, password, from_addr, to_addr, subject, body, is_html=False):
+    if not smtp_url or not to_addr:
+        return False
+    try:
+        parsed = urlparse(smtp_url)
+        smtp_server = parsed.hostname or "localhost"
+        smtp_port = parsed.port or (465 if parsed.scheme == "smtps" else 25)
+        email_message = MIMEText(body, "html" if is_html else "plain")
+        email_message["From"] = from_addr
+        email_message["To"] = to_addr
+        email_message["Subject"] = subject
+        if parsed.scheme == "smtps":
+            server = smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=10)
+        else:
+            server = smtplib.SMTP(smtp_server, smtp_port, timeout=10)
+            if parsed.scheme == "smtp" and server.has_extn("STARTTLS"):
+                server.starttls()
+        if username:
+            server.login(username, password or "")
+        server.sendmail(from_addr, [to_addr], email_message.as_string())
+        server.quit()
+        logger.info("Email alert sent successfully.")
+        return True
+    except (smtplib.SMTPException, OSError, ValueError) as exc:
+        logger.warning(f"Could not send email alert: {exc}")
+        return False
+
+
+def send_ilert_alert(ilert_webhook_url, ilert_api_key, message, server_name, status_code):
+    if not ilert_webhook_url:
+        return False
+    payload = {
+        "title": f"[{server_name}] {status_code}",
+        "message": message,
+        "status": "triggered",
+        "source": "almond-proxy",
+    }
+    headers = {"Content-Type": "application/json"}
+    if ilert_api_key:
+        headers["Authorization"] = f"Bearer {ilert_api_key}"
+    try:
+        response = requests.post(ilert_webhook_url, json=payload, headers=headers, timeout=10)
+        response.raise_for_status()
+        return True
+    except requests.RequestException as exc:
+        logger.warning(f"Could not send ilert alert: {exc}")
+        return False
+
+
+def send_alertmanager_alert(alertmanager_url, message, server_name, status_code):
+    if not alertmanager_url:
+        return False
+    payload = [{
+        "labels": {
+            "alertname": "almond_proxy_alert",
+            "server": server_name,
+            "severity": "critical" if int(status_code) >= 2 else "warning",
+        },
+        "annotations": {
+            "summary": message,
+        },
+    }]
+    try:
+        response = requests.post(alertmanager_url, json=payload, timeout=10)
+        response.raise_for_status()
+        return True
+    except requests.RequestException as exc:
+        logger.warning(f"Could not send Alertmanager alert: {exc}")
+        return False
+
+
+def send_pagerduty_alert(routing_key, message, server_name, status_code):
+    if not routing_key:
+        return False
+    payload = {
+        "routing_key": routing_key,
+        "event_action": "trigger",
+        "dedup_key": f"almond-{server_name}-{status_code}",
+        "payload": {
+            "summary": message,
+            "severity": "critical" if int(status_code) >= 2 else "warning",
+            "source": server_name,
+            "custom_details": {"status_code": status_code, "server": server_name}
+        }
+    }
+    try:
+        response = requests.post("https://events.pagerduty.com/v2/enqueue", json=payload, timeout=10)
+        response.raise_for_status()
+        return True
+    except requests.RequestException as exc:
+        logger.warning(f"Could not send PagerDuty alert: {exc}")
+        return False
+
+
+def send_opsgenie_alert(api_key, message, server_name, status_code, p2_priority=2, p5_priority=5):
+    if not api_key:
+        return False
+    priority = p2_priority if int(status_code) == 1 else p5_priority
+    payload = {
+        "message": f"[{server_name}] {message}",
+        "description": message,
+        "priority": str(priority),
+        "alias": f"almond-{server_name}-{status_code}",
+        "source": "almond-proxy",
+    }
+    try:
+        response = requests.post("https://api.opsgenie.com/v2/alerts", json=payload, headers={"Authorization": f"GenieKey {api_key}", "Content-Type": "application/json"}, timeout=10)
+        response.raise_for_status()
+        return True
+    except requests.RequestException as exc:
+        logger.warning(f"Could not send Opsgenie alert: {exc}")
+        return False
+
+
+def proxy_alert_if_needed(raw_data):
+    global proxy_alert_state, use_proxy_alerting
+    if not use_proxy_alerting:
+        return
+    if not isinstance(raw_data, dict):
+        return
+    if "server" not in raw_data:
+        return
+    config = load_proxy_alert_config()
+    if not config:
+        return
+    normalized = normalize_alert_route_config(config)
+    default_config = normalized["defaults"]
+    if not (bool_from_value(default_config.get("send_alerts_to_slack")) or bool_from_value(default_config.get("send_alerts_to_email")) or bool_from_value(default_config.get("send_alerts_to_ilert")) or bool_from_value(default_config.get("send_alerts_to_prometheus")) or bool_from_value(default_config.get("send_alerts_to_pagerduty")) or bool_from_value(default_config.get("send_alerts_to_opsgenie"))):
+        return
+
+    proxy_alert_state = load_proxy_alert_state()
+    status_labels = {"0": "OK", "1": "WARNING", "2": "CRITICAL", "3": "UNKNOWN"}
+
+    def dispatch_alert(server_name, check_name, status_code, output, route):
+        status_label = status_labels.get(str(status_code), "UNKNOWN")
+        if status_code == 0:
+            message = f"[Almond] {server_name}: {check_name} recovered to {status_label}."
+        else:
+            message = f"[Almond] {server_name}: {check_name} is {status_label}. {output}"
+
+        slack_url = route.get("slack_webhook_url") or default_config.get("slack_webhook_url")
+        smtp_url = route.get("smtp_url") or default_config.get("smtp_url")
+        email_recipient = route.get("email_recipient") or default_config.get("email_recipient")
+        email_from = route.get("email_from") or default_config.get("email_from", "almond@localhost")
+        email_subject = route.get("email_subject") or default_config.get("email_subject", "Almond Monitoring Alert")
+        ilert_webhook_url = route.get("ilert_webhook_url") or default_config.get("ilert_webhook_url")
+        ilert_api_key = route.get("ilert_api_key") or default_config.get("ilert_api_key")
+        prometheus_url = route.get("prometheus_alertmanager_url") or default_config.get("prometheus_alertmanager_url")
+        pagerduty_key = route.get("pagerduty_routing_key") or default_config.get("pagerduty_routing_key")
+        opsgenie_key = route.get("opsgenie_api_key") or default_config.get("opsgenie_api_key")
+        opsgenie_p2_priority = int(route.get("opsgenie_p2_priority", default_config.get("opsgenie_p2_priority", 2)))
+        opsgenie_p5_priority = int(route.get("opsgenie_p5_priority", default_config.get("opsgenie_p5_priority", 5)))
+
+        if bool_from_value(default_config.get("send_alerts_to_slack")) or bool_from_value(route.get("send_alerts_to_slack")):
+            send_slack_alert(slack_url, message)
+        if bool_from_value(default_config.get("send_alerts_to_email")) or bool_from_value(route.get("send_alerts_to_email")):
+            if smtp_url and email_recipient:
+                email_body = format_alert_email_html(server_name, check_name, status_code, output, message, status_label)
+                send_email_alert(
+                    smtp_url,
+                    route.get("smtp_username") or default_config.get("smtp_username", ""),
+                    route.get("smtp_password") or default_config.get("smtp_password", ""),
+                    email_from,
+                    email_recipient,
+                    email_subject,
+                    email_body,
+                    is_html=True,
+                )
+        if bool_from_value(default_config.get("send_alerts_to_ilert")) or bool_from_value(route.get("send_alerts_to_ilert")):
+            send_ilert_alert(ilert_webhook_url, ilert_api_key, message, server_name, status_code)
+        if bool_from_value(default_config.get("send_alerts_to_prometheus")) or bool_from_value(route.get("send_alerts_to_prometheus")):
+            send_alertmanager_alert(prometheus_url, message, server_name, status_code)
+        if bool_from_value(default_config.get("send_alerts_to_pagerduty")) or bool_from_value(route.get("send_alerts_to_pagerduty")):
+            send_pagerduty_alert(pagerduty_key, message, server_name, status_code)
+        if bool_from_value(default_config.get("send_alerts_to_opsgenie")) or bool_from_value(route.get("send_alerts_to_opsgenie")):
+            send_opsgenie_alert(opsgenie_key, message, server_name, status_code, opsgenie_p2_priority, opsgenie_p5_priority)
+
+    for server in raw_data.get("server", []):
+        server_name = server.get("host", {}).get("name", "unknown-server")
+        for check_index, check in enumerate(server.get("monitoring", [])):
+            check_name = check.get("name") or check.get("pluginName") or "unknown-check"
+            status_code = int(check.get("pluginStatusCode", "0") or 0)
+            route = find_proxy_alert_route(normalized, server_name=server_name, check_name=check_name, check_index=check_index)
+            route = {**default_config, **route}
+            key = f"{server_name}:{check_name}"
+            previous = proxy_alert_state.get(key)
+            if previous is not None and str(previous) == str(status_code):
+                continue
+            proxy_alert_state[key] = str(status_code)
+            if previous is None and status_code == 0:
+                continue
+            dispatch_alert(server_name, check_name, status_code, check.get("pluginOutput", ""), route)
+    save_proxy_alert_state(proxy_alert_state)
+
 
 def make_filename(hostname, datatype):
     ts = time.strftime("%Y%m%d-%H%M%S")
@@ -407,6 +856,11 @@ def load_conf():
     otlp_export_interval  = int(config.get('api.otelExportInterval', 60))
     if otlp_export_interval < 30:
         otlp_export_interval = 30
+    # enable proxy alerts only when explicitly enabled in the API config
+    use_proxy_alerting_config = config.get('api.useProxyAlerting', 'false')
+    global use_proxy_alerting
+    use_proxy_alerting = bool_from_value(use_proxy_alerting_config)
+
     #enable_aliases = bool(int(config.get('api.enableAliases', 0)))
     r_aliases = config.get('api.enableAliases', 'false')
     if r_aliases in ["1", "true", "yes", "on"]:
@@ -539,6 +993,7 @@ def load_data():
             data["server"].append(data_set)
             f.close()
             count = count + 1
+       proxy_alert_if_needed(data)
     else:
        #print("Running in single mode");
        #f = open("monitor_data.json", "r")
@@ -640,41 +1095,55 @@ def api_list_jobs(sorted=False):
     logger.info("Running api_list_jobs")
     load_data()
     check_wsgi_init()
-    if (multi_server):
+    
+    if multi_server:
         server_jobs = []
-        servers = data['server']
+        servers = data.get('server', [])
         for host in servers:
             x = 0
-            server = {}
-            jobs = [] 
-            name = host.get('host', {}).get('name')
-            #print(f"Name: {name}")
-            mon = host['monitoring']
+            jobs = []
+            name = host.get('host', {}).get('name', 'Unknown')
+            
+            # Safely fetch monitoring list (defaults to empty list if key is missing)
+            mon = host.get('monitoring', [])
+            
             for dictionary in mon:
-                if (sorted):
-                    jobs.append(dictionary["name"])
+                if sorted:
+                    jobs.append(dictionary.get("name"))
                 else:
-                    job_obj = {'id': x, 'name': dictionary["name"], 'description': dictionary["pluginName"]}
+                    job_obj = {
+                        'id': x, 
+                        'name': dictionary.get("name"), 
+                        'description': dictionary.get("pluginName")
+                    }
                     jobs.append(job_obj)
                     x += 1
-            if (sorted):
+                    
+            if sorted:
                 jobs.sort()
+                
             server = {'server': name, 'jobs': jobs}
             server_jobs.append(server)
+            
         return jsonify(server_jobs)
     else:
-        mon = data['monitoring']
+        mon = data.get('monitoring', [])
         jobs = []
         for dictionary in mon:
-             if (sorted):
-                 jobs.append(dictionary["name"])
-             else:
-                 obj = {'id': x, 'name': dictionary["name"], 'description': dictionary["pluginName"]}
-                 jobs.append(obj)
-                 x += 1
-        if (sorted):
+            if sorted:
+                jobs.append(dictionary.get("name"))
+            else:
+                obj = {
+                    'id': x, 
+                    'name': dictionary.get("name"), 
+                    'description': dictionary.get("pluginName")
+                }
+                jobs.append(obj)
+                x += 1
+        if sorted:
             jobs.sort()
-    return jsonify(jobs)
+            
+        return jsonify(jobs)
 
 def api_get_plugin_run(last=True):
     global data, multi_server, logger
@@ -714,40 +1183,102 @@ def api_get_maintenance_list(showAll=True):
     x = 0
     logger.info("Running api_get_maintenance_list")
     load_data()
-    if (multi_server):
+    
+    if multi_server:
         maintenance_list = []
-        servers = data['server']
+        # Use .get() with a default empty list
+        servers = data.get('server', [])
+        
         for host in servers:
             x = 0
-            server = {}
             maintenance = []
+            # Use .get() chained for safer nested lookup
             name = host.get('host', {}).get('name')
-            mon = host['monitoring']
+            # Use .get() with a default empty list
+            mon = host.get('monitoring', [])
+            
             for dictionary in mon:
-                maint_obj = {'id': x, 'name': dictionary["name"], 'maintenance': dictionary["maintenance"]}
-                if (showAll):                
+                maint_obj = {
+                    'id': x, 
+                    'name': dictionary.get("name"), 
+                    'maintenance': dictionary.get("maintenance")
+                }
+                
+                if showAll:
                     maintenance.append(maint_obj)
                 else:
-                    if dictionary["maintenance"] == "true":
+                    if dictionary.get("maintenance") == "true":
                         maintenance.append(maint_obj)
                 x += 1
+                
             server = {'server': name, 'status': maintenance}
             maintenance_list.append(server)
+            
         return jsonify(maintenance_list)
+        
     else:
-        mon = data['monitoring']
+        # Use .get() with a default empty list
+        mon = data.get('monitoring', [])
         maintenance_list = []
+        
         for dictionary in mon:
-            obj = {'id': x,'name': dictionary["name"], 'maintenance': dictionary["maintenance"]}
-            if (showAll):
+            obj = {
+                'id': x,
+                'name': dictionary.get("name"), 
+                'maintenance': dictionary.get("maintenance")
+            }
+            
+            if showAll:
                 maintenance_list.append(obj)
             else:
-                if dictionary["maintenance"] == "true":
+                if dictionary.get("maintenance") == "true":
                     maintenance_list.append(obj)
             x += 1
-        if not (showAll) and not maintenance_list:
-            return {'maintenance_list':'empty'}
+            
+        if not showAll and not maintenance_list:
+            return {'maintenance_list': 'empty'}
+            
     return jsonify(maintenance_list)
+
+#def api_get_maintenance_list(showAll=True):
+#    global multi_server, data, logger
+#    x = 0
+#    logger.info("Running api_get_maintenance_list")
+#    load_data()
+#    if (multi_server):
+#        maintenance_list = []
+#        servers = data['server']
+#        for host in servers:
+#            x = 0
+#            server = {}
+#            maintenance = []
+#            name = host.get('host', {}).get('name')
+#            mon = host['monitoring']
+#            for dictionary in mon:
+#                maint_obj = {'id': x, 'name': dictionary["name"], 'maintenance': dictionary["maintenance"]}
+#                if (showAll):                
+#                    maintenance.append(maint_obj)
+#                else:
+#                    if dictionary["maintenance"] == "true":
+#                        maintenance.append(maint_obj)
+#                x += 1
+#            server = {'server': name, 'status': maintenance}
+#            maintenance_list.append(server)
+#        return jsonify(maintenance_list)
+#    else:
+#        mon = data['monitoring']
+#        maintenance_list = []
+#        for dictionary in mon:
+#            obj = {'id': x,'name': dictionary["name"], 'maintenance': dictionary["maintenance"]}
+#            if (showAll):
+#                maintenance_list.append(obj)
+#            else:
+#                if dictionary["maintenance"] == "true":
+#                    maintenance_list.append(obj)
+#            x += 1
+#        if not (showAll) and not maintenance_list:
+#            return {'maintenance_list':'empty'}
+#    return jsonify(maintenance_list)
 
 def extract_all_checks():
     """
@@ -834,35 +1365,197 @@ def init_wsgi():
     global multi_server, server_list_loaded, server_list, data, wsgi_init
     load_conf()
     os.chdir(data_dir)
-    if (multi_server):
-        if (server_list_loaded == 0):
+    if multi_server:
+        if server_list_loaded == 0:
             set_file_name()
             load_data()
-            s_data = data["server"]
-            for host in s_data:
-                server_name = host["host"]["name"]
-                server_list.append(server_name)
+            s_data = data.get("server", [])
+            #print(f"DEBUG s_data: {s_data}", flush=True)
+            
+            for item in s_data:
+                # print(f"DEBUG item: {item}", flush=True)
+                # Handles both {"host": {"name": "srv1"}} and {"name": "srv1"}
+                if isinstance(item, dict):
+                    host_dict = item.get("host", item)
+                    server_name = host_dict.get("name")
+                    if server_name:
+                        server_list.append(server_name)
+                        
             server_list_loaded = 1
     wsgi_init = True
 
+#def api_search_labels(key, value, server, verbose=False):
+#    global data, multi_server
+#    
+#    results = []
+#
+#    if server is None:
+#        # all servers (or not multimode)
+#        if multi_server:
+#            results = []
+#            for x in data['server']:
+#                server_matches = []
+#                host_name = x['host']['name']
+#                obj = x['monitoring']
+#                for y in obj:
+#                    labels = y.get('labels')
+#                    if not labels or labels == "none" or not isinstance(labels, dict):
+#                        continue
+#                    name = y['name']
+#                    if key is None:
+#                        if value in labels.values():
+#                            server_matches.append(y if verbose else {"name": name, "labels": labels})
+#                    elif value is None:
+#                        if key in labels:
+#                            server_matches.append(y if verbose else {"name": name, "labels": labels})
+#                    else:
+#                        if labels.get(key) == value:
+#                            server_matches.append(y if verbose else {"name": name, "labels": labels})
+#                
+#                if server_matches:    
+#                    results.append({
+#                        "server": host_name,
+#                        "matches": server_matches
+#                    })
+#
+#            if key is None:
+#                response = {
+#                    "value": value,
+#                    "results": results
+#                }
+#            elif value is None:
+#                response = {
+#                    "key": key,
+#                    "results": results
+#                }
+#            else:
+#                response = {
+#                    "keypair": f"{key}={value}",
+#                    "results": results
+#            }
+#            return response
+#
+#        else:
+#            obj = data['monitoring']
+#            for x in obj:
+#                labels = x['labels']
+#                if not labels or labels == "none":
+#                    continue
+#                name = x['name']
+#                if key is None:
+#                    if value in labels.values():
+#                        if verbose:
+#                            results.append(x)
+#                        else:
+#                            results.append({"name":name, "labels":labels})
+#                elif value is None:
+#                    if key in labels:
+#                        if verbose:
+#                            results.append(x)
+#                        else:
+#                            results.append({"name":name, "labels":labels})
+#                else:
+#                    if labels.get(key) == value:
+#                        if verbose:
+#                            results.append(x)
+#                        else:
+#                            results.append({"name":name, "labels":labels})
+#            if key is None:
+#                    response = {
+#                        "value": value,
+#                        "results": results
+#                    }
+#            elif value is None:
+#                    response = {
+#                        "key": key,
+#                        "results": results
+#                    }
+#            else:
+#                    response = {
+#                        "keypair": f"{key}={value}",
+#                        "results": results
+#                    }
+#            return response
+#    else:
+#        if not multi_server:
+#            results = {
+#                "server": server,
+#                "return_code": 2,
+#                "message": "As proxy is not activated, the server variable is not used. Run command without server variable for local output."
+#            }
+#            return results
+#        # get server
+#        requested_server = server
+#        for x in data['server']:
+#            this_server = x['host']['name']
+#            server = []
+#            if (this_server == requested_server) or (requested_server == 'all'):
+#                server_found = 1
+#                s_name = {
+#                    'name': this_server
+#                    }
+#                server.append(s_name)
+#                obj = x['monitoring']
+#                for y in obj:
+#                    labels = y['labels']
+#                    if not labels or labels == "none":
+#                        continue
+#                    name = y['name']
+#                    if key is None:
+#                        if value in labels.values():
+#                            if verbose:
+#                                server.append(y)
+#                            else:
+#                                server.append({"name":name, "labels":labels})
+#                    elif value is None:
+#                        if key in labels:
+#                            if verbose:
+#                                server.append(y)
+#                            else:
+#                                server.append({"name":name, "labels":labels})
+#                    else:
+#                        if labels.get(key) == value:
+#                            if verbose:
+#                                server.append(y)
+#                            else:
+#                                server.append({"name":name, "labels":labels})
+#                results.append(server)
+#        if key is None:
+#            response = {
+#                "value": value,
+#                "results": results
+#            }
+#        elif value is None:
+#            response = {
+#                "key": key,
+#                "results": results
+#            }
+#        else:
+#            response = {
+#                "keypair": f"{key}={value}",
+#                "results": results
+#            }
+#        return response
+#    return
+
 def api_search_labels(key, value, server, verbose=False):
     global data, multi_server
-    
+
     results = []
 
     if server is None:
         # all servers (or not multimode)
         if multi_server:
             results = []
-            for x in data['server']:
+            for x in data.get('server', []):
                 server_matches = []
-                host_name = x['host']['name']
-                obj = x['monitoring']
+                host_name = x.get('host', {}).get('name')
+                obj = x.get('monitoring', [])
                 for y in obj:
                     labels = y.get('labels')
                     if not labels or labels == "none" or not isinstance(labels, dict):
                         continue
-                    name = y['name']
+                    name = y.get('name')
                     if key is None:
                         if value in labels.values():
                             server_matches.append(y if verbose else {"name": name, "labels": labels})
@@ -872,8 +1565,8 @@ def api_search_labels(key, value, server, verbose=False):
                     else:
                         if labels.get(key) == value:
                             server_matches.append(y if verbose else {"name": name, "labels": labels})
-                
-                if server_matches:    
+
+                if server_matches:
                     results.append({
                         "server": host_name,
                         "matches": server_matches
@@ -893,49 +1586,49 @@ def api_search_labels(key, value, server, verbose=False):
                 response = {
                     "keypair": f"{key}={value}",
                     "results": results
-            }
+                }
             return response
 
         else:
-            obj = data['monitoring']
+            obj = data.get('monitoring', [])
             for x in obj:
-                labels = x['labels']
-                if not labels or labels == "none":
+                labels = x.get('labels')
+                if not labels or labels == "none" or not isinstance(labels, dict):
                     continue
-                name = x['name']
+                name = x.get('name')
                 if key is None:
                     if value in labels.values():
                         if verbose:
                             results.append(x)
                         else:
-                            results.append({"name":name, "labels":labels})
+                            results.append({"name": name, "labels": labels})
                 elif value is None:
                     if key in labels:
                         if verbose:
                             results.append(x)
                         else:
-                            results.append({"name":name, "labels":labels})
+                            results.append({"name": name, "labels": labels})
                 else:
                     if labels.get(key) == value:
                         if verbose:
                             results.append(x)
                         else:
-                            results.append({"name":name, "labels":labels})
+                            results.append({"name": name, "labels": labels})
             if key is None:
-                    response = {
-                        "value": value,
-                        "results": results
-                    }
+                response = {
+                    "value": value,
+                    "results": results
+                }
             elif value is None:
-                    response = {
-                        "key": key,
-                        "results": results
-                    }
+                response = {
+                    "key": key,
+                    "results": results
+                }
             else:
-                    response = {
-                        "keypair": f"{key}={value}",
-                        "results": results
-                    }
+                response = {
+                    "keypair": f"{key}={value}",
+                    "results": results
+                }
             return response
     else:
         if not multi_server:
@@ -947,39 +1640,38 @@ def api_search_labels(key, value, server, verbose=False):
             return results
         # get server
         requested_server = server
-        for x in data['server']:
-            this_server = x['host']['name']
+        for x in data.get('server', []):
+            this_server = x.get('host', {}).get('name')
             server = []
             if (this_server == requested_server) or (requested_server == 'all'):
-                server_found = 1
                 s_name = {
                     'name': this_server
-                    }
+                }
                 server.append(s_name)
-                obj = x['monitoring']
+                obj = x.get('monitoring', [])
                 for y in obj:
-                    labels = y['labels']
-                    if not labels or labels == "none":
+                    labels = y.get('labels')
+                    if not labels or labels == "none" or not isinstance(labels, dict):
                         continue
-                    name = y['name']
+                    name = y.get('name')
                     if key is None:
                         if value in labels.values():
                             if verbose:
                                 server.append(y)
                             else:
-                                server.append({"name":name, "labels":labels})
+                                server.append({"name": name, "labels": labels})
                     elif value is None:
                         if key in labels:
                             if verbose:
                                 server.append(y)
                             else:
-                                server.append({"name":name, "labels":labels})
+                                server.append({"name": name, "labels": labels})
                     else:
                         if labels.get(key) == value:
                             if verbose:
                                 server.append(y)
                             else:
-                                server.append({"name":name, "labels":labels})
+                                server.append({"name": name, "labels": labels})
                 results.append(server)
         if key is None:
             response = {
@@ -997,7 +1689,6 @@ def api_search_labels(key, value, server, verbose=False):
                 "results": results
             }
         return response
-    return
 
 @app.before_request
 def limit_remote_addr():
@@ -1603,10 +2294,12 @@ def api_howareyou(response=True):
                     }
             results["server"].append(server)
         else:
-            for serv in data['server']:
-               name_o = serv['host']
-               name =  name_o['name']
-               obj = serv['monitoring']
+            for serv in data.get('server', []):
+               name_o = serv.get('host')
+               if not name_o:
+                   continue
+               name =  name_o.get('name', 'Unknown')
+               obj = serv.get('monitoring',[])
                for status in obj:
                    if (int(status['pluginStatusCode']) == 0):
                        ok = ok + 1
@@ -2146,68 +2839,68 @@ def api_show_plugin(search=0, id=-1):
                 else:
                     print ("DEBUG: Nothing specified.")
         
-        #for x in data.get('server', []):
-        #    this_server = x.get('host', {}).get('name', '')
-        #    if (this_server == server) or (server == 'all'):
-        #        server_found = 1
-        #        if not name and not index_name and id < 0 and search == 0:
-        #            results.append({'name': this_server})
-        #        if (not name and not index_name and id < 0):
-        #            do_start = False
-        #            info = [{
-        #                'returnCode': '2',
-        #                'monitoring': {'info': 'No id or name provided for plugin'}
-        #            }]
-        #            results.append(info)
-        #            return jsonify(results)
-        #        monitor_obj = x.get('monitoring', [])
-        #        for i in monitor_obj:
-        #            plugin_name = i.get('pluginName', '')
-        #            name_field = i.get('name', '')
-        #            if (search == 0):
-        #                if ((id_count == id) or (name and name == plugin_name) or (index_name and index_name == name_field)):
-        #                    results.append(i)
-        #                    break
-        #            else:
-        #                if (name and (name.lower() in name_field.lower() or name.lower() in plugin_name.lower())) or (index_name and index_name.lower() in name_field.lower()):
-        #                    results.append(i)
-        #                elif (id_count == id):
-        #                    results.append(i)
-        #                    break
-        #            id_count += 1
-        for x in data['server']:
-            this_server = x['host']['name']
+        for x in data.get('server', []):
+            this_server = x.get('host', {}).get('name', '')
             if (this_server == server) or (server == 'all'):
                 server_found = 1
-                s_name = {
-                    'name': this_server
-                    }
-                results.append(s_name)
+                if not name and not index_name and id < 0 and search == 0:
+                    results.append({'name': this_server})
                 if (not name and not index_name and id < 0):
                     do_start = False
-                    info = [
-                        { 'returnCode' :'2',
-                            'monitoring':
-                                {'info': 'No id or name provided for plugin'
-                            }
-                        }
-                    ]
+                    info = [{
+                        'returnCode': '2',
+                        'monitoring': {'info': 'No id or name provided for plugin'}
+                    }]
                     results.append(info)
                     return jsonify(results)
-                monitor_obj = x['monitoring']
+                monitor_obj = x.get('monitoring', [])
                 for i in monitor_obj:
+                    plugin_name = i.get('pluginName', '')
+                    name_field = i.get('name', '')
                     if (search == 0):
-                        if ((id_count == id) or (name and name == i['pluginName']) or (index_name and index_name == i['name'])):
+                        if ((id_count == id) or (name and name == plugin_name) or (index_name and index_name == name_field)):
                             results.append(i)
                             break
                     else:
-                        if ((id_count == id) or
-                            (name and name.lower() in i.get('name', '').lower()) or
-                            (name and name.lower() in i.get('pluginName', '').lower()) or
-                            (index_name and index_name.lower() in i.get('name', '').lower())):
-
+                        if (name and (name.lower() in name_field.lower() or name.lower() in plugin_name.lower())) or (index_name and index_name.lower() in name_field.lower()):
                             results.append(i)
-                    id_count = id_count + 1
+                        elif (id_count == id):
+                            results.append(i)
+                            break
+                    id_count += 1
+        #for x in data['server']:
+        #    this_server = x['host']['name']
+        #    if (this_server == server) or (server == 'all'):
+        #        server_found = 1
+        #        s_name = {
+        #            'name': this_server
+        #            }
+        #        results.append(s_name)
+        #        if (not name and not index_name and id < 0):
+        #            do_start = False
+        #            info = [
+        #                { 'returnCode' :'2',
+        #                    'monitoring':
+        #                        {'info': 'No id or name provided for plugin'
+        #                    }
+        #                }
+        #            ]
+        #            results.append(info)
+        #            return jsonify(results)
+        #        monitor_obj = x['monitoring']
+        #        for i in monitor_obj:
+        #            if (search == 0):
+        #                if ((id_count == id) or (name and name == i['pluginName']) or (index_name and index_name == i['name'])):
+        #                    results.append(i)
+        #                    break
+        #            else:
+        #                if ((id_count == id) or
+        #                    (name and name.lower() in i.get('name', '').lower()) or
+        #                    (name and name.lower() in i.get('pluginName', '').lower()) or
+        #                    (index_name and index_name.lower() in i.get('name', '').lower())):
+        #
+        #                    results.append(i)
+        #            id_count = id_count + 1
         if (server_found == 0):
             s_j = "server_search: " + server
             results.append(s_j)
@@ -2392,11 +3085,11 @@ def api_count_plugin_jobs():
     check_wsgi_init()
     logger.info("Running api_count_plugin_jobs")
     count = 0
-    if (multi_server):
+    if multi_server:
        load_data()
 
-       for server in data['server']:
-           monobjs = server['monitoring']
+       for server in data.get('server', []):
+           monobjs = server.get('monitoring') or []
            count += len(monobjs)
     else:
         with open("/etc/almond/plugins.conf", "r") as fp:
@@ -2429,12 +3122,17 @@ def api_get_plugin_file_timestamp(localOnly = False):
         logger.info("Running api_get_plugin_file_timestamp in multi mode")
         load_data()
         ts = []
-        for server in data['server']:
-            try:
-                ts.append(server['host']['pluginfileupdatetime']) 
-            except KeyError:
-                logger.warning(server['host']['name'] + "does not supply updatetime.")
+        for server in data.get('server', []):
+            host = server.get('host')
+            if not host or 'pluginfileupdatetime' not in host:
+                server_name = host.get('name', 'Unknown server') if host else "Unknown server"
+                logger.warning(f"{server_name} does not supply updatetime.")
                 continue
+            ts.append(host['pluginfileupdatetime'])
+        if not ts:
+            logger.warning("No valid timestamps found across multi-server configuration.")
+            return { 'lastmodifiedtimestamp': -1 }
+
         ts.sort(reverse=True);
         value = int(ts[0])
         return { 'lastmodifiedtimestamp' : value }
@@ -2739,38 +3437,90 @@ def api_show_status():
 @app.route('/monitoring/details', methods=['GET', 'POST'])
 @app.route('/howru/monitoring/details', methods=['GET', 'POST'])
 def api_show_details():
-    global multi_server
-    global logger
-    this_data = api_json(False)
-    full_filename = '/static/howru_logo.png'
-
+    global multi_server, logger
+    
     if not enable_gui:
         return render_template("403.html")
-    
-    if (multi_server):
+
+    this_data = api_json(False) or {}
+    full_filename = '/static/howru_logo.png'
+
+    if multi_server:
+        # Safely retrieve query param without throwing a 400 KeyError
+        server = request.args.get('name')
+        if not server:
+            logger.warning("Missing 'name' parameter in query string.")
+            return "Missing required 'name' query parameter.", 400
+
         monitoring = []
-        server = request.args['name']
-        monitoring_data = this_data['server']
+        monitoring_data = this_data.get('server', [])
+        
         for obj in monitoring_data:
-            logger.info("Object hostname is: " + obj['host']['name'])
-            #print (obj['host']['name'])
-            if (obj['host']['name'] == server):
-                #print ("Found server: " + server)
-                logger.info("Found server '" + server + "'")
-                #print (obj['monitoring'])
-                monitoring = obj['monitoring']
-                #print ("Monitoring is of type:", type(monitoring))
+            # Safely check for 'host' dictionary and 'name' field
+            host = obj.get('host') if isinstance(obj, dict) else None
+            hostname = host.get('name') if host else None
+
+            if not hostname:
+                continue
+
+            logger.info(f"Object hostname is: {hostname}")
+
+            if hostname == server:
+                logger.info(f"Found server '{server}'")
+                monitoring = obj.get('monitoring', [])
                 logger.debug(f"Monitoring is of type: {type(monitoring)}")
                 break
-        if len(monitoring) == 0:
-            logger.warning("No monitoring data found for server '" + server + "'")  
-            return "No monitoring data found for server: " + server
+
+        if not monitoring:
+            logger.warning(f"No monitoring data found for server '{server}'")
+            return f"No monitoring data found for server: {server}", 444
+
         logger.info("Rendering details template.")
         return render_template("details.html", user_image=full_filename, server=server, monitoring=monitoring)
+    
     else:
-        hostname = this_data['host']['name']
-        monitoring = this_data['monitoring']
+        # Safe fallback for single-server mode
+        host_info = this_data.get('host', {})
+        hostname = host_info.get('name', 'Unknown Host')
+        monitoring = this_data.get('monitoring', [])
+        
         return render_template("details.html", user_image=full_filename, server=hostname, monitoring=monitoring)
+#@app.route('/monitoring/details', methods=['GET', 'POST'])
+#@app.route('/howru/monitoring/details', methods=['GET', 'POST'])
+#def api_show_details():
+#    global multi_server
+#    global logger
+#    this_data = api_json(False)
+#    full_filename = '/static/howru_logo.png'
+#
+#    if not enable_gui:
+#        return render_template("403.html")
+#    
+#    if (multi_server):
+#        monitoring = []
+#        server = request.args['name']
+#        monitoring_data = this_data['server']
+#        for obj in monitoring_data:
+#            logger.info("Object hostname is: " + obj['host']['name'])
+#            #print (obj['host']['name'])
+#            if (obj['host']['name'] == server):
+#                #print ("Found server: " + server)
+#                logger.info("Found server '" + server + "'")
+#                #print (obj['monitoring'])
+#                monitoring = obj['monitoring']
+#                #print ("Monitoring is of type:", type(monitoring))
+#                logger.debug(f"Monitoring is of type: {type(monitoring)}")
+#                break
+#        if len(monitoring) == 0:
+#            logger.warning("No monitoring data found for server '" + server + "'")  
+#            return "No monitoring data found for server: " + server
+#        logger.info("Rendering details template.")
+#        return render_template("details.html", user_image=full_filename, server=server, monitoring=monitoring)
+#    else:
+#        hostname = this_data['host']['name']
+#        monitoring = this_data['monitoring']
+#        return render_template("details.html", user_image=full_filename, server=hostname, monitoring=monitoring)
+#
 
 @app.route('/howru/monitoring/tags', methods=['GET', 'POST'])
 @app.route('/api/v1/tags', methods=['GET'])
@@ -2879,6 +3629,30 @@ def api_show_graph():
     plt.savefig('static/charts/chart.png')
     return render_template("graph.html", user_image = full_filename, name="Memory usage", url="/static/charts/chart.png")
 
+#@app.route('/howru/dashboard', methods=['GET'])
+#@app.route('/howru/monitoring/dashboard', methods=['GET'])
+#def dashboard():
+#    global data
+#    global multi_server
+#
+#    load_data()
+#    
+#    # Explicitly trigger alert check on dashboard update event (every ~60 seconds)
+#    # This ensures alerts are sent even if other API endpoints aren't being polled
+#    if multi_server:
+#        proxy_alert_if_needed(data)
+    
+#    if not multi_server:
+#        #load_data()
+#        return render_template("dashboard.html", data=data)
+#    else:
+#        servername = request.args.get("name")
+#        for x in data['server']:
+#            this_name = x['host']['name']
+#            if servername == this_name:
+#                return render_template("dashboard.html", data=x)
+#        return "403: No server found"
+
 @app.route('/howru/dashboard', methods=['GET'])
 @app.route('/howru/monitoring/dashboard', methods=['GET'])
 def dashboard():
@@ -2886,16 +3660,23 @@ def dashboard():
     global multi_server
 
     load_data()
-    if not multi_server:
-        #load_data()
-        return render_template("dashboard.html", data=data)
-    else:
+
+    if multi_server:
+        proxy_alert_if_needed(data)
         servername = request.args.get("name")
-        for x in data['server']:
-            this_name = x['host']['name']
-            if servername == this_name:
-                return render_template("dashboard.html", data=x)
-        return "403: No server found"
+        
+        # Ensure data['server'] exists and is iterable
+        for x in data.get('server', []):
+            # Safely navigate nested keys using .get()
+            host_info = x.get('host') if isinstance(x, dict) else None
+            if host_info and isinstance(host_info, dict):
+                this_name = host_info.get('name')
+                if servername == this_name:
+                    return render_template("dashboard.html", data=x)
+
+        return "403: No server found", 403
+
+    return render_template("dashboard.html", data=data)
 
 @app.route('/metrics', methods=['GET'])
 def api_prometheus_export():

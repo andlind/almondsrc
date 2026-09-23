@@ -1,4 +1,4 @@
-AC_INIT([almond], [26.1.0], [andreas.lindell@almondmonitor.com])
+AC_INIT([almond], [26.2.0], [andreas.lindell@almondmonitor.com])
 AM_INIT_AUTOMAKE([-Wall foreign])
 AC_CONFIG_HEADERS([config.h])
 AC_PROG_CC

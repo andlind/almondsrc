@@ -1240,8 +1240,11 @@ int send_ssl_avro_message_to_kafka(char *brokers, char *cacertificate, char *cer
 }
 
 static void shutdown_kafka_producer() {
-    	rd_kafka_flush(global_producer, 10000);
-    	rd_kafka_destroy(global_producer);
+	if (global_producer != NULL) {
+    		rd_kafka_flush(global_producer, 10000);
+    		rd_kafka_destroy(global_producer);
+	}
+	global_producer = NULL;
 }
 
 void free_kafka_memalloc() {

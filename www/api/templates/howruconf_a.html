@@ -1,17 +1,4 @@
 {% include 'head.html' %}
-<script language="JavaScript">
-        function set_edit(id) {
-                const elem = document.getElementById(id);
-                if (elem.disabled == true) {
-                        var val = elem.value;
-                        elem.disabled = false;
-                        elem.value = '';
-                        elem.value = val;
-                        elem.focus();
-                }
-                //else elem.disabled = true;
-        }
-</script>
 <p align="center"><img src="{{ user_image }}" alt="User Image"></p>
 <p align="center" style="font-family: Verdana; font-size: 14px; font-weight: bold"> {{ info }}</p>
 <hr size="1">
@@ -29,7 +16,7 @@
 		<tr>
 			<td>Config item</td>
 			<td>Config value</td>
-			<td>&nbsp;</td>
+                        <td>Actions</td>
 		</tr>
 	</thead>
 	<tbody>
@@ -37,22 +24,45 @@
 		<tr>
 			<td>{{ item }}</td>
 			{% set value = item_values[loop.index - 1]|lower %}
-			{% if item_values[loop.index-1] == "0" %}
-                        <td><input type="number" id="{{loop.index-1}}" name="{{item}}" value="{{ item_values[loop.index-1] }}" min="0" max="1" disabled></td>
+                        {% if item == "api.authType" %}
+                                <td><select id="{{loop.index-1}}" name="{{item}}">
+                                        {% for option in ["basic", "2fa"] %}
+                                        <option value="{{ option }}" {% if value == option %}selected{% endif %}>{{ option }}</option>
+                                        {% endfor %}
+                                </select></td>
+                        {% elif item == "api.enableAliases" %}
+                                <td><select id="{{loop.index-1}}" name="{{item}}">
+                                        <option value="true" {% if value in ["true", "yes", "1"] %}selected{% endif %}>True</option>
+                                        <option value="false" {% if value not in ["true", "yes", "1"] %}selected{% endif %}>False</option>
+                                </select></td>
+                        {% elif item == "api.stateType" %}
+                                <td><select id="{{loop.index-1}}" name="{{item}}">
+                                        {% for option in ["systemctl", "supervisorctl"] %}
+                                        <option value="{{ option }}" {% if value == option %}selected{% endif %}>{{ option }}</option>
+                                        {% endfor %}
+                                </select></td>
+                        {% elif item == "api.startPage" %}
+                                <td><select id="{{loop.index-1}}" name="{{item}}">
+                                        {% for option in ["admin", "status", "metrics"] %}
+                                        <option value="{{ option }}" {% if value == option %}selected{% endif %}>{{ option }}</option>
+                                        {% endfor %}
+                                </select></td>
+                        {% elif item_values[loop.index-1] == "0" %}
+                                <td><input type="number" id="{{loop.index-1}}" name="{{item}}" value="{{ item_values[loop.index-1] }}" min="0" max="1"></td>
                         {% elif item_values[loop.index-1] == "1" %}
-                        <td><input type="number" id="{{loop.index-1}}" name="{{item}}" value="{{ item_values[loop.index-1] }}" min="0" max="1" disabled></td>
+                                <td><input type="number" id="{{loop.index-1}}" name="{{item}}" value="{{ item_values[loop.index-1] }}" min="0" max="1"></td>
                         {% elif item_values[loop.index-1].isdigit() %}
-                        <td><input type="number" id="{{loop.index-1}}" name="{{item}}" value="{{ item_values[loop.index-1] }}" min="2" disabled></td>
+                                <td><input type="number" id="{{loop.index-1}}" name="{{item}}" value="{{ item_values[loop.index-1] }}" min="2"></td>
 			{% elif value in ["true", "false", "yes", "no", "on", "off", "sure"] %}
                                 {% set normalized = "true" if value in ["true", "yes", "on", "sure"] else "false" %}
-                                <td><select id="{{ loop.index - 1 }}" name="{{ item }}" disabled>
-                                <option value="true" {% if value == "true" %}selected{% endif %}>True</option>
-                                <option value="false" {% if value == "false" %}selected{% endif %}>False</option></select>
+                                <td><select id="{{ loop.index - 1 }}" name="{{ item }}">
+                                <option value="true" {% if normalized == "true" %}selected{% endif %}>True</option>
+                                <option value="false" {% if normalized == "false" %}selected{% endif %}>False</option></select>
                         </td>
                         {% else %}
-                        <td><input type="text" id="{{loop.index-1}}" name="{{item}}" value="{{ item_values[loop.index-1] }}" disabled></td>
+                        <td><input type="text" id="{{loop.index-1}}" name="{{item}}" value="{{ item_values[loop.index-1] }}"></td>
                         {% endif %}
-                        <td><input type="button" value="Edit"  onClick="set_edit('{{loop.index-1}}')"></td>
+			<td><button type="submit" name="delete_config" value="{{ item }}" onclick="return confirm('Are you sure you want to delete {{ item }}?');">Delete</button></td>
                 </tr>
                 {% endfor %}
 		<tr>
@@ -63,15 +73,14 @@
 		<tr>
                         <td>{{ additional }}</td>
                         {% if add_values[loop.index-1] == "0" %}
-                        <td><input type="number" id="{{x}}" name="{{additional}}" value="{{ add_values[loop.index-1] }}" min="0" max="1" disabled></td>
+                        <td><input type="number" id="{{x}}" value="{{ add_values[loop.index-1] }}" min="0" max="1" readonly></td>
                         {% elif add_values[loop.index-1] == "1" %}
-			<td><input type="number" id="{{x}}" name="{{additional}}" value="{{ add_values[loop.index-1] }}" min="0" max="1" disabled></td>
+                        <td><input type="number" id="{{x}}" value="{{ add_values[loop.index-1] }}" min="0" max="1" readonly></td>
                         {% elif add_values[loop.index-1].isdigit() %}
-                        <td><input type="number" id="{{x}}" name="{{additional}}" value="{{ add_values[loop.index-1] }}" min="2" disabled></td>
+                        <td><input type="number" id="{{x}}" value="{{ add_values[loop.index-1] }}" min="2" readonly></td>
                         {% else %}
-                        <td><input type="text" id="{{x}}" name="{{additional}}" value="{{ add_values[loop.index-1] }}" disabled></td>
+                        <td><input type="text" id="{{x}}" value="{{ add_values[loop.index-1] }}" readonly></td>
                         {% endif %}
-                        <td><input type="button" value="Edit"  onClick="set_edit('{{x}}')"></td>
 		{% endfor %}
                 </tr>
 		<tr>
@@ -109,7 +118,7 @@
         </thead>
         <tbody>
                 <tr><td align="center">
-                                <select name="add_conf_value">
+                                <select name="add_conf_value" {% if not aconf %}disabled{% endif %}>
                                 {% for c in aconf %}
                                         <option value="{{ c }}">{{ c }}</option>
                                 {% endfor %}
@@ -118,7 +127,7 @@
                 </tr>
                 <tr>
                         <td colpspan="2" align="center">
-                                <input type="submit" value="Add" {% if aconf[0] == 'None' %} disabled {% endif %}>
+                                <input type="submit" value="Add" {% if not aconf %}disabled{% endif %}>
                         </td>
                 </tr>
 

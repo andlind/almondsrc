@@ -1,24 +1,25 @@
 {% include 'head.html' %}
 <div class="doc-page">
 <style>
-.doc-page { max-width: 1060px; margin: 28px auto 40px; padding: 0 18px; }
-.doc-header { margin-bottom: 24px; padding: 24px 24px 22px; background: #ffffff; border-radius: 18px; box-shadow: 0 18px 50px rgba(0,0,0,0.08); text-align: center; }
-.doc-logo { max-width: 200px; border-radius: 16px; margin-bottom: 18px; box-shadow: 0 12px 28px rgba(0,0,0,0.12); }
-.doc-header h1 { margin: 0; font-size: 2.15rem; letter-spacing: -0.03em; color: #491c0f; }
-.doc-subtitle { margin: 8px auto 0; max-width: 760px; color: #5c4a41; font-size: 0.99rem; line-height: 1.7; }
-.doc-page h2 { margin: 32px 0 16px; font-size: 1.5rem; color: #491c0f; border-bottom: 2px solid rgba(73,28,15,0.18); padding-bottom: 10px; }
-.doc-page h3 { margin: 26px 0 12px; font-size: 1.15rem; color: #5a2f26; }
-.doc-page p, .doc-page li { color: #333333; font-size: 0.98rem; line-height: 1.8; margin: 0.85rem 0; }
-.doc-page ul { margin: 0.9rem 0 0.9rem 1.3rem; }
-.doc-page pre { background: #f7f7fb; border: 1px solid #e2e4ea; border-radius: 12px; padding: 16px; overflow-x: auto; margin: 14px 0; }
-.doc-page code { font-family: Menlo, Monaco, Consolas, 'Courier New', monospace; font-size: 0.95rem; color: #1e1e2f; }
-.doc-page table { width: 100%; border-collapse: collapse; margin: 18px 0 28px; background: #ffffff; }
-.doc-page th, .doc-page td { border: 1px solid #e8e9ef; padding: 12px 14px; text-align: left; vertical-align: top; }
-.doc-page th { background: #f5f6fb; color: #332f31; font-weight: 700; }
+.doc-page { max-width: 1020px; margin: 22px auto 32px; padding: 0 16px; }
+.doc-header { margin-bottom: 18px; padding: 18px 22px 16px; background: #ffffff; border-radius: 16px; box-shadow: 0 14px 40px rgba(0,0,0,0.08); text-align: center; }
+.doc-logo { max-width: 180px; border-radius: 14px; margin-bottom: 14px; box-shadow: 0 10px 24px rgba(0,0,0,0.12); }
+.doc-header h1 { margin: 0; font-size: 1.9rem; letter-spacing: -0.03em; color: #491c0f; }
+.doc-subtitle { margin: 8px auto 0; max-width: 760px; color: #5c4a41; font-size: 0.95rem; line-height: 1.6; }
+.doc-page h2 { margin: 28px 0 14px; font-size: 1.38rem; color: #491c0f; border-bottom: 2px solid rgba(73,28,15,0.18); padding-bottom: 8px; }
+.doc-page h3 { margin: 22px 0 10px; font-size: 1.08rem; color: #5a2f26; }
+.doc-page p, .doc-page li { color: #333333; font-size: 0.95rem; line-height: 1.65; margin: 0.7rem 0; }
+.doc-page ul { margin: 0.75rem 0 0.75rem 1.2rem; }
+.doc-page pre { background: #f7f7fb; border: 1px solid #e2e4ea; border-radius: 10px; padding: 14px; overflow-x: auto; margin: 12px 0; box-shadow: inset 0 1px 0 rgba(255,255,255,0.6); }
+.doc-page code { font-family: Menlo, Monaco, Consolas, 'Courier New', monospace; font-size: 0.9rem; color: #1e1e2f; }
+.doc-page td code, .doc-page li code, .doc-page p code { background: #eef2ff; border: 1px solid #dfe7ff; border-radius: 6px; padding: 2px 6px; }
+.doc-page table { width: 100%; border-collapse: collapse; margin: 16px 0 24px; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 6px 18px rgba(31, 41, 55, 0.04); }
+.doc-page th, .doc-page td { border: 1px solid #e8e9ef; padding: 10px 12px; text-align: left; vertical-align: top; }
+.doc-page th { background: #f5f6fb; color: #332f31; font-weight: 700; font-size: 0.88rem; }
 .doc-page tr:nth-child(even) { background: #fbfbfd; }
-.doc-page .section-divider { border: none; height: 1px; background: linear-gradient(90deg, rgba(73,28,15,0), rgba(73,28,15,0.35), rgba(73,28,15,0)); margin: 28px 0; }
-.doc-page .note-box { padding: 14px 16px; margin: 16px 0; border-left: 4px solid #d49759; background: #fff7ea; color: #4e3520; border-radius: 10px; }
-@media (max-width: 840px) { .doc-page { padding: 0 12px; } .doc-header { padding: 22px 18px 18px; } }
+.doc-page .section-divider { border: none; height: 1px; background: linear-gradient(90deg, rgba(73,28,15,0), rgba(73,28,15,0.35), rgba(73,28,15,0)); margin: 22px 0; }
+.doc-page .note-box { padding: 12px 14px; margin: 14px 0; border-left: 4px solid #d49759; background: #fff7ea; color: #4e3520; border-radius: 10px; }
+@media (max-width: 840px) { .doc-page { padding: 0 12px; } .doc-header { padding: 18px 16px 14px; } .doc-page th, .doc-page td { padding: 8px 10px; } }
 </style>
 <header class="doc-header">
     <img src="{{ user_image }}" alt="User Image" class="doc-logo">
@@ -29,7 +30,7 @@
                 <h2>1. What is Almond?</h2>
                 <p class="doctext">
 		<b>Almond</b> (or Another Linux Monitor Daemon/Andreas Lindell Monitoring Daemon) <b> is a (Nagios)nrpe compliant scheduler with a Python API, named HowRU, that show results of plugin actions in the Almond daemon</b>.<br>&nbsp;<br>
-                Almond is not a direct replacement for Nagios/Op5/Icinga, since it does not have any administrative GUI and alerting system.<br>
+                Almond is not a direct replacement for Nagios/Op5/Icinga, since it does not have any centralized administrative GUI.<br>
                 However it introduces an API where you could query and get json results of plugins run by Almond , which you could parse/save with whatever tools you prefer to use.<br>
 		Any Nagios plugin which you currently run with nrpe or ncpa should be compatible with Almond. The difference between Almond and nrpe/ncpa, is that the later communicates on a socket with a Nagios server and Almond only runs locally.<br>
                 Nrpe and ncpa invokes commands on the client where it runs when called upon from the scheduler on the Nagios server. The Nagios server receive the result on the socket and show data in its GUI.<br>
@@ -44,7 +45,7 @@
                 </p>
                 <p class="doctext">You can of course install the service without putting it in a repository, for instance on Ubuntu you type the following (as root) to install the application:</p>
                 <pre><code> 
-		dpkg -i almond-monitor_0.9.28.deb
+		dpkg -i almond-monitor_26.2.0.deb
                 apt-get -f install
                 </code></pre>
 		<p class="doctext"><b>Note!</b>
@@ -86,6 +87,10 @@
                 <td>Default value</td>
                 <td>Description</td>
                 </tr>
+                <tr><td>almond.alertsToMail=</td><td>false</td><td>If set to true Almond will send alerts to email.<br>
+                <b>Note!</b> Mail configuration must be set in /etc/almond/alerting.conf</td></tr>
+                <tr><td>almond.alertsToSlack=</td><td>false</td><td>If set to true Almond will send alerts to slack.<br>
+                <b>Note!</b> Slack configuration must be set in /etc/almond/alerting.conf</td></tr>
 		<tr><td>almond.api=</td><td>true</td><td>True means Almond API is enabled, false disabled.</td></tr>
                 <tr><td>almond.certificate=</td><td>-</td><td>Path to server certificate if enabling TLS for Almond API. Alterntative to <i>scheduler.certificate/<i></td></tr>
                 <tr><td>almond.enableCollector=</td><td>true</td><td>Enable or disable the collector module which collects static metadata following settings under <i>collector.*</i>.</td></tr>
@@ -93,17 +98,22 @@
                 <tr><td>almond.enforceIAMRoles=</td><td>false</td><td>If using IAM provider setting this value to <i>true</i>, <i>on</i> or <i>1</i> will validate that the user token has a role from the IAM provider matching a value set in <i>almond.iamRolesAccepted</i>.</td></tr>
                 <tr><td>almond.iamAud=</td><td>None</td><td>If using IAM provider here you can set which audience that has the right to execute and change values through the API. Used with <i>almond.enableIamAud</i>.</td></tr>
 		<tr><td>almond.iamIssuer=</td><td>None</td><td>Url to iam issuer.</td></tr>
-                <tr><td>almond.iamRolesAccepted=</td><td>NULL</td><td>If using <i>almond.enforceIAMRoles</i> this config entry takes a comma separated list of which roles provided by the IAM that has the right to execute and change values through Almond API.<br>An example could be <i>=almond-admin, exec, howru-service</i>..</td></tr>
+                <tr><td>almond.iamRolesAccepted=</td><td>NULL</td><td>If using <i>almond.enforceIAMRoles</i> this config entry takes a comma separated list of which roles provided by the IAM that has the right to execute and change values through Almond API.<br>An example could be <i>=almond-admin, exec, howru-service</i>.</td></tr>
                 <tr><td>almond.iamPublicKeyFile=</td><td>-</td><td>Path to file where you put the public key from an IAM issuer.</td></tr>
+                <tr><td>almond.inventoryFileName=</td><td>-</td><td>If use <i>saveInventory</i> you must specify the filename where Almond should write hardware inventory information.</td></tr>
 		<tr><td>almond.key=</td><td>-</td><td>Path to key for server certificate if enabling TLS for Almond API. Alterntative to <i>scheduler.key/<i></td></tr>
 		<tr><td>almond.port=</td><td>9909</td><td>Port used by Almond API</td></tr>
                 <tr><td>almond.pushInterval=</td><td>60</td><td>Interval in seconds on how often Almond will push data and/or metrics to a HowRU proxy receiver.</td></tr>
                 <tr><td>almond.pushPort=</td><td>-</td><td>Port used by the HowRU proxy receiver if using Almond push functions.</td></tr>
                 <tr><td>almond.pushUrl=</td><td>-</td><td>Url to HowRU proxy receiver if using <i>api.usePush</i> and/or <i>api.usePushMetrics</i>.</td></tr>
-	        <tr><td>almond.standalone=</td><td>false</td><td>Changing this to 1 will make Almond run in standalone mode.<br>This means it will no longer export files to Howru.</td></tr>
+                <tr><td>almond.saveInventory=</td><td>true</td><td>If set to <i>true</i> Almond will save hardware inventory to a file and keep track on hardware changes. You need to specify the inventory file in:<br>
+                <i>almond.inventoryFileName</i>..</td></tr>
+	        <tr><td>almond.standalone=</td><td>false</td><td>Changing this to true will make Almond run in standalone mode.<br>This means it will no longer export files to Howru.</td></tr>
+                <tr><td>almond.tryToHeal=</td><td>false</td><td>Changing this to true will make Almond activate its <i>heal</i> mode.
+                <br>You will need to edit the <i>/etc/almond/heal.conf</i> file and add your trigger/heal scripts that Almond will activate on an escalating state change.</td></tr>
                 <tr><td>almond.useMetricsPush=</td><td>false</td><td>Changing this to true will make Almond push metrics to a HowRU proxy receiver.</td></tr>
                 <tr><td>almond.useMetricsPush=</td><td>false</td><td>Changing this to true will make Almond push json data to a HpwRU proxy receiver.</td></tr>
-                <tr><td>almond.useSSL=</td><td>false</td><td>Changing the value to 1 will force Almond API to use TLS connection. You will need to use certificates on the server and also provide valid certificates while connecting to Almond API. This entry can be used instead of <i>scheduler.useTLS</i></td></tr>
+                <tr><td>almond.useSSL=</td><td>false</td><td>Changing the value to true will force Almond API to use TLS connection. You will need to use certificates on the server and also provide valid certificates while connecting to Almond API. This entry can be used instead of <i>scheduler.useTLS</i></td></tr>
 		<tr><td>api.adminUser=</td><td>admin</td><td>Username for logon to admin page.<br>This will update <i>users.conf</i> and will be removed from config after being read.</td></tr>
 		<tr><td>api.adminPassword=</td><td>password</td><td>Password for logon to admin page.<br>This will update <i>users.conf</i> and will be removed from config after being read.</td></tr>
                 <tr><td>api.activeMods=</td><td>modyaml.py</td><td>If mods are enabled, you enter the mods (maximux 3) you want to run. With package are modyaml and modxml, but you could add your own mods for data conversion..</td></tr>
@@ -140,6 +150,8 @@
 		<tr><td>api.stateType=</td><td>systemctl</td><td>This should be <i>supervisorctl</i> when running with supervisord in Docker containers.<br>Otherwise the default value should be used.</td></tr>
 		<tr><td>api.startPage=</td><td>admin</td><td>Which page should be startpage when using http(s).<br>Allowed values are <i>admin</i>, <i>status</i> and </i>metrics</i>.</td></tr>
 		<tr><td>api.useGUI=</td><td>true</td><td>Changing the value to 0 or <i>false</i> will disable HowRU http pages.</td></tr>
+                <tr><td>api.useProxyAlerting=</td><td>false</td><td>If HowRU is used as a proxy, you can enable alerting from HowRU.<br>You need to edit the <i>/etc/almond/proxyalert.conf</i>-file as how you want the alerting to function.<br>
+                HowRU can alert via email or slack channels or connect to alert providers such as PagerDuty, ilert and Opsgenie.</td></tr>
 		<tr><td>api.userFile=</td><td>/etc/almond/users.conf</td><td>The file where HowRu stores login credentials for the admin page.</td></tr>
                 <tr><td>api.useSSL=</td><td>false</td><td>Changing the value to <i>true</i> will force the API to run through SSL. Make sure you have <i>api.sslCertificate</i> and <i>api.sslKey</i> values in your config.</td></tr>
                 <tr><td>api.wsgi=</td><td>true</td><td>If true HowRU service will run as a production safe wsgi app. If set to false, it will run under as a Flask development service.</td></tr>
@@ -426,6 +438,34 @@ ould look like:</p>
                 </tr>
 		</tbody>
 		</table>
+                <h3>2.4 Almond alerts configuration file (alerting.conf)</h3>
+                <p class="doctext">Almond has an inbuilt alerting module where Almond itself can send alerts through email and slack. You need to set one or both of the parameters <i>almond.alertsToMail</i> or <i>almond.alertsToSlack</i> to <i>true</i> to enable the alerting module.</p>
+                <p class="doctext">Almond also have integrations to external alerting tools such as Prometheus Alertmanager, PagerDuty, ilert and Opsgenie that can be configured in <i>/etc/almond/alerting.conf</i>.</p>
+                <p class="doctext">All alerting options comes with configuration parameters. When using slack you need to provide the channel, when using email you need to specify smtp connection values and email configuration.<br>
+                If using external alerting tools you usually need to provide endpoint url (or url to webhook) as well as API key.</p>
+                <p class="doctext">There is also possible to have alerts based on individual checks, it you want them to go to different channels/endpoints or disable them. The index of individuel checks correspond to the order that plugins are specified in <i>plugins.conf</i> starting with index 0.</p>
+                <p class="doctext">The configuration file <i>/etc/almond/alerting.conf</i> has examples for all different options available.<br><b>Note!</b> All alerting options are disabled by default.</p>
+
+		<h3>2.5 Almond heal configuration file (heal.conf)</h3>
+                <p class="doctext">Almond has a module to try to heal or trigger action when an alert is escalating its state, moving from OK to WARNING or CRITICAL.</p>
+                <p class="doctext">If <i>almond.tryToHeal</i> is set to <i>true</i> this module is active and when any alert is escalating state it will look in the <i>heal.conf</i> if the detoriated check has a heal script assigned to it.</p>
+                <p class="doctext">The heal file, <i>/etc/almond/heal.conf</i> could for an example have an entry looking like this:</p>
+		<pre><code>
+		{
+  			"react_on_state": "WARNING",
+  			"heals": [
+    				{
+      					"plugin": "check_application",
+      					"run": "/opt/almond/scripts/heal_application",
+      					"timeout_seconds": 30
+    				}
+  			]
+		}
+		</code></pre>
+                <p class="doctext">In the case above the plugin check <i>check_application</i> will trigger Almond to execute <i>/opt/almond/scripts/heal_application</i> if the check changes from OK to WARNING.<br>
+                If the run-script has not returned withn <i>timeout_seconds</i> Almond will treat the heal script as failing.</p>
+		<p class="doctext"><b>Note!</b> Almond will only execute a heal script once. It will not continue to run if the state remains in the WARNING. It runs only once.</p>
+		<p class="doctext"><b>Note!</b> Almond comes without any predefined heal scripts. It is up to the user to write his or hers own trigger scripts preferable placed in <i>/opt/almond/scripts</i>.</p>
                 <h2>3. HowRU API</h2>
                 <p class="doctext">The scheduler will run the plugins with the parameters and with the intervals declared in the <i>plugins.conf</i> file briefly described above.<br>
                 The result of the runs will be stored in the <i>data.jsonFile</i>. To access the information through a local web page (or through external calls on the <i>api.bindPort</i> you need to start the API.</p>
@@ -570,42 +610,178 @@ ould look like:</p>
                 the Almond process.</p>
                 <p class="doctext"><b>Note!</b> All calls to Almond API that involves executing code or change variables with the program require you to use a <i>token</i> ackknowledged by Almond.<br>
                 You find an <i>almond_token_generator</i> in the directory <i>/opt/almond/utilities</i> that will help you create and install tokens.</p>
-                <p class="doctext">All calls to Almond API must have the &quot;action&quot; parameter specified, as well as following parameters depending on what you want to achieve.<br>
-                A list of valid parameters are specified below:</p>
-                <p class="doctext">Allowed actions are the following:</p>
-		<ul>
-                <li>almond</li>
-                <li>check</li>
-                <li>disable</li>
-                <li>enable</li>
-		<li>execute</li>
-                <li>exread</li>
-                <li>get</li>
-		<li>getm</li>
-		<li>getvar</li>
-		<li>maintenance</li>
-                <li>metrics</li>
-		<li>monitor</li>
-		<li>read</li>
-                <li>read_all</li>
-                <li>reload</li>
-		<li>run</li>
-                <li>runread</li>
-                <li>set</li>
-                <li>setvar</li>
+                <p class="doctext">All calls to the Almond API must include the <code>action</code> field. Beyond that, the parser accepts a small set of common JSON members, and each <code>action</code> may require or support a different combination of them.</p>
+                <table>
+                        <thead>
+                                <tr>
+                                        <th scope="col">JSON field</th>
+                                        <th scope="col">Typical use</th>
+                                        <th scope="col">Notes</th>
+                                </tr>
+                        </thead>
+                        <tbody>
+                                <tr>
+                                        <td><code>action</code></td>
+                                        <td>Always required</td>
+                                        <td>Names the API operation to run. Examples: <code>read</code>, <code>execute</code>, <code>set</code>, <code>reload</code>, <code>almond</code>.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>id</code></td>
+                                        <td>Optional</td>
+                                        <td>Plugin id to target. If omitted, Almond uses <code>name</code> to look up the plugin id internally.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>name</code></td>
+                                        <td>Often required</td>
+                                        <td>Usually identifies the plugin, setting, feature, or sub-command to act on. For example <code>check_memory</code>, <code>hostname</code>, <code>plugins</code>, or <code>version</code>.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>flags</code></td>
+                                        <td>Optional, action-specific</td>
+                                        <td>Common values are <code>verbose</code>, <code>dry</code>, <code>all</code>, <code>soft</code>, and <code>hard</code>. Its meaning depends on the selected action.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>args</code></td>
+                                        <td>Optional</td>
+                                        <td>String passed to a plugin or monitor request. Typical for <code>execute</code>, <code>run</code>, and <code>monitor</code>.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>value</code></td>
+                                        <td>Optional</td>
+                                        <td>Used for actions such as <code>maintenance</code> and <code>set</code>. For <code>maintenance</code>, the value is usually <code>true</code> or <code>false</code>.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>mode</code></td>
+                                        <td>Optional</td>
+                                        <td>Used by <code>reload</code> with <code>name="plugins"</code>. Valid values are <code>soft</code> and <code>hard</code>.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>option</code></td>
+                                        <td>Optional</td>
+                                        <td>Extra option string used together with monitor requests that use <code>flags="soft"</code> or <code>flags="hard"</code>.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>token</code></td>
+                                        <td>Required for state-changing requests</td>
+                                        <td>Needed for actions such as <code>execute</code>, <code>run</code>, <code>set</code>, <code>enable</code>, <code>disable</code>, and <code>reload</code> when local token auth is used.</td>
+                                </tr>
+                        </tbody>
+                </table>
+                <p class="doctext"><b>Action aliases:</b> The parser accepts several aliases. For example, <code>get</code> is treated the same as <code>read</code>, <code>run</code> as <code>execute</code>, <code>getm</code> as <code>metrics</code>, and <code>setvar</code> as <code>set</code>.</p>
+                <p class="doctext">The full list of action values recognized by the parser is:</p>
+                <ul>
+                        <li><code>almond</code></li>
+                        <li><code>check</code></li>
+                        <li><code>disable</code></li>
+                        <li><code>enable</code></li>
+                        <li><code>execute</code> / <code>run</code></li>
+                        <li><code>exread</code> / <code>runread</code></li>
+                        <li><code>get</code> / <code>read</code></li>
+                        <li><code>getm</code> / <code>metrics</code></li>
+                        <li><code>getvar</code></li>
+                        <li><code>maintenance</code></li>
+                        <li><code>monitor</code></li>
+                        <li><code>reload</code></li>
+                        <li><code>set</code> / <code>setvar</code></li>
                 </ul>
-                <p class="doctext">Depending of <i>action</i> a number of other parameters are required, where <i>name</i> is usually always required and then depending on the action further parameters such as <i>flags</i>, <i>value</i> and <i>args</i> must be added. The <i>token</i> parameter must be added for all API calls that trigger changes or runs.</p>
-                <p class="doctext">You can however run a read command such as the one below without supplementing a token:</p>
+                <h3>5.1 Common action patterns</h3>
+                <table>
+                        <thead>
+                                <tr>
+                                        <th scope="col">Action</th>
+                                        <th scope="col">Typical fields</th>
+                                        <th scope="col">What it does</th>
+                                </tr>
+                        </thead>
+                        <tbody>
+                                <tr>
+                                        <td><code>read</code> / <code>get</code></td>
+                                        <td><code>name</code> or <code>id</code>, optional <code>flags</code></td>
+                                        <td>Reads the current result for a plugin. Use <code>flags="all"</code> to read all available results.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>monitor</code></td>
+                                        <td><code>name</code> or <code>id</code>, <code>args</code>, optional <code>flags</code>, <code>option</code></td>
+                                        <td>Creates or fetches a monitoring-style result based on a plugin or metric. When <code>flags</code> is <code>soft</code> or <code>hard</code>, the extra <code>option</code> field is combined with <code>args</code>.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>execute</code> / <code>run</code></td>
+                                        <td><code>name</code> or <code>id</code>, <code>args</code>, <code>token</code>, optional <code>flags</code></td>
+                                        <td>Runs a plugin immediately. <code>flags="dry"</code> performs a non-destructive dry run. <code>flags="verbose"</code> asks Almond to return additional detail.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>runread</code> / <code>exread</code></td>
+                                        <td><code>name</code> or <code>id</code>, <code>args</code>, <code>token</code></td>
+                                        <td>Executes a plugin and immediately reads its result back.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>metrics</code> / <code>getm</code></td>
+                                        <td><code>name</code></td>
+                                        <td>Returns metrics data. In the examples this is usually sent as <code>{"action":"metrics","name":"metrics"}</code>.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>maintenance</code></td>
+                                        <td><code>name</code> or <code>id</code>, <code>value</code></td>
+                                        <td>Toggles plugin maintenance mode. Allowed <code>value</code> strings are <code>true</code> and <code>false</code>.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>collector</code></td>
+                                        <td><code>name</code>, <code>flags</code></td>
+                                        <td>Enables or disables a collector sub-module. Valid names are <code>metadata</code>, <code>metrics</code>, <code>system</code>, and <code>verbose</code>.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>enable</code> / <code>disable</code></td>
+                                        <td><code>name</code>, <code>token</code></td>
+                                        <td>Toggles named features such as <code>timetuner</code>, <code>gardener</code>, <code>cleancache</code>, <code>quickstart</code>, <code>standalone</code>, <code>push</code>, <code>pushmetrics</code>, and <code>collector</code>.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>set</code> / <code>setvar</code></td>
+                                        <td><code>name</code>, <code>value</code> or <code>args</code>, <code>token</code></td>
+                                        <td>Changes runtime values. The supported <code>name</code> values include <code>pluginoutput</code>, <code>saveonexit</code>, <code>sleep</code>, <code>hostname</code>, <code>metricsprefix</code>, <code>scheduler</code>, <code>pushurl</code>, and others.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>getvar</code></td>
+                                        <td><code>name</code></td>
+                                        <td>Reads the current value of a runtime variable such as <code>hostname</code>, <code>kafkatag</code>, <code>scheduler</code>, or <code>pushurl</code>.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>check</code></td>
+                                        <td><code>name</code></td>
+                                        <td>Runs validation checks. Supported names are <code>pluginconfig</code> and <code>pluginconfigts</code>.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>reload</code></td>
+                                        <td><code>name</code>, optional <code>mode</code>, <code>token</code></td>
+                                        <td>Reloads Almond or plugin configuration. Use <code>name="almond"</code> for a full reload, and <code>name="plugins"</code> with <code>mode="soft"</code> or <code>mode="hard"</code> to reload plugin configuration.</td>
+                                </tr>
+                                <tr>
+                                        <td><code>almond</code></td>
+                                        <td><code>name</code></td>
+                                        <td>Quick informational calls: <code>version</code>, <code>status</code>, and <code>plugins</code>.</td>
+                                </tr>
+                        </tbody>
+                </table>
+                <p class="doctext"><b>Important:</b> the meaning of <code>flags</code> is not universal. In practice it is interpreted differently depending on the action:</p>
+                <ul>
+                        <li><code>verbose</code> = request more detailed output or verbose mode.</li>
+                        <li><code>dry</code> = execute without making the change that a normal run would make.</li>
+                        <li><code>all</code> = read every matching result for the selected plugin or item.</li>
+                        <li><code>soft</code> / <code>hard</code> = used for plugin reloads and some monitor-oriented requests.</li>
+                        <li><code>enable</code> / <code>disable</code> = used by the <code>collector</code> action.</li>
+                </ul>
+                <p class="doctext">The parser also treats <code>token</code> specially. If the request comes from a valid IAM/JWT bearer token, Almond can allow command execution without including a separate JSON <code>token</code> field. If you are using the built-in local token mechanism, the token must be included in the JSON payload for requests that run, modify, or reload state.</p>
+                <p class="doctext">You can now see the most common patterns in practice:</p>
                 <pre><code>
                 curl localhost:9909 -d '{"action":"read", "name":"check_memory", "flags":"verbose"}'
                 </code></pre>
-                <p class="doctext">You can also retrieve metrics without a token:</p>
                 <pre><code>
                 curl localhost:9909 -d '{"action":"metrics", "name":"metrics"}'
                 </code></pre>
-                <p class="doctext">As a final example, this call would trigger a plugin to execute a dry run with the arguments passed by the API call:</p>
                 <pre><code>
                 curl localhost:9909 -d '{"action":"execute", "name":"check_memory", "flags":"dry", "args":"-w 70 -c 75", "token":"qwyhb67jnds1qee9x"}'
+                </code></pre>
+                <pre><code>
+                curl localhost:9909 -d '{"action":"set","name":"hostname","value":"newservername","token":"qwyhb67jnds1qee9x"}'
                 </code></pre>
                 <p class="doctext">You can look at the API section in the Almond Admin page to see what types of calls are possible and try them out from there.</p>
 		<h2>6. Tips and recommendations</h2>

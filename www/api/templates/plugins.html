@@ -1,243 +1,146 @@
 {% include 'head.html' %}
 <style>
-  .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); }
-  .modal-content { background: #fff; margin: 10% auto; padding: 20px; width: 400px; border-radius: 8px; border: 1px solid #d7ccc8; }
-  .input-row { margin-bottom: 10px; display: flex; gap: 10px; }
-  .input-row input { padding: 5px; border: 1px solid #ccc; border-radius: 4px; flex: 1; }
-  .modal-buttons { margin-top: 20px; display: flex; justify-content: flex-end; gap: 10px; }
-  .role-restricted-button:disabled,
-  .role-restricted-button[disabled] {
-    opacity: 0.5;
-    cursor: not-allowed;
-    background-color: #cccccc !important;
-    color: #666666 !important;
-  }
-  
-  .button-tooltip {
-    position: relative;
-    display: inline-block;
-  }
-  
-  .button-tooltip .tooltiptext {
-    visibility: hidden;
-    width: 250px;
-    background-color: #333;
-    color: #fff;
-    text-align: center;
-    border-radius: 6px;
-    padding: 5px;
-    position: absolute;
-    z-index: 1;
-    bottom: 125%;
-    left: 50%;
-    margin-left: -125px;
-    opacity: 0;
-    transition: opacity 0.3s;
-    font-size: 12px;
-  }
-  
-  .button-tooltip .tooltiptext::after {
-    content: "";
-    position: absolute;
-    top: 100%;
-    left: 50%;
-    margin-left: -5px;
-    border-width: 5px;
-    border-style: solid;
-    border-color: #333 transparent transparent transparent;
-  }
-  
-  .button-tooltip:hover .tooltiptext {
-    visibility: visible;
-    opacity: 1;
-  }
-
+  .plugins-page { max-width: 1180px; margin: 0 auto; text-align: left; }
+  .plugins-hero { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 28px 32px; margin: 16px 0 24px; background: linear-gradient(135deg, #491c0f, #7d3823); color: #fff; border-radius: 12px; box-shadow: 0 8px 24px rgba(73, 28, 15, .18); }
+  .plugins-hero h1 { margin: 0 0 6px; padding: 0; background: none; text-align: left; font-size: clamp(1.5rem, 3vw, 2.25rem); }
+  .plugins-hero p { margin: 0; color: #f7dfd0; font-size: .95rem; }
+  .server-chip { flex: 0 0 auto; padding: 10px 14px; border: 1px solid rgba(255,255,255,.35); border-radius: 8px; color: #fff; font-weight: 600; }
+  .notice { padding: 12px 16px; margin-bottom: 20px; border-left: 4px solid #d17b32; background: #fff4e9; color: #613313; border-radius: 4px; }
+  .plugin-panel { background: var(--card-bg); border: 1px solid #eadfd8; border-radius: 10px; overflow: hidden; box-shadow: 0 5px 18px rgba(73, 28, 15, .08); }
+  .panel-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 18px 22px; border-bottom: 1px solid #eadfd8; }
+  .panel-heading h2 { margin: 0; text-align: left; font-size: 1.2rem; }
+  .panel-heading span { color: #765b50; font-size: .85rem; }
+  .plugin-row { display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 16px 22px; border-bottom: 1px solid #f0e9e5; }
+  .plugin-row:last-child { border-bottom: 0; }
+  .plugin-number { color: #9b7567; font-size: .85rem; font-weight: 700; }
+  .plugin-name-wrap { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .plugin-name { margin: 0; overflow-wrap: anywhere; font-weight: 600; }
   .plugin-tag {
     display: inline-block;
-    background-color: #f5f5dc; 
-    background-color: #fec883;
-    color: #5d4037;           /* Deep brown text for contrast */
-    padding: 2px 10px;
-    margin-left: 8px;
-    border-radius: 8px;       /* Rounded corners */
-    font-size: 0.85em;
-    font-weight: 600;         /* Makes the text pop slightly */
-    border: 1px solid #d7ccc8; /* Slightly darker brown border */
-    font-family: 'Segoe UI', Tahoma, Geneva, sans-serif;
-    vertical-align: middle;
+    background: #fec883;
+    color: #5d4037;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border: 1px solid #d7ccc8;
+    line-height: 1.4;
+  }
+  .plugin-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+  .plugin-actions form { margin: 0; }
+  .plugin-actions input[type=submit], .plugin-actions button { min-width: 70px; margin: 0; padding: 8px 12px; font-size: .85rem; }
+  .plugin-actions .danger { background: #a33e38; }
+  .plugin-actions .secondary { background: #806256; }
+  .role-restricted-button:disabled { opacity: .45; cursor: not-allowed; background: #aaa !important; color: #fff !important; }
+  .button-tooltip { position: relative; display: inline-block; }
+  .button-tooltip .tooltiptext { visibility: hidden; width: 220px; position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -110px; padding: 7px; border-radius: 5px; background: #2d211d; color: #fff; text-align: center; font-size: 12px; opacity: 0; transition: opacity .2s; }
+  .button-tooltip:hover .tooltiptext, .button-tooltip:focus-within .tooltiptext { visibility: visible; opacity: 1; }
+  .management-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
+  .management-card { padding: 20px; background: #fffaf7; border: 1px solid #eadfd8; border-radius: 10px; text-align: left; }
+  .management-card h3 { margin: 0 0 6px; color: #491c0f; font-size: 1rem; }
+  .management-card p { margin: 0 0 14px; color: #765b50; font-size: .9rem; }
+  .management-card form { display: flex; align-items: center; gap: 10px; }
+  .management-card select { flex: 1; min-width: 0; margin: 0; background: #fff; }
+  .management-card input[type=submit] { margin: 0; white-space: nowrap; }
+  .page-footer { margin: 24px 0; text-align: center; }
+  .page-footer a { color: #6b2a1a; font-weight: 600; }
+  @media (max-width: 680px) {
+    .plugins-page { width: 100%; }
+    .plugins-hero { align-items: flex-start; flex-direction: column; padding: 22px; }
+    .plugin-row { grid-template-columns: 28px minmax(0, 1fr); padding: 14px 16px; }
+    .plugin-actions { grid-column: 2; justify-content: flex-start; }
+    .management-grid { grid-template-columns: 1fr; }
+    .management-card form { align-items: stretch; flex-direction: column; }
   }
 </style>
-{#
-<script language="Javascript">
-  let currentLineIndex = null;
 
-  function openEditModal(lineIndex) {
-    currentLineIndex = lineIndex;
-    document.getElementById('editModal').style.display = 'block';
-  }
+<main class="plugins-page">
+  <header class="plugins-hero">
+    <div>
+      <h1>Plugin manager</h1>
+      <p>Configure and run the plugins available to Almond.</p>
+    </div>
+    {% if server %}<div class="server-chip">{{ server }}</div>{% endif %}
+  </header>
 
-  function closeModal() {
-    document.getElementById('editModal').style.display = 'none';
-  }
+  {% if info %}<div class="notice" role="status">{{ info }}</div>{% endif %}
 
-  async function saveTags() {
-    const keys = document.querySelectorAll('.tag-key');
-    const vals = document.querySelectorAll('.tag-val');
-    let dataObject = {};
-
-    keys.forEach((keyInput, i) => {
-        if (keyInput.value.trim() !== "") {
-            dataObject[keyInput.value] = vals[i].value;
-        }
-    });
-
-    // Send to Flask
-    const response = await fetch('/almond/update_tags', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
-            line_index: currentLineIndex,
-            tags: dataObject
-        })
-    });
-
-    if (response.ok) {
-        location.reload(); 
-    } else {
-        alert("Error saving data. Check JSON format.");
-    }
-  }
-</script>
-#}
-<p align="center"><img src="{{ user_image }}" alt="User Image"></p>
-<hr size="1">
-<table style="margin-left:auto;margin-right:auto;border:1px solid #000000; text-align:center; " width="90%">
-            <tr style="text-align:center">
-                <td>
-                        <p style="font-family: Verdana; font-size: 22px;font-weight:bold">{{ server }}</p>
-                </td>
-            </tr>
-	    </table>
-	    <table class="styled-table" width="90%">
-            <thead>
-	     {% for plugin_element in plugins_loaded%}
-	        {% if loop.index == 1 %}
-		<tr>
-			<th width="5%">#</th>
-			<th colspan="4" width="95%">{{ plugin_element }} </th>
-		</tr>
-	    </thead>
-	    <tbody>
-		{% else %}
-		<tr>
-			<td width="5%"> {{ loop.index -1 }}.</td>
-			<!--<td width="90%"><input type="text" size="100" name="val_{{ loop.index -1 }}" value="{{ your_list_element }}"-->
-			<td style="font-weight: bold"> {{ plugin_element | beautify_json }} </td>
-			<td style="padding: 0px">
-				{% if can_use_plugins %}
-			        <form name="update_plugins" method="post" action="/almond/admin">
-            			<input type="hidden" name="action_type" value="plugins">
-				<input type="hidden" name="edit_line" value="{{ loop.index -2 }}">
-			        <input type="hidden" name="edit_text" value="{{ plugin_element }}">
-				<input type="submit" value="Edit">
-				</form>
-				{% else %}
-					<div class="button-tooltip">
-						<button disabled class="role-restricted-button">Edit</button>
-						<span class="tooltiptext">You do not have permission to manage plugins</span>
-					</div>
-				{% endif %}
-			</td>
-			<td style="padding: 0px">
-			        {% if can_use_plugins %}
-			        <form name="update_plugins" method="post" action="/almond/admin">
-            			<input type="hidden" name="action_type" value="plugins">
-				<input type="hidden" name="delete_line" value="{{ loop.index -2 }}">
-                                <input type="submit" value="Delete">
-				</form>
-				{% else %}
-					<div class="button-tooltip">
-						<button disabled class="role-restricted-button">Delete</button>
-						<span class="tooltiptext">You do not have permission to manage plugins</span>
-					</div>
-				{% endif %}
-			</td>
-			<td style="padding: 0px">
-				{% if can_use_plugins %}
-				<form name="run_plugin" method="post" action="/almond/admin">
-				<input type="hidden" name="action_type" value="plugins">
-				<input type="hidden" name="plugin_id" value="{{ loop.index -1 }}">
-				<input type="hidden" name="execute" value="{{ plugin_element }}">
-				<input type="submit" value="Run">
-				</form>
-				{% else %}
-					<div class="button-tooltip">
-						<button disabled class="role-restricted-button">Run</button>
-						<span class="tooltiptext">You do not have permission to manage plugins</span>
-					</div>
-				{% endif %}
-			</td>
-		</tr>
-		{% endif %}
-  	    {% endfor %}
-	    <tr>
-		    <td colspan="5" style="background-color: #491c0f;">&nbsp;</td>
-	    </tr>
-	    <tr>
-	    <td width="5%"> --</td>
-	    <form name="update_plugins" method="post" action="/almond/admin">
-            <input type="hidden" name="action_type" value="plugins">
-	    <td align="right">Add installed plugin <label for="installed_plugins">Choose plugin:</label>
-	    <select name="installed_plugins" id="installed_plugins">
-	    {% for p in plugins_available %}
-	    	<option value="{{ p }}">{{ p }}</option>
-	    {% endfor %}
-	    </select>
-	    </td>
-	    <td colspan="3" align="center">
-		    <input type="hidden" name="add_line" value="True">
-		    <input type="submit" value=" Add ">
-	    </td>
-	    </form>
-	    </tr>
-	    <tr>	  
-		    <td width="5%"> --</td>
-		    <form name="update_plugins" method="post" action="/almond/admin">
-	            <input type="hidden" name="action_type" value="install">
-	            <input type="hidden" name="upload_plugin" value="True">
-		    <td align="right">Upload a new plugin to the server</td>
-		    <td colspan="3" align="center">
-			    <input type="submit" value= "Upload">
-		    </td>
-		    </form>
-	    </td>
-	    </tr>
-	    </tbody>
-            </table>
-	    </form>
-	<p align="center">
-	<script language="javascript">document.write('<a href="' + document.referrer + '">Go back</a>');
-	</script>
-	</p>
-        <p>&nbsp;</p>
-{#
-        <div id="editModal" class="modal">
-          <div class="modal-content">
-            <h3>Update Plugin Tags</h3>
-            <div id="inputContainer">
-               <!-- We'll generate 5 rows of Label: Value -->
-               {% for i in range(5) %}
-               <div class="input-row">
-                  <input type="text" class="tag-key" placeholder="Label (e.g. class)">
-                  <input type="text" class="tag-val" placeholder="Value (e.g. network)">
-              </div>
-              {% endfor %}
-            </div>
-            <div class="modal-buttons">
-              <button onclick="saveTags()">Save to File</button>
-              <button onclick="closeModal()">Cancel</button>
-            </div>
-          </div>
+  <section class="plugin-panel" aria-labelledby="loaded-plugins-title">
+    <div class="panel-heading">
+      <h2 id="loaded-plugins-title">Loaded plugins</h2>
+      <span>{% if plugins_loaded | length > 1 %}{{ (plugins_loaded | length) - 1 }}{% else %}0{% endif %} configured</span>
+    </div>
+    {% for plugin_element in plugins_loaded %}
+      {% if not loop.first %}
+      <div class="plugin-row">
+        <div class="plugin-number">{{ loop.index - 1 }}.</div>
+        <div class="plugin-name-wrap">
+          <p class="plugin-name">{{ plugin_element | beautify_json }}</p>
         </div>
-#}
+        <div class="plugin-actions">
+          {% if can_use_plugins %}
+          <form method="post" action="/almond/admin">
+            <input type="hidden" name="action_type" value="plugins">
+            <input type="hidden" name="edit_line" value="{{ loop.index - 2 }}">
+            <input type="hidden" name="edit_text" value="{{ plugin_element }}">
+            <input type="submit" class="secondary" value="Edit">
+          </form>
+          <form method="post" action="/almond/admin">
+            <input type="hidden" name="action_type" value="plugins">
+            <input type="hidden" name="delete_line" value="{{ loop.index - 2 }}">
+            <input type="submit" class="danger" value="Delete">
+          </form>
+          <form method="post" action="/almond/admin">
+            <input type="hidden" name="action_type" value="plugins">
+            <input type="hidden" name="plugin_id" value="{{ loop.index - 1 }}">
+            <input type="hidden" name="execute" value="{{ plugin_element }}">
+            <input type="submit" value="Run">
+          </form>
+          {% else %}
+          {% for action in ['Edit', 'Delete', 'Run'] %}
+          <div class="button-tooltip">
+            <button type="button" disabled class="role-restricted-button">{{ action }}</button>
+            <span class="tooltiptext">You do not have permission to manage plugins</span>
+          </div>
+          {% endfor %}
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    {% else %}
+      <p class="plugin-row">No plugins are loaded.</p>
+    {% endfor %}
+    {% if plugins_loaded | length <= 1 %}
+    <p class="plugin-row">No plugin records are configured yet.</p>
+    {% endif %}
+  </section>
+
+  <section class="management-grid" aria-label="Plugin management actions">
+    <article class="management-card">
+      <h3>Add an installed plugin</h3>
+      <p>Choose a plugin that is already installed on this server.</p>
+      <form method="post" action="/almond/admin">
+        <input type="hidden" name="action_type" value="plugins">
+        <input type="hidden" name="add_line" value="True">
+        <label for="installed_plugins">Plugin</label>
+        <select name="installed_plugins" id="installed_plugins">
+          {% for p in plugins_available %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+        </select>
+        <input type="submit" value="Add plugin">
+      </form>
+    </article>
+    <article class="management-card">
+      <h3>Install a new plugin</h3>
+      <p>Upload a plugin package to this server.</p>
+      <form method="post" action="/almond/admin">
+        <input type="hidden" name="action_type" value="install">
+        <input type="hidden" name="upload_plugin" value="True">
+        <input type="submit" value="Upload plugin">
+      </form>
+    </article>
+  </section>
+
+  <p class="page-footer"><a href="javascript:history.back()">Go back</a></p>
+</main>
+
 {% include 'foot.html' %}

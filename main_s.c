@@ -2,7 +2,7 @@
 #define _XOPEN_SOURCE 700
 #define _DEFAULT_SOURCE
 #ifndef VERSION
-#define VERSION "26.1.0"
+#define VERSION "26.2.0"
 #endif
 #include "config.h"
 #include <stdio.h>
@@ -47,6 +47,8 @@
 #include "api.h"
 #include "main.h"
 #include "jwt_validate.h"
+#include "alerting.h"
+#include "heal.h"
 
 #define MAX_COLUMNS 2
 #define MAX_STRING_SIZE 50
@@ -94,6 +96,7 @@ char* hostName = NULL;
 char* fileName = NULL;
 char* jsonFileName = NULL;
 char* metricsFileName = NULL;
+char* inventoryFileName = NULL;
 char* gardenerScript = NULL;
 char* metricsOutputPrefix = NULL;
 char* infostr = NULL;
@@ -140,6 +143,7 @@ bool pluginDirSet = false;
 bool logPluginOutput = false;
 bool pluginResultToFile = false;
 bool saveOnExit = false;
+bool save_inventory = true;
 bool dockerLog = false;
 bool enableGardener = false;
 bool runGardenerAtStart = false;
@@ -161,6 +165,11 @@ bool collector_metrics = true;
 bool collector_server = true;
 bool collector_metadata = false;
 bool collector_verbose = false;
+bool send_alerts_to_slack = false;
+bool send_alerts_to_email = false;
+bool try_to_heal = false;
+bool log_heal_command = false;
+static AlertConfig alert_config;
 int schedulerSleep = 5000;
 int decCount = 0;
 int timeTunerMaster = 1;
@@ -189,6 +198,7 @@ size_t metricsoutputprefix_size = 30;
 size_t datafilename_size = 100;
 size_t jsonfilename_size = 50;
 size_t metricsfilename_size = 50;
+size_t inventoryfilename_size = 125;
 size_t gardenerscript_size = 75;
 size_t logdir_size = 50;
 size_t hostname_size = 255;
@@ -197,7 +207,7 @@ size_t pluginitemname_size = 50;
 size_t pluginitemdesc_size = 100;
 size_t pluginitemcmd_size = 255;
 size_t pluginoutput_size = 1500;
-size_t plugincommand_size = 100;
+size_t plugincommand_size = 200;
 size_t newfilename_size = 250;
 size_t storedir_size = 50;
 size_t backupdirectory_size = 100;
@@ -294,6 +304,8 @@ void writePluginResultToFile(int, int);
 void run_plugin(PluginItem *item);
 
 ConfigEntry config_entries[] = {
+    {"almond.alertsToMail", process_mail_alerts},
+    {"almond.alertsToSlack", process_slack_alerts},
     {"almond.api", process_almond_api},
     {"almond.certificate", process_almond_certificate},
     {"almond.enableCollector", process_enable_collector},
@@ -303,12 +315,16 @@ ConfigEntry config_entries[] = {
     {"almond.iamIssuer", process_iam_issuer},
     {"almond.iamRolesAccepted", process_iam_roles_accepted},
     {"almond.iamPublicKeyFile", process_iam_public_key_file},
+    {"almond.inventoryFileName", process_inventory_file_name},
     {"almond.key", process_almond_key},
+    {"almond.logHealCommand", process_almond_log_heal},
     {"almond.port", process_almond_port},
     {"almond.pushInterval", process_push_interval},
     {"almond.pushPort", process_push_port},
     {"almond.pushUrl", process_push_url},
+    {"almond.saveInventory", process_save_inventory},
     {"almond.standalone", process_almond_standalone},
+    {"almond.tryToHeal", process_almond_heal},
     {"almond.useMetricsPush", process_metrics_push},
     {"almond.usePush", process_almond_push},
     {"almond.useSSL", process_almond_api_tls},
@@ -448,6 +464,12 @@ static int contains_scheme(const char *s) {
         return (strstr(s, "http://") == s) || (strstr(s, "https://") == s);
 }
 
+static void get_iso_timestamp(char *buf, size_t len) {
+	time_t now = time(NULL);
+  	struct tm *tm_info = gmtime(&now);
+	strftime(buf, len, "%Y-%m-%dT%H:%M:%SZ", tm_info);
+}
+
 static int has_port_in_host(const char *s) {
         // crude check: if there's a ':' after the host part but before any '/' then assume port present
          const char *p = strstr(s, "://");
@@ -489,6 +511,89 @@ char *extract_bearer_token(const char *auth_header) {
                 return NULL;
 
         return strdup(auth_header + strlen(prefix));
+}
+
+static void compare_json_nodes(struct json_object *old_node,
+                               struct json_object *new_node,
+                               const char *path,
+                               struct json_object *changes_array,
+                               const char *timestamp)
+{
+    if (!old_node || !new_node) return;
+   
+    enum json_type old_type = json_object_get_type(old_node);
+    enum json_type new_type = json_object_get_type(new_node);
+
+    // Type mismatch between runs
+    if (old_type != new_type) {
+        struct json_object *entry = json_object_new_object();
+        json_object_object_add(entry, "field", json_object_new_string(path));
+        json_object_object_add(entry, "previous_value", json_tokener_parse(json_object_to_json_string(old_node)));
+        json_object_object_add(entry, "new_value", json_tokener_parse(json_object_to_json_string(new_node)));
+        json_object_object_add(entry, "timestamp", json_object_new_string(timestamp));
+        json_object_array_add(changes_array, entry);
+        return;
+    }
+
+    // Objects
+    if (old_type == json_type_object) {
+        json_object_object_foreach(new_node, key, val_new) {
+            char subpath[256];
+            snprintf(subpath, sizeof(subpath), "%s%s%s", path, (path[0] ? "." : ""), key);
+
+            struct json_object *val_old = NULL;
+            if (json_object_object_get_ex(old_node, key, &val_old)) {
+                compare_json_nodes(val_old, val_new, subpath, changes_array, timestamp);
+            } else {
+                // Key added
+                struct json_object *entry = json_object_new_object();
+                json_object_object_add(entry, "field", json_object_new_string(subpath));
+                json_object_object_add(entry, "previous_value", NULL);
+                json_object_object_add(entry, "new_value", json_tokener_parse(json_object_to_json_string(val_new)));
+                json_object_object_add(entry, "timestamp", json_object_new_string(timestamp));
+                json_object_array_add(changes_array, entry);
+            }
+        }
+    }
+    // Arrays
+    else if (old_type == json_type_array) {
+        size_t old_len = json_object_array_length(old_node);
+        size_t new_len = json_object_array_length(new_node);
+        size_t max_len = old_len > new_len ? old_len : new_len;
+
+        for (size_t i = 0; i < max_len; i++) {
+            char subpath[256];
+            snprintf(subpath, sizeof(subpath), "%s[%zu]", path, i);
+
+            struct json_object *item_old = (i < old_len) ? json_object_array_get_idx(old_node, i) : NULL;
+            struct json_object *item_new = (i < new_len) ? json_object_array_get_idx(new_node, i) : NULL;
+
+            if (item_old && item_new) {
+                compare_json_nodes(item_old, item_new, subpath, changes_array, timestamp);
+            } else {
+                // Item added or removed
+                struct json_object *entry = json_object_new_object();
+                json_object_object_add(entry, "field", json_object_new_string(subpath));
+                json_object_object_add(entry, "previous_value", item_old ? json_tokener_parse(json_object_to_json_string(item_old)) : NULL);
+                json_object_object_add(entry, "new_value", item_new ? json_tokener_parse(json_object_to_json_string(item_new)) : NULL);
+                json_object_object_add(entry, "timestamp", json_object_new_string(timestamp));
+                json_object_array_add(changes_array, entry);
+            }
+        }
+    }
+    else {
+        const char *str_old = json_object_to_json_string(old_node);
+        const char *str_new = json_object_to_json_string(new_node);
+
+        if (strcmp(str_old, str_new) != 0) {
+            struct json_object *entry = json_object_new_object();
+            json_object_object_add(entry, "field", json_object_new_string(path));
+            json_object_object_add(entry, "previous_value", json_tokener_parse(str_old));
+            json_object_object_add(entry, "new_value", json_tokener_parse(str_new));
+            json_object_object_add(entry, "timestamp", json_object_new_string(timestamp));
+            json_object_array_add(changes_array, entry);
+        }
+    }
 }
 
 void build_push_url(char *out, size_t outlen, const char *push_url, int port, const char *path) {
@@ -940,6 +1045,7 @@ void run_plugin(PluginItem *item) {
 
     	/* 1) Save old return code and start timers */
     	int    prevRet = item->output.retCode;
+        heal_record_state(item);
     	clock_t start  = clock();
     	time_t  now    = time(NULL);
 
@@ -999,24 +1105,68 @@ void run_plugin(PluginItem *item) {
             		free(last_line);
         	}
     	}
-    	/* 6) Format current timestamp */
-    	char ts_now[TIMESTAMP_SIZE];
-    	struct tm tm_now;
-    	localtime_r(&now, &tm_now);
-    	strftime(ts_now, sizeof ts_now, "%Y-%m-%d %H:%M:%S", &tm_now);
+		/* 6) Format current timestamp */
+		char ts_now[TIMESTAMP_SIZE];
+		char iso_ts_now[TIMESTAMP_SIZE];
+		struct tm tm_now;
+		localtime_r(&now, &tm_now);
+		strftime(ts_now, sizeof ts_now, "%Y-%m-%d %H:%M:%S", &tm_now);
+		struct tm iso_tm_now;
+		gmtime_r(&now, &iso_tm_now);
+		strftime(iso_ts_now, sizeof iso_ts_now, "%Y-%m-%dT%H:%M:%SZ", &iso_tm_now);
+        const char *alert_state;
+        switch (item->output.retCode) {
+        	case 0: alert_state = "OK"; break;
+                case 1: alert_state = "WARNING"; break;
+                case 2: alert_state = "CRITICAL"; break;
+                default: alert_state = "UNKNOWN"; break;
+	}
 
-    	/* 7) Update statusChanged and lastChangeTimestamp */
-    	if (prevRet != item->output.retCode) {
-        	/* statusChanged is a char[2] array */
-        	memcpy(item->statusChanged, "1", 2);
+
+		/* 7) Update status metadata and retain the five most recent runs */
+		item->statusChangedValue = item->statusInitialized && prevRet != item->output.retCode;
+		item->statusChanged[0] = item->statusChangedValue ? '1' : '0';
+		item->statusChanged[1] = '\0';
+		if (!item->statusInitialized || item->statusChangedValue) {
+			item->statusChangedAtEpoch = now;
+			strncpy(item->statusChangedAt, iso_ts_now, sizeof item->statusChangedAt - 1);
+			item->statusChangedAt[sizeof item->statusChangedAt - 1] = '\0';
+		}
+		item->statusDuration = (long)difftime(now, item->statusChangedAtEpoch);
+		if (item->statusDuration < 0) item->statusDuration = 0;
+		item->statusInitialized = true;
+		if (item->historyCount == PLUGIN_HISTORY_SIZE) {
+			memmove(&item->history[1], &item->history[0],
+					(PLUGIN_HISTORY_SIZE - 1) * sizeof item->history[0]);
+		} else {
+			memmove(&item->history[1], &item->history[0],
+					item->historyCount * sizeof item->history[0]);
+			item->historyCount++;
+		}
+		item->history[0].statusCode = item->output.retCode;
+		strncpy(item->history[0].timestamp, iso_ts_now,
+				sizeof item->history[0].timestamp - 1);
+		item->history[0].timestamp[sizeof item->history[0].timestamp - 1] = '\0';
+
+		if (item->statusChangedValue) {
         	strncpy(item->lastChangeTimestamp,
                 ts_now,
                 sizeof item->lastChangeTimestamp - 1);
         	item->lastChangeTimestamp[sizeof item->lastChangeTimestamp - 1] = '\0';
     	}
-	else {
-        	memcpy(item->statusChanged, "0", 2);
-    	}
+	// Check alert details
+        if (send_alerts_to_slack || send_alerts_to_email) {
+                AlertDetails alert = {
+                        .host = hostName,
+                        .check_name = item->name,
+                        .state = alert_state,
+                        .summary = item->output.retString,
+                        .details = item->output.retString,
+                        .timestamp = ts_now
+                };      
+                alert_notify_check(&alert_config, item, &alert, 
+                                           send_alerts_to_slack, send_alerts_to_email);
+        }       
 
     	/* 8) Update lastRunTimestamp */
     	strncpy(item->lastRunTimestamp,
@@ -1065,6 +1215,11 @@ void run_plugin(PluginItem *item) {
         if (pluginResultToFile) {
                 writePluginResultToFile(item->id, 0);
         }
+	if (try_to_heal) {
+		if (heal_maybe_run(item, prevRet)) {
+			run_plugin(item);
+		}
+	}
 }
 
 void execute_all_plugins(void) {
@@ -1775,6 +1930,15 @@ void initConstants() {
 		strncpy(metricsFileName, "monitor.metrics", 16);
 		metricsFileName[metricsfilename_size -1] = '\0';
 	}
+	if (save_inventory) {
+		inventoryFileName = calloc(inventoryfilename_size+1, sizeof(char));
+		if (inventoryFileName == NULL) {
+			 fprintf(stderr, "Failed to allocate memory [inventoryFileName].\n");
+		}
+		else {
+			strncpy(inventoryFileName, "/opt/almond/data/inventory.json", 32);
+		}
+	}
 	gardenerScript = calloc(gardenerscript_size+1, sizeof(char));
 	if (gardenerScript == NULL) {
                 fprintf(stderr, "Failed to allocate memory [gardenerScript].\n");
@@ -1883,6 +2047,10 @@ int getConstants() {
 		else if (strcmp(constants[i], "METRICSFILENAME_SIZE") == 0) {
                         writeLog("Memory for variable 'metricsFileName' will be allocated by constants file.", 0, 1);
 			metricsfilename_size = (size_t)(values[i] * sizeof(char)+1);
+                }
+		else if (strcmp(constants[i], "INVENTORYFILENAME_SIZE") == 0) {
+                        writeLog("Memory for variable 'inventoryFileName' will be allocated by constants file.", 0, 1);
+                        inventoryfilename_size = (size_t)(values[i] * sizeof(char)+1);
                 }
 		else if (strcmp(constants[i], "GARDENERSCRIPT_SIZE") == 0) {
                         writeLog("Memory for variable 'gardenerScript' will be allocated by constants file.", 0, 1);
@@ -2550,7 +2718,7 @@ void parseClientMessage(char str[], int arr[], bool jwt_valid) {
         struct json_object *jobj, *jaction, *jid, *jname,  *jflags;
         struct json_object *jargs, *jvalue, *jmode, *joption;
 	struct json_object *jtoken;
-        char *value = NULL;
+        //char *value = NULL;
         char action[12] = {0};
         char sid[10] = {0};
 	char flags[10] = {0};
@@ -2590,10 +2758,10 @@ void parseClientMessage(char str[], int arr[], bool jwt_valid) {
            	json_tokener_free(tok);
                 return;
         }
-        json_object_object_foreach(jobj, key, val) {
+        /*json_object_object_foreach(jobj, key, val) {
                 value = (char *) json_object_get_string(val);
 		(void)key;
-        }
+        }*/
         jaction = getJsonValue(jobj, "action");
         jid = getJsonValue(jobj, "id");
 	jname = getJsonValue(jobj, "name");
@@ -2803,8 +2971,8 @@ void parseClientMessage(char str[], int arr[], bool jwt_valid) {
 			api_action = API_ERROR;
 		}
 		else {
-			if ((strcmp(trim(value), "true") == 0) || (strcmp(trim(value), "false") == 0)) {
-				setMaintenanceStatus(id, trim(value));
+			if ((strcmp(trim(sval), "true") == 0) || (strcmp(trim(sval), "false") == 0)) {
+				setMaintenanceStatus(id, trim(sval));
         			api_action = API_SET_MAINTENANCE_STATUS;
 			}
 			else {
@@ -3675,6 +3843,7 @@ void free_constants() {
 	safe_free_str(&pluginDeclarationFile);
 	safe_free_str(&jsonFileName);
 	safe_free_str(&metricsFileName);
+	safe_free_str(&inventoryFileName);
 	safe_free_str(&gardenerScript);
 	safe_free_str(&infostr);
 	safe_free_str(&pluginDir);
@@ -3742,6 +3911,7 @@ void freemem() {
 	fileName = NULL;
 	jsonFileName = NULL;
 	metricsFileName = NULL;
+	inventoryFileName = NULL;
 	gardenerScript = NULL;
 	infostr = NULL;
 	if (socket_message != NULL) {
@@ -5066,6 +5236,39 @@ void apiReadAll() {
     pthread_mutex_unlock(&update_mtx);
 }*/
 
+static const char *plugin_status_name_json_minimal(int status_code) {
+	switch (status_code) {
+		case 0: return "OK";
+		case 1: return "WARNING";
+		case 2: return "CRITICAL";
+		default: return "UNKNOWN";
+	}
+}
+
+static void add_plugin_status_metadata_json_minimal(struct json_object *object,
+													const PluginItem *item) {
+	struct json_object *history = json_object_new_array();
+	for (size_t i = 0; i < item->historyCount; ++i) {
+		struct json_object *entry = json_object_new_object();
+		json_object_object_add(entry, "state",
+							   json_object_new_string(plugin_status_name_json_minimal(
+								   item->history[i].statusCode)));
+		json_object_object_add(entry, "timestamp",
+							   json_object_new_string(item->history[i].timestamp));
+		json_object_array_add(history, entry);
+	}
+	json_object_object_add(object, "previousStatus",
+						   json_object_new_string(plugin_status_name_json_minimal(
+							   item->output.prevRetCode)));
+	json_object_object_add(object, "statusChanged",
+						   json_object_new_boolean(item->statusChanged[0] == '1'));
+	json_object_object_add(object, "statusChangedAt",
+						   json_object_new_string(item->statusChangedAt));
+	json_object_object_add(object, "statusDuration",
+						   json_object_new_int64(item->statusDuration));
+	json_object_object_add(object, "history", history);
+}
+
 void collectJsonData(int decLen){
     char *pluginName = NULL;
     char plts[32];
@@ -5182,6 +5385,7 @@ void collectJsonData(int decLen){
         json_object_object_add(plugin_obj, "pluginStatusCode", json_object_new_int(g_plugins[i]->output.retCode));
         json_object_object_add(plugin_obj, "pluginOutput", json_object_new_string(trim(g_plugins[i]->output.retString)));
         json_object_object_add(plugin_obj, "pluginStatusChanged", json_object_new_string(g_plugins[i]->statusChanged));
+		add_plugin_status_metadata_json_minimal(plugin_obj, g_plugins[i]);
         json_object_object_add(plugin_obj, "maintenance", json_object_new_string(g_plugins[i]->active > 0 ? "false" : "true"));
         json_object_object_add(plugin_obj, "lastChange", json_object_new_string(g_plugins[i]->lastChangeTimestamp));
         json_object_object_add(plugin_obj, "lastRun", json_object_new_string(g_plugins[i]->lastRunTimestamp));
@@ -6813,6 +7017,11 @@ void runPluginThreads(int loopVal){
                 while (scheduler[0].timestamp <= t) {
                         struct Scheduler do_run = scheduler[0];
 
+					if (do_run.id < 0 || do_run.id >= decCount || !g_plugins[do_run.id]) {
+						checkSchedulerCount();
+						break;
+					}
+
                         // Prevent infinite loop on same plugin and timestamp
                         if ((currentId == do_run.id) && (currentTimestamp == do_run.timestamp)) {
                                 //printf("Loop protection triggered for id %d. Sleeping...\n", do_run.id);
@@ -7265,7 +7474,7 @@ void initialLogging() {
         printf("Starting almond version %s.\n", VERSION);
         initConstants();
         writeLog("Almond constants initialized.", 0, 1);
-        writeLog("Starting almond (26.1.0)...", 0, 1);
+        writeLog("Starting almond (26.2.0)...", 0, 1);
 }
 
 int closeFileHandler() {
@@ -7297,14 +7506,18 @@ void setupSignalHandlers() {
 }
 
 int loadConfiguration() {
+	heal_set_reload_in_progress(true);
 	int retVal = getConfigurationValues();
         if (retVal == 0) {
                 logInfo("Configuration read ok.", 0, 1);
+		heal_reload_config();
         }
         else {
                 logError("Could not load configuration, due to corruption or memory allocation failure.", 1, 1);
-                return 1;
+			heal_set_reload_in_progress(false);
+				return 1;
         }
+	heal_set_reload_in_progress(false);
 	return 0;
 }
 
@@ -7449,6 +7662,14 @@ static int init_system(void) {
         }
         threadIds = (unsigned short*)malloc((size_t)MAX_PLUGINS * sizeof(unsigned short));
         memset(threadIds, 0, MAX_PLUGINS * sizeof(unsigned short));
+        writeLog("Initiate alerter", 0, 0);
+        alert_config_init(&alert_config);
+        if (alert_config_load(NULL, &alert_config) != 0)
+                writeLog("Alerting configuration was not loaded; alerts remain disabled until configured.", 1, 0);
+        if (!send_alerts_to_slack)
+                send_alerts_to_slack = alert_config.send_alerts_to_slack;
+        if (!send_alerts_to_email)
+                send_alerts_to_email = alert_config.send_alerts_to_email;
         checkPluginFileStat(pluginDeclarationFile, tPluginFile, 0);
         logInfo("No errors found in plugins.conf", 0, 0);
         decCount = countDeclarations(pluginDeclarationFile);
@@ -7462,6 +7683,53 @@ static int init_system(void) {
                 return 2;
         }
         flushLog();
+	if (enableCollector && save_inventory) {
+                char now_str[32];
+                get_iso_timestamp(now_str, sizeof(now_str));
+                struct json_object *inventory_obj = json_object_new_object();
+                json_object_object_add(inventory_obj, "name", json_object_new_string(hostName));
+                json_object_object_add(inventory_obj, "timestamp", json_object_new_string(now_str));
+                struct json_object *info = get_system_info(collector_verbose);
+                if (info && inventoryFileName != 0) {
+                        json_object_object_add(inventory_obj, "system", info);
+                        struct json_object *changes_array = NULL;
+                        struct json_object *old_obj = json_object_from_file(inventoryFileName);
+                        if (old_obj == NULL && errno != ENOENT) {
+                                writeLog("Could not read existing inventory file (permissions or syntax error)", 1, 0);
+                        }
+                        if (old_obj != NULL) {
+                                struct json_object *existing_changes = NULL;
+                                if (json_object_object_get_ex(old_obj, "changes", &existing_changes)) {
+                                        changes_array = json_tokener_parse(json_object_to_json_string(existing_changes));
+                                } else {
+                                        changes_array = json_object_new_array();
+                                }
+
+                                struct json_object *old_sys = NULL;
+                                if (json_object_object_get_ex(old_obj, "system", &old_sys)) {
+                                        compare_json_nodes(old_sys, info, "system", changes_array, now_str);
+                                }
+                                json_object_put(old_obj);
+                        }
+                        else {
+                                changes_array = json_object_new_array();
+                        }
+                        json_object_object_add(inventory_obj, "changes", changes_array);
+                        if (json_object_to_file_ext(inventoryFileName, inventory_obj, JSON_C_TO_STRING_PRETTY) != 0) {
+                                snprintf(infostr, infostr_size, "Failed to write to inventory file '%s'.", inventoryFileName);
+                                writeLog(trim(infostr), 1, 0);
+                        }
+                        else {
+                                snprintf(infostr, infostr_size, "Inventory file written to '%s'.", inventoryFileName);
+                                writeLog(trim(infostr), 0, 0);
+                        }
+                }
+                else {
+                        writeLog("Inventory could not be collected", 1, 0);
+                }
+                json_object_put(inventory_obj);
+		flushLog();
+        }
         initScheduler(decCount, initSleep, false);
         return 0;
 }
@@ -7485,6 +7753,8 @@ static void shutdown_system(void) {
                         break;
         }
         sig_exit_app();
+        alert_config_free(&alert_config);
+		heal_free();
         if (threadIds) {
                 free(threadIds);
                 threadIds = NULL;

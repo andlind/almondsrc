@@ -74,6 +74,20 @@ void process_almond_standalone(ConfVal value) {
 	}
 }
 
+void process_almond_heal(ConfVal value) {
+	if ((strcmp(value.strval, "true") == 0) || (value.intval >= 1)) {
+		writeLog("Almond have heal function activated.", 0, 1);
+		try_to_heal = true;
+	}
+}
+
+void process_almond_log_heal(ConfVal value) {
+        if ((strcmp(value.strval, "true") == 0) || (value.intval >= 1)) {
+                writeLog("Almond will log heal attempts to '/var/log/almond/heal_actions.log'.", 0, 1);
+                log_heal_command = true;
+        }
+}
+
 void process_almond_api_tls(ConfVal value) {
 	if ((strcmp(value.strval, "true") == 0) || (value.intval >= 1)) {
 		writeLog("Almond scheduler use TLS encryption.", 0, 1);

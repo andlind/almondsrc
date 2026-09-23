@@ -13,6 +13,7 @@ import ssl
 import platform
 import psutil
 import secrets
+from urllib.parse import quote
 # If you use KeycloakROPC uncomment below
 import api.auth_config as auth_config
 from os import walk
@@ -59,14 +60,14 @@ api_conf = []
 scheduler_conf = []
 extra_conf = []
 graph_names = {}
-api_available_conf = ['api.activeMods', 'api.adminUser', 'api.adminPassword', 'api.authProvider', 'api.authType', 'api.bindPort', 'api.dataDir','api.enableAliases', 'api.enableFile', 'api.enableGUI','api.enableLoginRedirect', 'api.enableMods', 'api.enableOauth','api.enableOtelExporter', 'api.enableOtelFileWatcher', 'api.enablePeriodicOtelExport', 'api.enableProxyCleaner','api.enableScraper', 'api.enableSSL','api.isContainer', 'api.isMetricsProxy', 'api.isProxy', 'api.metricsDir', 'api.multiMetrics', 'api.multiServer', 'api.otelExportInterval', 'api.otlpEndpoint', 'api.persistant2fa', 'api.proxyCleanerSeconds', 'api.showDashboard', 'api.sslCertificate', 'api.sslKey', 'api.startPage', 'api.stateType', 'api.useGUI', 'api.userFile', 'api.useSSL', 'api.wsgi', 'data.jsonFile', 'data.metricsFile', 'scheduler.storeDir', 'scheduler.configFile', 'scheduler.dataDir', 'plugins.directory', 'plugins.declaration']
+api_available_conf = ['api.activeMods', 'api.adminUser', 'api.adminPassword', 'api.authProvider', 'api.authType', 'api.bindPort', 'api.dataDir','api.enableAliases', 'api.enableFile', 'api.enableGUI','api.enableLoginRedirect', 'api.enableMods', 'api.enableOauth','api.enableOtelExporter', 'api.enableOtelFileWatcher', 'api.enablePeriodicOtelExport', 'api.enableProxyCleaner','api.enableScraper', 'api.enableSSL','api.isContainer', 'api.isMetricsProxy', 'api.isProxy', 'api.metricsDir', 'api.multiMetrics', 'api.multiServer', 'api.otelExportInterval', 'api.otlpEndpoint', 'api.persistant2fa', 'api.proxyCleanerSeconds', 'api.showDashboard', 'api.sslCertificate', 'api.sslKey', 'api.startPage', 'api.stateType', 'api.useGUI', 'api.useProxyAlerting', 'api.userFile', 'api.useSSL', 'api.wsgi', 'data.jsonFile', 'data.metricsFile', 'scheduler.storeDir', 'scheduler.configFile', 'scheduler.dataDir', 'plugins.directory', 'plugins.declaration']
 
-scheduler_available_conf = ['almond.api', 'almond.enableCollector', 'almond.enableIamAud', 'almond.enforeIAMRoles', 'almond.iamAud', 'almond.iamIssuer', 'almond.iamPublicKey', 'almond.iamRolesAccepted', 'almond.port', 'almond.pushInterval', 'almond.pushPort', 'almond.pushUrl', 'almond.standalone', 'almond.useMetricsPush', 'almond.usePush', 'almond.useSSL', 'almond.certificate', 'almond.key', 'collector.getPluginMetadata', 'collector.getPluginMetrics', 'collector.getServerData', 'collector.isVerbose', 'data.jsonFile', 'data.saveOnExit', 'data.metricsFile', 'data.metricsOutputPrefix', 'plugins.directory', 'plugins.declaration', 'scheduler.allowAllHosts', 'scheduler.useTLS', 'scheduler.certificate', 'scheduler.key','scheduler.confDir', 'scheduler.kafkaConfigFile', 'scheduler.logDir', 'scheduler.logToStdout', 'scheduler.logPluginOutput', 'scheduler.runGardenerAtStart','scheduler.storeResults', 'scheduler.format', 'scheduler.initSleepMs', 'scheduler.sleepMs', 'scheduler.kafkaAvro', 'scheduler.schemaName', 'scheduler.schemaRegistryUrl', 'scheduler.useExternal','scheduler.truncateLog', 'scheduler.truncateLogInterval', 'scheduler.tuneTimer', 'scheduler.tunerCycle', 'scheduler.tuneMaster', 'scheduler.dataDir', 'scheduler.storeDir', 'scheduler.hostName', 'scheduler.enableGardener', 'scheduler.gardenerScript', 'scheduler.gardenerRunInterval', 'scheduler.quickStart', 'scheduler.metricsOutputPrefix', 'scheduler.enableClearDataCache', 'scheduler.enableKafkaExport', 'scheduler.enableKafkaTag', 'scheduler.enableKafkaId', 'scheduler.kafkaStartId', 'scheduler.kafkaBrokers', 'scheduler.kafkaTopic', 'scheduler.kafkaTag', 'scheduler.enableKafkaSSL', 'scheduler.kafkaCACertificate', 'scheduler.kafkaProducerCertificate', 'scheduler.kafkaSSLKey', 'scheduler.useKafkaConfigFile','scheduler.clearDataCacheInterval', 'scheduler.dataCacheTimeFrame', 'scheduler.type', 'gardener.CleanUpTime']
+scheduler_available_conf = ['almond.api', 'almond.enableCollector', 'almond.enableIamAud', 'almond.enforeIAMRoles', 'almond.iamAud', 'almond.iamIssuer', 'almond.iamPublicKey', 'almond.iamRolesAccepted', 'almond.inventoryFileName', 'almond.port', 'almond.pushInterval', 'almond.pushPort', 'almond.pushUrl', 'almond.saveInventory', 'almond.standalone', 'almond.tryToHeal', 'almond.useMetricsPush', 'almond.usePush', 'almond.useSSL', 'almond.certificate', 'almond.key', 'collector.getPluginMetadata', 'collector.getPluginMetrics', 'collector.getServerData', 'collector.isVerbose', 'data.jsonFile', 'data.saveOnExit', 'data.metricsFile', 'data.metricsOutputPrefix', 'plugins.directory', 'plugins.declaration', 'scheduler.allowAllHosts', 'scheduler.useTLS', 'scheduler.certificate', 'scheduler.key','scheduler.confDir', 'scheduler.kafkaConfigFile', 'scheduler.logDir', 'scheduler.logToStdout', 'scheduler.logPluginOutput', 'scheduler.runGardenerAtStart','scheduler.storeResults', 'scheduler.format', 'scheduler.initSleepMs', 'scheduler.sleepMs', 'scheduler.kafkaAvro', 'scheduler.schemaName', 'scheduler.schemaRegistryUrl', 'scheduler.useExternal','scheduler.truncateLog', 'scheduler.truncateLogInterval', 'scheduler.tuneTimer', 'scheduler.tunerCycle', 'scheduler.tuneMaster', 'scheduler.dataDir', 'scheduler.storeDir', 'scheduler.hostName', 'scheduler.enableGardener', 'scheduler.gardenerScript', 'scheduler.gardenerRunInterval', 'scheduler.quickStart', 'scheduler.metricsOutputPrefix', 'scheduler.enableClearDataCache', 'scheduler.enableKafkaExport', 'scheduler.enableKafkaTag', 'scheduler.enableKafkaId', 'scheduler.kafkaStartId', 'scheduler.kafkaBrokers', 'scheduler.kafkaTopic', 'scheduler.kafkaTag', 'scheduler.enableKafkaSSL', 'scheduler.kafkaCACertificate', 'scheduler.kafkaProducerCertificate', 'scheduler.kafkaSSLKey', 'scheduler.useKafkaConfigFile','scheduler.clearDataCacheInterval', 'scheduler.dataCacheTimeFrame', 'scheduler.type', 'gardener.CleanUpTime']
 
 users = {}
 hasToken=False
 usertoken = "None"
-current_version = '0.9.30'
+current_version = '26.2.0'
 
 auth_provider_name = "local"
 auth_init = False
@@ -176,6 +177,7 @@ def load_conf(isGlobal):
         conf = read_data.split("\n")
         f.close()
     else:
+        extra_conf = []
         conf_count = 0
         if os.path.isfile('/etc/almond/admin.conf'):
             f = open("/etc/almond/admin.conf", "r")
@@ -193,8 +195,7 @@ def load_conf(isGlobal):
             else:
                 conf = read_data.split("\n")
             f.close()
-            if not 'admin' in api_conf_file:
-                api_conf_file = "/etc/almond/api.conf"
+            api_conf_file = "/etc/almond/api.conf"
             conf_count += 1
         f = open("/etc/almond/almond.conf", "r")
         read_data = f.read() 
@@ -203,10 +204,16 @@ def load_conf(isGlobal):
             f.close()
         else:
             gl_conf = read_data.split("\n")
-            for x in gl_conf:
-                if x not in extra_conf:
-                    if not x == "":
-                        extra_conf.append(x)
+            known_names = {
+                line.split('=', 1)[0].strip()
+                for line in conf + extra_conf
+                if '=' in line
+            }
+            for line in gl_conf:
+                name = line.split('=', 1)[0].strip() if '=' in line else ''
+                if line and name not in known_names:
+                    extra_conf.append(line)
+                    known_names.add(name)
             f.close()
         if conf_count == 0:
             api_conf_file = "/etc/almond/almond.conf"
@@ -217,34 +224,44 @@ def load_scheduler_conf():
     global scheduler_conf
     load_conf(True)
     this_conf = conf.copy()
-    scheduler_conf = [x for x in this_conf if not 'api.' in x]
+    scheduler_conf = []
+    names = set()
+    for line in this_conf:
+        if '=' not in line or line.split('=', 1)[0].strip().startswith('api.'):
+            continue
+        name = line.split('=', 1)[0].strip()
+        if name not in names:
+            scheduler_conf.append(line)
+            names.add(name)
 
 def load_api_conf():
     global conf
     global extra_conf
     global api_conf
 
-    pop_list = []
-    prefixes = ('almond.', 'scheduler.', 'gardener.', 'data.', 'plugins.')
+    prefixes = ('almond.', 'scheduler.', 'collector.', 'kafka.', 'gardener.', 'data.', 'plugins.')
     load_conf(False)
     this_conf = conf.copy()
-    api_conf = [x for x in this_conf if not x.startswith(prefixes)]
-    if extra_conf:
-        that_conf = extra_conf.copy()
-        extra_conf = [x for x in that_conf if not x.startswith(prefixes)]
-        count = 0
-        list_len = len(extra_conf)
-        while count < list_len:
-            pos = extra_conf[count].find('=')
-            item = extra_conf[count][:pos]
-            for x in api_conf:
-                if item == x[:pos]:
-                    pop_list.append(count)
-            count += 1
-        if pop_list:
-            pop_list.sort(reverse=True)
-            for x in pop_list:
-                extra_conf.pop(x)
+    api_conf = []
+    api_names = set()
+    for line in this_conf:
+        if '=' not in line or line.split('=', 1)[0].strip().startswith(prefixes):
+            continue
+        name = line.split('=', 1)[0].strip()
+        if name not in api_names:
+            api_conf.append(line)
+            api_names.add(name)
+
+    inherited_conf = []
+    inherited_names = set(api_names)
+    for line in extra_conf:
+        if '=' not in line or line.split('=', 1)[0].strip().startswith(prefixes):
+            continue
+        name = line.split('=', 1)[0].strip()
+        if name not in inherited_names:
+            inherited_conf.append(line)
+            inherited_names.add(name)
+    extra_conf = inherited_conf
 
 def set_new_password(username, password, roles=None):
     global admin_user_file
@@ -359,41 +376,68 @@ def delete_user_entries():
     f.writelines(new_lines)
     f.close()
 
-def rewrite_config(conf, newlines):
+def delete_config_entry(conf, name):
+    with open(conf, 'r') as config_file:
+        lines = config_file.readlines()
+
+    deleted = False
     new_lines = []
-    f = open(conf, "r+")
-    lines = f.readlines()
     for line in lines:
-        o_pos = line.find('=')
-        o_val = line[o_pos+1:]
-        new_line = ""
-        for new in newlines:
-            pos = new.find('=')
-            namestr = new[:pos]
-            if namestr in line:
-                new_line = new
-        if not new_line == "":
-            new_lines.append(new_line + '\n')
-        else:
-            new_lines.append(line)
+        if '=' in line and line.split('=', 1)[0].strip() == name:
+            deleted = True
+            continue
+        new_lines.append(line)
+
+    non_config_lines = [line for line in new_lines if '=' not in line]
+    config_lines = [line for line in new_lines if '=' in line]
+    new_lines = non_config_lines + sorted(
+        config_lines,
+        key=lambda line: line.split('=', 1)[0].strip().lower(),
+    )
+
+    with open(conf, 'w') as config_file:
+        config_file.writelines(new_lines)
+    return deleted
+
+def rewrite_config(conf, newlines):
+    if isinstance(newlines, str):
+        newlines = [newlines]
+
+    updates = {}
     for line in newlines:
-        has_addition = True
-        item = line.split('=')
-        for confline in lines:
-            confitem = confline.split('=')
-            if item[0] == confitem[0]:
-                has_addition = False
-        if has_addition:
-            new_lines.append(line + '\n')
-    new_lines.sort()
-    f.seek(0)
-    f.truncate()
-    f.writelines(new_lines)
-    f.close()
-    return_list = []
-    for element in new_lines:
-        return_list.append(element.strip())
-    return return_list
+        if '=' in line:
+            name, value = line.split('=', 1)
+            updates[name.strip()] = value.strip()
+
+    with open(conf, 'r') as config_file:
+        lines = config_file.readlines()
+
+    new_lines = []
+    written_names = set()
+    for line in lines:
+        if '=' not in line:
+            new_lines.append(line)
+            continue
+        name = line.split('=', 1)[0].strip()
+        if name in written_names:
+            continue
+        value = updates.pop(name, line.split('=', 1)[1].strip())
+        new_lines.append(name + '=' + value + '\n')
+        written_names.add(name)
+
+    for name, value in updates.items():
+        new_lines.append(name + '=' + value + '\n')
+
+    non_config_lines = [line for line in new_lines if '=' not in line]
+    config_lines = [line for line in new_lines if '=' in line]
+    new_lines = non_config_lines + sorted(
+        config_lines,
+        key=lambda line: line.split('=', 1)[0].strip().lower(),
+    )
+
+    with open(conf, 'w') as config_file:
+        config_file.writelines(new_lines)
+    return [line.strip() for line in new_lines]
 
 def read_conf():
     global standalone
@@ -419,37 +463,24 @@ def read_conf():
 
     load_conf(False)
     for x in conf:
-        if (x.find('almond') == 0):
-            if (x.find('api') > 0):
-                pos = x.find('=')
-                #api_enabled = x[pos+1]
-                #if (isinstance(int(api_enabled), int)):
-                #    if (int(api_enabled) > 0):
-                #        almond_api = True
-                #    else:
-                #        almond_api = False
-                #else:
-                #    almond_api = False
-                api_enabled = x[pos+1:].strip().lower()
-                if api_enabled in ["1", "true"]:
+        if not x or x.startswith('#'):
+            continue
+        if x.startswith('almond'):
+            if '=' in x:
+                key, value = x.split('=', 1)
+                key = key.strip()
+                value = value.strip().lower()
+            else:
+                continue
+            if key == 'almond.api':
+                if value in ["1", "true"]:
                      almond_api = True
                 else:
                      almond_api = False
-            if (x.find('port') > 0):
-                pos = x.find('=')
-                alport = x[pos+1:]
-                #if (isinstance(int(alport), int)):
-                #    if (int(alport) > 0):
-                #        almond_port = int(alport)
-                #    else:
-                #        almond_port = 9909
-                #else:
-                #    almond_port = 9909
+            elif key == 'almond.port':
                 try:
-                    if (int(alport) > 0):
-                        almond_port = int(alport)
-                    else:
-                        almond_port = 9909
+                    port_val = int(value)
+                    almond_port = port_val if port_val > 0 else 9909   
                 except ValueError:
                     almond_port = 9909
         if (x.find('data') == 0):
@@ -1134,18 +1165,19 @@ def index():
                 logger.warning("Not having any plugin action type to take care of")
             return action_type
         if action_type == 'scheduler':
-            update_lines = []
-            write_conf = []
-            for key, val in request.form.items():
-                if not key == "action_type":
-                    line = key + "=" + val
-                    update_lines.append(line)
+            delete_name = request.form.get('delete_config')
+            if delete_name:
+                delete_config_entry(almond_conf_file, delete_name)
+                return redirect("/almond/admin?page=almond&info=" + quote(delete_name + " was deleted"))
+            update_lines = [
+                key + "=" + value
+                for key, value in request.form.items()
+                if key != "action_type"
+            ]
             if update_lines:
-                write_conf=rewrite_config(almond_conf_file, update_lines)
-            else:
-                write_conf=scheduler_conf.copy()
-            logger.info("Rendering edit.html")
-            return render_template('conf.html', conf = write_conf, info="Config was rewritten", user_image=image_file, avatar=almond_avatar)
+                rewrite_config(almond_conf_file, update_lines)
+            logger.info("Scheduler configuration was rewritten")
+            return redirect("/almond/admin?page=almond&info=Config+was+rewritten")
         if action_type == 'restart_almond':
             logger.info("Received action type 'restart almond'")
             if state_type == "systemctl":
@@ -1213,37 +1245,25 @@ def index():
             return render_template('plugins.html', server=hostname, plugins_loaded = plugins, plugins_available = list_available_plugins(), user_roles=user_roles, can_use_plugins=can_use_plugins, user_image=image_file, avatar=almond_avatar, info=info)
         if action_type == "api":
             logger.info("Received action type 'api'")
-            update_lines = []
-            write_conf = []
-            move_value = False
-            for key, val in request.form.items():
-                if not key == "action_type":
-                    if (val == 'true'):
-                        move_value = True
-                    if not (val == 'false' or val == 'true'):
-                        line = key + "=" + val
-                        update_lines.append(line)
+            delete_name = request.form.get('delete_config')
+            if delete_name:
+                delete_config_entry(api_conf_file, delete_name)
+                return redirect("/almond/admin?page=howru&info=" + quote(delete_name + " was deleted"))
+            update_lines = [
+                key + "=" + value
+                for key, value in request.form.items()
+                if key != "action_type"
+            ]
             if standalone:
                 info = "Config was rewritten"
                 logger.info(info)
             else:
                 info = "Config rewritten. Note! API is running in multimode, but this config will only apply to the local server."
                 logger.info(info)
-            if move_value:
-                form_keys = []
-                form_vals = []
-                for x in update_lines:
-                    item = x.split('=')
-                    form_keys.append(item[0])
-                    form_vals.append(item[1])
-                logger.info("Rendering template confirm_move.html")
-                return render_template('confirm_move.html', keys=form_keys, vals=form_vals, user_image=image_file, avatar=almond_avatar)
             if update_lines:
-                write_conf = rewrite_config(api_conf_file, update_lines)
-            else:
-                write_conf = api_conf.copy()
-            logger.info("Rendering template howruconf.html")
-            return render_template('howruconf.html', conf=write_conf, user_image=image_file, avatar=almond_avatar, info=info)
+                rewrite_config(api_conf_file, update_lines)
+            logger.info("API configuration was rewritten")
+            return redirect("/almond/admin?page=howru&info=" + quote(info))
         if action_type == "restart_api":
             logger.info("Received action_type 'restart_api'")
             #return "You need to run systemctl restart howru-api.service"
@@ -1319,12 +1339,10 @@ def index():
                 logger.info("Rendering template add_conf.html")
                 return render_template('add_conf.html', item=config_name,config=config_type, user_image=image_file, avatar=almond_avatar)
             else:
-                if config_type == 'api':
-                    url = "/almond/admin?page=howru&add_item=" + config_name + "&item_value=" + config_value
-                else:
-                    url = "/almond/admin?page=almond&add_item=" + config_name + "&item_value=" + config_value
-                logger.info("Redirect url: " + url)
-                return redirect(url)
+                config_file = api_conf_file if config_type == 'api' else almond_conf_file
+                rewrite_config(config_file, [config_name.strip() + "=" + config_value.strip()])
+                page = 'howru' if config_type == 'api' else 'almond'
+                return redirect("/almond/admin?page=" + page + "&info=Config+was+rewritten")
         if (action_type == "addconf"):
             logger.info("Received action type 'addconf'")
             config_type = request.form['config_type']
@@ -1437,8 +1455,8 @@ def index():
             
             action_str = "{\"action\":"
             flags_str = "\"flags\":\""
-            print(action_id)
-            print("\n")
+            #print(action_id)
+            #print("\n")
             if (action_id == 1 or action_id == 2 or action_id == 3):
                 name = request.form["name"]
                 flags = request.form["flags"]
@@ -1523,9 +1541,13 @@ def index():
 
                 action_str = json.dumps(action_obj)
                 #print("DEBUG: action_str: %s" % action_str)  
+            elif (action_id == 16):
+                name = request.form.get("flags", "")
+                action_str += "\"inventory\", \"name\":\"" + name + "\"}"
             else:
                 print ("Action id error")
             if (almond_api):
+                #print(f"Almond API active: {almond_api}")
                 read_conf()
                 if is_container:
                     container_ip = socket.gethostbyname(socket.gethostname())
@@ -1572,8 +1594,25 @@ def index():
                     print ("Error sending data: %s" % e)
                     retVal = "{\"connection_error\" : \"Error sending data.\"}"
                     return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
+                chunks = []
+                clientSocket.settimeout(5.0)
                 try:
-                    retVal = clientSocket.recv(8000)
+                    while True:
+                        chunk = clientSocket.recv(4096)
+                        if not chunk:
+                            break
+                        chunks.append(chunk)
+                        combined_data = b"".join(chunks).decode('utf-8', errors='ignore')
+                        try:
+                            json.loads(combined_data)
+                            break
+                        except json.JSONDecodeError:
+                            continue
+                    retVal = b"".join(chunks).decode('utf-8')
+                except socket.timeout:
+                    print("Socket timeout waiting for complete JSON response")
+                    retVal = "{\"connection_error\" : \"Timeout receiving complete data.\"}"
+                    return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
                 except socket.error as e:
                     print ("Error receiving data: %s" % e)
                     retVal = "{\"connection_error\" : \"Error receiving data.\"}"
@@ -1584,10 +1623,11 @@ def index():
                     return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
                 #print(retVal.decode())
             else:
+                print(f"Account active: {almond_api}")
                 print ("Almond api is not enabled or has a different authorization provider than what was provided.")
                 retVal = "{\"almond_message\":\"Almond API is not enabled or has different authorization provider.\"}"
                 return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
-            data = retVal.decode("utf-8").strip()
+            data = retVal.strip() if isinstance(retVal, str) else retVal.decode("utf-8").strip()
             pos = data.find('Content-Length:')
             text = data[pos+16:]
             newline = text.find("\n")
@@ -1675,60 +1715,53 @@ def index():
         return render_template('plugins.html', plugins_loaded = plugins, plugins_available = available_plugins, user_roles=user_roles, can_use_plugins=can_use_plugins, user_image=image_file, server=hostname, avatar=almond_avatar, info=info)
     elif page == 'almond':
         load_scheduler_conf()
-        if standalone:
-            info = ""
-        else:
-            info = "Note! API is in multimode, but this configuration is for the local server only."
+        info = request.args.get('info', '')
+        if not standalone:
+            info = info or "Note! API is in multimode, but this configuration is for the local server only."
             logger.info(info)
-        item_names = []
-        item_values = []
-        for item in scheduler_conf:
-            pos = item.find('=')
-            item_names.append(item[:pos])
-            item_values.append(item[pos+1:])
-        available_conf = compare_lists(scheduler_available_conf, item_names)
-        if not available_conf:
-            available_conf.append('None')
-        add_item = request.args.get('add_item')
-        add_item_value = request.args.get('item_value')
-        if not add_item == None:
-            item_names.append(add_item.strip())
-            item_values.append(add_item_value.strip())
-            available_conf.remove(add_item.strip())
-            if len(available_conf) == 0:
-                available_conf.append('None')
+        config_items = sorted(
+            (item.split('=', 1) for item in scheduler_conf if '=' in item),
+            key=lambda item: item[0].strip().lower(),
+        )
+        item_names = [item[0] for item in config_items]
+        item_values = [item[1] for item in config_items]
+        available_conf = sorted(compare_lists(scheduler_available_conf, item_names), key=str.lower)
         logger.info("Rendering template conf_a.html")
         return render_template('conf_a.html', item_names=item_names, item_values=item_values,conf=scheduler_conf, aconf=available_conf, avatar=almond_avatar, info=info, user_image=image_file)   
     elif page == 'howru':
         load_api_conf()
-        if standalone:
-            info = ""
-        else:
-            info = "Note! API is in multimode, but this configuration is only applied to the local server."
+        info = request.args.get('info', '')
+        if not standalone:
+            info = info or "Note! API is in multimode, but this configuration is only applied to the local server."
             logger.info(info)
-        item_names = []
-        item_values = []
-        for item in api_conf:
-            pos = item.find('=')
-            item_names.append(item[:pos])
-            item_values.append(item[pos+1:])
+        config_items = sorted(
+            (item.split('=', 1) for item in api_conf if '=' in item),
+            key=lambda item: item[0].strip().lower(),
+        )
+        item_names = [item[0] for item in config_items]
+        item_values = [item[1] for item in config_items]
         available_conf = compare_lists(api_available_conf, item_names)
-        if not available_conf:
-            available_conf.append('None')
+        api_owned_prefixes = ('scheduler.', 'collector.', 'kafka.')
+        available_conf = sorted(
+            (item for item in available_conf if not item.startswith(api_owned_prefixes)),
+            key=str.lower,
+        )
         add_names = []
         add_values = []
         if extra_conf:
             for item in extra_conf:
-                pos = item.find('=')
-                add_names.append(item[:pos])
-                add_values.append(item[pos+1:])
-        available_conf = compare_lists(available_conf, add_names)
-        add_item = request.args.get('add_item')
-        add_item_value = request.args.get('item_value')
-        if not add_item == None:
-            item_names.append(add_item.strip())
-            item_values.append(add_item_value.strip())
-            available_conf.remove(add_item.strip())
+                if '=' in item:
+                    name, value = item.split('=', 1)
+                    add_names.append(name)
+                    add_values.append(value)
+        sorted_additions = sorted(
+            zip(add_names, add_values),
+            key=lambda item: item[0].lower(),
+        )
+        add_names, add_values = zip(*sorted_additions) if sorted_additions else ([], [])
+        add_names = list(add_names)
+        add_values = list(add_values)
+        available_conf = sorted(compare_lists(available_conf, add_names), key=str.lower)
         logger.info("Rendering template howruconf_a.html")
         return render_template('howruconf_a.html', item_names=item_names, item_values=item_values, add_names=add_names, add_values=add_values, conf = api_conf, aconf=available_conf, user_image=image_file, avatar=almond_avatar, info=info)
     elif page == 'status':
