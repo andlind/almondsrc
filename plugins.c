@@ -12,6 +12,8 @@
 #include "data.h"
 #include "collect.h"
 #include "plugins.h"
+#include "heal.h"
+#include "main.h"
 
 #define STATUS_SIZE 2
 #define PLUGIN_LINE_MAX 1024
@@ -208,14 +210,17 @@ int init_plugins() {
 }
 
 void update_plugins(void) {
+    heal_set_reload_in_progress(true);
     // 1) Load new config declarations
     int newCount = 0;
     PluginItem **decls = load_declarations(pluginDeclarationFile, &newCount);
     if (!decls) {
+        heal_set_reload_in_progress(false);
         return;
     }
     if (newCount <= 0) {
         free(decls);
+        heal_set_reload_in_progress(false);
         return;
     }
 
@@ -229,6 +234,7 @@ void update_plugins(void) {
         perror("calloc new g_plugins");
         // roll back; g_plugins was untouched
         free(decls);
+        heal_set_reload_in_progress(false);
         return;
     }
     g_plugins   = new_array;
@@ -274,6 +280,12 @@ void update_plugins(void) {
                     // Transfer PluginOutput ownership
                     cfg->output = old->output;
                     old->output.retString = NULL; // disown to avoid double-free
+
+                    cfg->alert_last_sent_state = old->alert_last_sent_state;
+                    cfg->alert_state_initialized = old->alert_state_initialized;
+                    cfg->alert_slack_sent = old->alert_slack_sent;
+                    cfg->alert_email_sent = old->alert_email_sent;
+                    cfg->heal_attempted = old->heal_attempted;
 
                     cfg->touched = true;
                     reused       = true;
@@ -336,9 +348,13 @@ void update_plugins(void) {
     	json_object_put(plugin_labels);   // free old tree
     }
     plugin_labels = read_labels(pluginDeclarationFile);  // load new tree
+    if (timeScheduler) {
+        rescheduleChecks();
+    }
 #ifdef __linux__
     malloc_trim(0);
 #endif
+    heal_set_reload_in_progress(false);
 }
 
 PluginItem *getPluginItem(size_t index) {

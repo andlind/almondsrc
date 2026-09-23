@@ -88,10 +88,10 @@ ________________________________________________________________________________
 
    If you want to compile yourself take note below:
    To compile almond with support for kafka_export, make sure you have the correct dependecies installed and run:
-   gcc -g -Wall main.c api.c config.c logger.c plugins.c mod_kafka.c -pthread -L/usr/lib/x86_64-linux-gnu -I/usr/include/json_c -I/usr/include/librdkafka -std=c99 -O0 -ljson-c -lrdkafka -lssl -ljwt -lcrypto -lz -fstack-protector -o almond
+   gcc -g -Wall main.c api.c config.c logger.c plugins.c heal.c mod_kafka.c collect.c jwt_validate.c alerting.c -pthread -L/usr/lib/x86_64-linux-gnu -I/usr/include/json_c -I/usr/include/librdkafka -std=c99 -O0 -ljson-c -lcurl -lrdkafka -lssl -ljwt -lcrypto -lz -lm -fstack-protector -o almond
 
    To compile with Avro support for Kafka, you need to install required dependecies and edit the schema registry path in the mod_avro.c file. You also need to rename mod_avro.c and mod_avro.h to mod_kafka.c and mod_kafka.h, overwriting existing files and then compile with
-   gcc -g -Wall main.c api.c config.c logger.c plugins.c mod_avro.c -pthread -L/usr/lib/x86_64-linux-gnu -I/usr/include/json_c -I/usr/include/librdkafka -I /usr/include/avro -I /usr/include/libserdes -std=c99 -O0 -ljson-c -lserdes -lavro -lrdkafka -lssl -ljwt -lcrypto -lz -fstack-protector -o almond
+   gcc -g -Wall main.c api.c config.c logger.c plugins.c heal.c mod_avro.c collect.c jwt_validate.c alerting.c -pthread -L/usr/lib/x86_64-linux-gnu -I/usr/include/json_c -I/usr/include/librdkafka -I /usr/include/avro -I /usr/include/libserdes -std=c99 -O0 -ljson-c -lserdes -lavro -lrdkafka -lssl -ljwt -lcrypto -lz -lm -fstack-protector -o almond
    Also make sure to register the schema used by the Almond Kafka producer:
    curl -X POST http://localhost:18081/subjects/almond-monitor-topic-value/versions \
      -H "Content-Type: application/vnd.schemaregistry.v1+json" \
@@ -99,14 +99,28 @@ ________________________________________________________________________________
    Also take note that this schema requires you to use kafkaStartId and kafkaTag meta data options.
 
    To just compile almond without Kafka you need to remove Kafka references in the source code then you write:
-   gcc -g -Wall main_s.c api_s.c config_s.c logger.c plugins.c  -pthread -L/usr/lib/x86_64-linux-gnu -I/usr/include/json_c -std=c99 -O0 -ljson-c  -lssl -ljwt -lcrypto -lz -fstack-protector -o almond
+   gcc -g -Wall main_s.c api_s.c config_s.c logger.c plugins.c heal.c collect.c jwt_validate.c alerting.c -pthread -L/usr/lib/x86_64-linux-gnu -I/usr/include/json_c -std=c99 -O0 -ljson-c  -lssl -ljwt -lcrypto -lz -fstack-protector -o almond
 
 3. START THE ALMOND PROCESS
    After running the install script you can start Almond with the following command:
    
    /opt/almond/start_almond.sh
 
-4. INSTALLING WITH AUTOMAKE
+   4. OPTIONAL HEALING
+      Healing is disabled unless almond.tryToHeal=true is set in almond.conf. No heal actions are
+      installed by default. To configure user-owned actions, create heal.conf in scheduler.confDir:
+
+      {
+         "react_on_state": "WARNING",
+         "heals": [
+            {"plugin": "disk", "run": "/opt/almond/scripts/heal_disk", "timeout_seconds": 30}
+         ]
+      }
+
+      A rule may use an integer "id" instead of "plugin". Actions run once when a plugin enters the
+      configured state, then the plugin is checked again. A failed or timed-out action is not retried.
+
+5. INSTALLING WITH AUTOMAKE
    Make sure everyting is clean between builds, running autoreconf -fi
    Other than that is just to run the regular configure, make, make install commands.
    Configure can be run in three ways:
@@ -114,7 +128,7 @@ ________________________________________________________________________________
    ./configure --prefix=/opt/almond --enable-avro	installs Almond with avro support for Kafka
    ./configure --prefix=/opt/almond --disable-kafka	installs a minimal Almond without support for Kafka
 
-5. PLUGIN NOTICE
+6. PLUGIN NOTICE
    Some plugins installed by default will have their own prerequisites such as Python and Perl with
    additional modules. Some plugins are binary and compiled under x86_64/amd64 for Debian and if
    they are not working you need to download/install/compile them for the distribution and or

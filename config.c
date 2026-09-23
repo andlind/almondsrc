@@ -75,6 +75,20 @@ void process_almond_standalone(ConfVal value) {
 	}
 }
 
+void process_almond_heal(ConfVal value) {
+	if ((strcmp(value.strval, "true") == 0) || (value.intval >= 1)) {
+		writeLog("Almond have try to heal function activated.", 0, 1);
+		try_to_heal = true;
+	}
+}
+
+void process_almond_log_heal(ConfVal value) {
+	if ((strcmp(value.strval, "true") == 0) || (value.intval >= 1)) {
+                writeLog("Almond will log heal attempts to '/var/log/almond/heal_actions.log'.", 0, 1);
+                log_heal_command = true;
+        }
+}
+
 void process_almond_api_tls(ConfVal value) {
 	if ((strcmp(value.strval, "true") == 0) || (value.intval >= 1)) {
 		writeLog("Almond scheduler use TLS encryption.", 0, 1);
@@ -115,6 +129,14 @@ void process_collector_verbose(ConfVal value) {
 	}
 }
 
+void process_save_inventory(ConfVal value) {
+	if ((strcmp(value.strval, "true") == 0) || (strcmp(value.strval, "on") == 0) || (value.intval >= 1)) {
+        	save_inventory = true;
+        }
+        else {
+                save_inventory = false;
+        }
+}
 void process_enable_collector(ConfVal value) {
    if ((strcmp(value.strval, "true") == 0) || (strcmp(value.strval, "on") == 0) || (value.intval >= 1)) {
                 enableCollector = true;
@@ -256,6 +278,12 @@ void process_metrics_file(ConfVal val) {
 	writeLog(trim(infostr), 0, 1);
 }
 
+void process_inventory_file_name(ConfVal val) {
+	snprintf(inventoryFileName, inventoryfilename_size, "%s", val.strval);
+        snprintf(infostr, infostr_size, "Inventory will be collected to file: %s", inventoryFileName);
+        writeLog(trim(infostr), 0, 1);
+}
+
 void process_almond_push(ConfVal value) {
 	if ((strcmp(value.strval, "true") == 0) || (value.intval >= 1)) {
 		writeLog("Almond data push enabled.", 0, 1);
@@ -269,6 +297,13 @@ void process_metrics_push(ConfVal value) {
         if ((strcmp(value.strval, "true") == 0) || (value.intval >= 1)) {
                 writeLog("Almond metrics push enabled.", 0, 1);
                 use_metrics_push = true;
+        }
+}
+
+void process_mail_alerts(ConfVal value) {
+        if ((strcmp(value.strval, "true") == 0) || (value.intval >= 1)) {
+                writeLog("Almond mail alerts enabled.", 0, 1);
+                send_alerts_to_email = true;
         }
 }
 
@@ -324,4 +359,11 @@ void process_push_interval(ConfVal value) {
 			writeLog("Almond push interval is set to default value of 120.", 0, 1);
 		}
 	}
+}
+
+void process_slack_alerts(ConfVal value) {
+        if ((strcmp(value.strval, "true") == 0) || (value.intval >= 1)) {
+                writeLog("Almond slack alerts enabled.", 0, 1);
+                send_alerts_to_slack = true;
+        }
 }

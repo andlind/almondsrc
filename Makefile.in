@@ -110,10 +110,12 @@ CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
 am__almond_SOURCES_DIST = main_s.c api_s.c plugins.c logger.c config.c \
-	collect.c jwt_validate.c main.c api.c mod_kafka.c mod_avro.c
+	collect.c jwt_validate.c alerting.c heal.c main.c api.c \
+	mod_kafka.c mod_avro.c
 am__objects_1 = almond-plugins.$(OBJEXT) almond-logger.$(OBJEXT) \
 	almond-config.$(OBJEXT) almond-collect.$(OBJEXT) \
-	almond-jwt_validate.$(OBJEXT)
+	almond-jwt_validate.$(OBJEXT) almond-alerting.$(OBJEXT) \
+	almond-heal.$(OBJEXT)
 @USE_MINIMAL_TRUE@am__objects_2 = almond-main_s.$(OBJEXT) \
 @USE_MINIMAL_TRUE@	almond-api_s.$(OBJEXT) $(am__objects_1)
 @USE_KAFKA_ONLY_TRUE@am__objects_3 = almond-main.$(OBJEXT) \
@@ -144,10 +146,10 @@ am__v_at_1 =
 DEFAULT_INCLUDES = -I.@am__isrc@
 depcomp = $(SHELL) $(top_srcdir)/depcomp
 am__maybe_remake_depfiles = depfiles
-am__depfiles_remade = ./$(DEPDIR)/almond-api.Po \
-	./$(DEPDIR)/almond-api_s.Po ./$(DEPDIR)/almond-collect.Po \
-	./$(DEPDIR)/almond-config.Po \
-	./$(DEPDIR)/almond-jwt_validate.Po \
+am__depfiles_remade = ./$(DEPDIR)/almond-alerting.Po \
+	./$(DEPDIR)/almond-api.Po ./$(DEPDIR)/almond-api_s.Po \
+	./$(DEPDIR)/almond-collect.Po ./$(DEPDIR)/almond-config.Po \
+	./$(DEPDIR)/almond-heal.Po ./$(DEPDIR)/almond-jwt_validate.Po \
 	./$(DEPDIR)/almond-logger.Po ./$(DEPDIR)/almond-main.Po \
 	./$(DEPDIR)/almond-main_s.Po ./$(DEPDIR)/almond-mod_avro.Po \
 	./$(DEPDIR)/almond-mod_kafka.Po ./$(DEPDIR)/almond-plugins.Po
@@ -307,7 +309,7 @@ top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
 AUTOMAKE_OPTIONS = foreign
 almond_SOURCES = $(am__append_1) $(am__append_2) $(am__append_5)
-COMMON_SOURCES = plugins.c logger.c config.c collect.c jwt_validate.c
+COMMON_SOURCES = plugins.c logger.c config.c collect.c jwt_validate.c alerting.c heal.c
 AM_CPPFLAGS = -I/usr/include
 AM_LDFLAGS = -L/usr/lib64 -L/usr/local/lib -L/usr/lib
 
@@ -316,7 +318,7 @@ almond_CPPFLAGS = -I/usr/include/json_c $(am__append_3) \
 	$(am__append_6)
 almond_CFLAGS = -g -Wall -std=c99 -O0
 almond_LDFLAGS = -L/usr/lib/x86_64-linux-gnu -fstack-protector
-almond_LDADD = -lpthread -ljson-c -lcurl -lssl -lcrypto -lz \
+almond_LDADD = -lpthread -ljson-c -lcurl -lssl -lcrypto -lz -lm \
 	$(JWT_LIBS) $(am__append_4) $(am__append_7)
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am
@@ -424,10 +426,12 @@ mostlyclean-compile:
 distclean-compile:
 	-rm -f *.tab.c
 
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/almond-alerting.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/almond-api.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/almond-api_s.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/almond-collect.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/almond-config.Po@am__quote@ # am--include-marker
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/almond-heal.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/almond-jwt_validate.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/almond-logger.Po@am__quote@ # am--include-marker
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/almond-main.Po@am__quote@ # am--include-marker
@@ -553,6 +557,34 @@ almond-jwt_validate.obj: jwt_validate.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='jwt_validate.c' object='almond-jwt_validate.obj' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(almond_CPPFLAGS) $(CPPFLAGS) $(almond_CFLAGS) $(CFLAGS) -c -o almond-jwt_validate.obj `if test -f 'jwt_validate.c'; then $(CYGPATH_W) 'jwt_validate.c'; else $(CYGPATH_W) '$(srcdir)/jwt_validate.c'; fi`
+
+almond-alerting.o: alerting.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(almond_CPPFLAGS) $(CPPFLAGS) $(almond_CFLAGS) $(CFLAGS) -MT almond-alerting.o -MD -MP -MF $(DEPDIR)/almond-alerting.Tpo -c -o almond-alerting.o `test -f 'alerting.c' || echo '$(srcdir)/'`alerting.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/almond-alerting.Tpo $(DEPDIR)/almond-alerting.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='alerting.c' object='almond-alerting.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(almond_CPPFLAGS) $(CPPFLAGS) $(almond_CFLAGS) $(CFLAGS) -c -o almond-alerting.o `test -f 'alerting.c' || echo '$(srcdir)/'`alerting.c
+
+almond-alerting.obj: alerting.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(almond_CPPFLAGS) $(CPPFLAGS) $(almond_CFLAGS) $(CFLAGS) -MT almond-alerting.obj -MD -MP -MF $(DEPDIR)/almond-alerting.Tpo -c -o almond-alerting.obj `if test -f 'alerting.c'; then $(CYGPATH_W) 'alerting.c'; else $(CYGPATH_W) '$(srcdir)/alerting.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/almond-alerting.Tpo $(DEPDIR)/almond-alerting.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='alerting.c' object='almond-alerting.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(almond_CPPFLAGS) $(CPPFLAGS) $(almond_CFLAGS) $(CFLAGS) -c -o almond-alerting.obj `if test -f 'alerting.c'; then $(CYGPATH_W) 'alerting.c'; else $(CYGPATH_W) '$(srcdir)/alerting.c'; fi`
+
+almond-heal.o: heal.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(almond_CPPFLAGS) $(CPPFLAGS) $(almond_CFLAGS) $(CFLAGS) -MT almond-heal.o -MD -MP -MF $(DEPDIR)/almond-heal.Tpo -c -o almond-heal.o `test -f 'heal.c' || echo '$(srcdir)/'`heal.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/almond-heal.Tpo $(DEPDIR)/almond-heal.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='heal.c' object='almond-heal.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(almond_CPPFLAGS) $(CPPFLAGS) $(almond_CFLAGS) $(CFLAGS) -c -o almond-heal.o `test -f 'heal.c' || echo '$(srcdir)/'`heal.c
+
+almond-heal.obj: heal.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(almond_CPPFLAGS) $(CPPFLAGS) $(almond_CFLAGS) $(CFLAGS) -MT almond-heal.obj -MD -MP -MF $(DEPDIR)/almond-heal.Tpo -c -o almond-heal.obj `if test -f 'heal.c'; then $(CYGPATH_W) 'heal.c'; else $(CYGPATH_W) '$(srcdir)/heal.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/almond-heal.Tpo $(DEPDIR)/almond-heal.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='heal.c' object='almond-heal.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(almond_CPPFLAGS) $(CPPFLAGS) $(almond_CFLAGS) $(CFLAGS) -c -o almond-heal.obj `if test -f 'heal.c'; then $(CYGPATH_W) 'heal.c'; else $(CYGPATH_W) '$(srcdir)/heal.c'; fi`
 
 almond-main.o: main.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(almond_CPPFLAGS) $(CPPFLAGS) $(almond_CFLAGS) $(CFLAGS) -MT almond-main.o -MD -MP -MF $(DEPDIR)/almond-main.Tpo -c -o almond-main.o `test -f 'main.c' || echo '$(srcdir)/'`main.c
@@ -884,10 +916,12 @@ clean-am: clean-binPROGRAMS clean-generic mostlyclean-am
 
 distclean: distclean-am
 	-rm -f $(am__CONFIG_DISTCLEAN_FILES)
-		-rm -f ./$(DEPDIR)/almond-api.Po
+		-rm -f ./$(DEPDIR)/almond-alerting.Po
+	-rm -f ./$(DEPDIR)/almond-api.Po
 	-rm -f ./$(DEPDIR)/almond-api_s.Po
 	-rm -f ./$(DEPDIR)/almond-collect.Po
 	-rm -f ./$(DEPDIR)/almond-config.Po
+	-rm -f ./$(DEPDIR)/almond-heal.Po
 	-rm -f ./$(DEPDIR)/almond-jwt_validate.Po
 	-rm -f ./$(DEPDIR)/almond-logger.Po
 	-rm -f ./$(DEPDIR)/almond-main.Po
@@ -942,10 +976,12 @@ installcheck-am:
 maintainer-clean: maintainer-clean-am
 	-rm -f $(am__CONFIG_DISTCLEAN_FILES)
 	-rm -rf $(top_srcdir)/autom4te.cache
-		-rm -f ./$(DEPDIR)/almond-api.Po
+		-rm -f ./$(DEPDIR)/almond-alerting.Po
+	-rm -f ./$(DEPDIR)/almond-api.Po
 	-rm -f ./$(DEPDIR)/almond-api_s.Po
 	-rm -f ./$(DEPDIR)/almond-collect.Po
 	-rm -f ./$(DEPDIR)/almond-config.Po
+	-rm -f ./$(DEPDIR)/almond-heal.Po
 	-rm -f ./$(DEPDIR)/almond-jwt_validate.Po
 	-rm -f ./$(DEPDIR)/almond-logger.Po
 	-rm -f ./$(DEPDIR)/almond-main.Po

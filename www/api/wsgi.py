@@ -58,7 +58,7 @@ def initialize_wsgi():
     # Set app config
     app.config['AUTH_TYPE'] = howru.admin_auth_type
     app.config['IS_CONTAINER'] = 'true' if howru.is_container else 'false'
-    app.config['AUTH2FA_P'] = 'true' if howru.persistant_2fa else 'false'
+    app.config['AUTH2FA_P'] = 'true' if howru.persistent_2fa else 'false'
     
     app.logger.info("Configuration loaded successfully")
     

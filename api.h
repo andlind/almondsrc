@@ -65,6 +65,9 @@
 #define API_GET_PUSH_URL 303
 #define API_GET_PUSH_PORT 304
 #define API_GET_PUSH_INTERVAL 305
+#define API_GET_INVENTORY_FULL 306
+#define API_GET_INVENTORY_CHANGES 307
+#define API_GET_INVENTORY 308
 #define API_CHECK_PLUGIN_CONFIG 92
 #define API_RELOAD_ALMOND 93
 #define API_RELOAD_CONFIG_HARD 94
@@ -90,6 +93,7 @@ extern char *almondCertificate;
 extern char *almondKey;
 extern char *push_url;
 extern bool allowAllHosts;
+extern char *inventoryFileName;
 extern char *hosts_allowed[MAX_HOSTS];
 extern int hosts_allowed_count;
 extern int push_port;
@@ -118,6 +122,7 @@ void apiReload();
 void apiShowVersion();
 void apiShowStatus();
 void apiShowPluginStatus();
+void apiGetInventory(int);
 int createSocket(int);
 
 #endif // API_H

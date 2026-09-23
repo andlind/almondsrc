@@ -22,6 +22,7 @@
 #endif
 #define MAX_STRING_SIZE 50
 #define INFO_STR_SIZE 810 
+#define DEFAULT_AVRO_DECLARATION_FILE "/opt/almond/plugin_status.avsc"
 
 extern char *schemaRegistryUrl;
 extern char schemaName[100];
@@ -40,6 +41,7 @@ char* kafka_sasl_mechanisms = NULL;
 char* kafka_sasl_username = NULL;
 char* kafka_sasl_password = NULL;
 char* kafka_security_protocol = NULL;
+char* avro_declaration_file = NULL;
 bool use_transactions = false;
 bool enable_idempotence = false;
 bool kafka_dr_cb = true;
@@ -99,6 +101,7 @@ void process_kafka_sasl_username(ConfVal);
 void process_kafka_socket_timeout(ConfVal);
 void process_kafka_socket_blocking(ConfVal);
 void process_kafka_transaction_timeout(ConfVal);
+void process_scheduler_avro_declaration(ConfVal);
 
 ConfigEntry kafka_entries[] = {
     {"kafka.bootstrap.servers", process_kafka_brokers},
@@ -133,7 +136,8 @@ ConfigEntry kafka_entries[] = {
     {"kafka.socket.timeout.ms", process_kafka_socket_timeout},
     {"kafka.socket.blocking.max.ms", process_kafka_socket_blocking},
     {"kafka.transaction.timeout.ms", process_kafka_transaction_timeout},
-    {"kafka.partitioner", process_kafka_partitioner}
+    {"kafka.partitioner", process_kafka_partitioner},
+    {"scheduler.kafkaAvroDeclarationFile", process_scheduler_avro_declaration}
 };
 
 
@@ -208,9 +212,18 @@ static int serialize_and_send(char *dummy_topic, const GKafkaMessage *msg) {
 
     serdes_t *serdes = serdes_new(sconf, NULL, 0);
     size_t schema_len;
-    char *schema_buf = load_file("plugin_status.avsc", &schema_len); // Adjust path if needed
+    const char *filepath = (avro_declaration_file != NULL) 
+                       ? avro_declaration_file 
+                       : DEFAULT_AVRO_DECLARATION_FILE;
+    //char *schema_buf = load_file("plugin_status.avsc", &schema_len); // Adjust path if needed
+    /*if (avro_declaration_file != NULL)
+    	schema_buf = load_file(avro_declaration_file, &schema_len);
+    else
+        schema_buf = load_file(DEFAULT_AVRO_DECLARATION_FILE, &schema_len);*/
+    char *schema_buf = load_file(filepath, &schema_len);
     if (!schema_buf) {
-        writeLog("Failed to load plugin_status.avsc", 2, 0);
+        snprintf(info, INFO_STR_SIZE, "[mod_kafka] Failed to load Avro schema file: %s", avro_declaration_file);
+        writeLog(triminfo(info), 2, 0);
         serdes_destroy(serdes);
         return -1;
     }
@@ -218,9 +231,13 @@ static int serialize_and_send(char *dummy_topic, const GKafkaMessage *msg) {
     serdes_schema_t *schema = serdes_schema_add(serdes, schemaName, -1,
                                                schema_buf, schema_len,
                                                errstr, sizeof(errstr));
+    free(schema_buf);
+    schema_buf = NULL;
     if (!schema) {
-        fprintf(stderr, "Failed to register schema: %s\n", errstr);
-        free(schema_buf);
+	snprintf(info, INFO_STR_SIZE, "[mod_kafka] Failed to register schema '%s': %s", schemaName, errstr);
+	writeLog(triminfo(info), 2, 0);
+        /*fprintf(stderr, "Failed to register schema: %s\n", errstr);
+        free(schema_buf);*/
         serdes_destroy(serdes);
         return -1;
     }
@@ -336,7 +353,10 @@ static int serialize_and_send(char *dummy_topic, const GKafkaMessage *msg) {
         // Cleanup and return early to prevent further issues
         avro_value_iface_decref(iface);
         avro_value_decref(&record);
-        if (schema_buf) free(schema_buf);
+        if (schema_buf) {
+		free(schema_buf);
+		schema_buf = NULL;
+	}
         serdes_destroy(serdes);
         return -1;
     }
@@ -383,7 +403,10 @@ static int serialize_and_send(char *dummy_topic, const GKafkaMessage *msg) {
     avro_value_iface_decref(iface);
     avro_value_decref(&record);
     if (buffer) free(buffer);
-    if (schema_buf) free(schema_buf);
+    if (schema_buf) {
+	free(schema_buf);
+	schema_buf = NULL;
+    }
     serdes_destroy(serdes);
     return (serr == SERDES_ERR_OK && !err) ? 0 : -1;
 }
@@ -780,15 +803,15 @@ void process_kafka_sasl_mechanisms(ConfVal value) {
 
 void process_kafka_sasl_username(ConfVal value) {
         if (!value.strval || strlen(value.strval) == 0) {
-                free_and_null(&kafka_sasl_username);
+                free_and_null(&avro_declaration_file);
                 writeLog("[mod_kafka] kafka.sasl.username is empty. Value is set to NULL.", 0, 1);
                 return;
         }
-        char *dup = safe_strdup(value.strval, "kafka.sasl.username");
+        char *dup = safe_strdup(value.strval, "scheduler.kafkaAvroDeclarationFile");
         if (!dup) return;
-        free_and_null(&kafka_sasl_username);
-        kafka_sasl_username = dup;
-        snprintf(info, INFO_STR_SIZE, "[mod_kafka] kafka.sasl.username is set to '%s'.", kafka_sasl_username);
+        free_and_null(&avro_declaration_file);
+        avro_declaration_file = dup;
+        snprintf(info, INFO_STR_SIZE, "[mod_kafka] scheduler.kafkaAvroDeclarationFile  is set to '%s'.", avro_declaration_file);
         writeLog(triminfo(info), 0, 1);
 }
 
@@ -868,6 +891,29 @@ void process_kafka_avro(ConfVal value) {
                 kafkaAvro = false;
 		writeLog("Kafka is producing JSON, avro is not enabled.", 0, 1);
 	}
+}
+
+void process_scheduler_avro_declaration(ConfVal value) {
+        const char *path = (value.strval && strlen(value.strval) > 0) 
+                           ? value.strval 
+                           : DEFAULT_AVRO_DECLARATION_FILE;
+
+        char *dup = safe_strdup(path, "scheduler.kafkaAvroDeclarationFile");
+        if (!dup) return;
+
+        free_and_null(&avro_declaration_file);
+        avro_declaration_file = dup;
+
+        if (!value.strval || strlen(value.strval) == 0) {
+                snprintf(info, INFO_STR_SIZE, 
+                         "[mod_kafka] scheduler.kafkaAvroDeclarationFile is not configured. Falling back to default: '%s'.", 
+                         avro_declaration_file);
+        } else {
+                snprintf(info, INFO_STR_SIZE, 
+                         "[mod_kafka] scheduler.kafkaAvroDeclarationFile is set to '%s'.", 
+                         avro_declaration_file);
+        }
+        writeLog(triminfo(info), 0, 1);
 }
 
 static bool parse_conf_line(char *line, char *name_out, size_t name_len, char *val_out, size_t val_len) {
@@ -1397,7 +1443,12 @@ int send_avro_message_to_kafka(char *brokers, char *topic,
 	serdes_conf_t *sconf = serdes_conf_new(errstr, sizeof(errstr), "schema.registry.url", schemaRegistryUrl, NULL);
 	serdes_t *serdes = serdes_new(sconf, NULL, 0);
         size_t schema_len;
-       	char *schema_buf = load_file("plugin_status.avsc", &schema_len);
+        const char *filepath = (avro_declaration_file != NULL) 
+                       ? avro_declaration_file 
+                       : DEFAULT_AVRO_DECLARATION_FILE;
+
+	char *schema_buf = load_file(filepath, &schema_len);
+       	//char *schema_buf = load_file("plugin_status.avsc", &schema_len);
 
 	// Schema registration
 	serdes_schema_t *schema = serdes_schema_add(
@@ -1550,7 +1601,12 @@ int send_ssl_avro_message_to_kafka(char *brokers, char *cacertificate, char *cer
         serdes_conf_t *sconf = serdes_conf_new(errstr, sizeof(errstr), "schema.registry.url", schemaRegistryUrl, NULL);
         serdes_t *serdes = serdes_new(sconf, NULL, 0);
         size_t schema_len;
-        char *schema_buf = load_file("plugin_status.avsc", &schema_len);
+	const char *filepath = (avro_declaration_file != NULL) 
+                       ? avro_declaration_file 
+                       : DEFAULT_AVRO_DECLARATION_FILE;
+
+	char *schema_buf = load_file(filepath, &schema_len);
+        //char *schema_buf = load_file("plugin_status.avsc", &schema_len);
 
 	if (schemaRegistryUrl == NULL) {
                 writeLog("No url to schema registry found in config.", 2, 0);
@@ -1683,13 +1739,16 @@ int send_ssl_avro_message_to_kafka(char *brokers, char *cacertificate, char *cer
 }
 
 static void shutdown_kafka_producer() {
-	writeLog("Flushing final Kafka messages...", 0, 0);
-        rd_kafka_flush(global_producer, 10000);
-	if (rd_kafka_outq_len(global_producer) > 0) {
-                snprintf(info, INFO_STR_SIZE, "%% %d message(s) were not delivered", rd_kafka_outq_len(global_producer));
-                writeLog(triminfo(info), 1, 0);
-        }
-        rd_kafka_destroy(global_producer);
+	if (global_producer != NULL) {
+		writeLog("Flushing final Kafka messages...", 0, 0);
+        	rd_kafka_flush(global_producer, 10000);
+		if (rd_kafka_outq_len(global_producer) > 0) {
+                	snprintf(info, INFO_STR_SIZE, "%% %d message(s) were not delivered", rd_kafka_outq_len(global_producer));
+                	writeLog(triminfo(info), 1, 0);
+        	}
+        	rd_kafka_destroy(global_producer);
+		global_producer = NULL;
+	}
 }
 
 void free_kafka_memalloc() {

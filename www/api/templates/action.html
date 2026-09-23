@@ -93,10 +93,16 @@
                         <label for="flags">Flags</label>&nbsp;&nbsp;<select name="flags" id="flags">
                                 <option value="hard">hard</option>
                                 <option selected value="soft">soft</option>
-                        </select><br>
+			</select><br>
                         <label for="options">Options</label>&nbsp;&nbsp;<input type="text" name="options" id="options" maxlength="25" required placeholder="Enter options"/><br>
 			<label for="warning">Warning value</label>&nbsp;&nbsp;<input type="text" name="warning" id="warning" maxlength="10"/>&nbsp;&nbsp;&nbsp;&nbsp;
 			<label for="critical">Critical value</label>&nbsp;&nbsp;<input type="text" name="critical" id="critical" maxlength="10" />
+                        {% elif (action == "16") %}
+                        <label for="flags"></label>&nbsp;&nbsp;<select name="flags" id = "flags">
+                                <option value="full">Full inventory</option>
+                                <option value="changes">Changes only</option>
+                                <option value="standard" selected>Standard</option>
+                        </select>
 			{% endif %}
 		</td>
 	</tr>

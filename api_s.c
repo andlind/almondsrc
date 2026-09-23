@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include "config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +21,56 @@
 #include "api.h"
 #include "version.h"
 #include "main.h"
+#ifdef USE_AVRO
+	#include "mod_avro.h"
+	#include "kafkaapi.h"
+#else
+	#ifndef USE_MINIMAL
+		#include "mod_kafka.h"
+		#include "kafkaapi.h"
+	#endif
+#endif
+#include "utils.h"
+#include "api.h"               
+#include "main.h"
+
+static const char *plugin_status_name_minimal(int status_code) {
+	switch (status_code) {
+		case 0: return "OK";
+		case 1: return "WARNING";
+		case 2: return "CRITICAL";
+		default: return "UNKNOWN";
+	}
+}
+
+static void append_plugin_status_metadata_minimal(char *message,
+												  const char *indent,
+												  const PluginItem *item) {
+	char field[256];
+	char history_item[256];
+
+	snprintf(field, sizeof field,
+			 "%s\"previousStatus\":\"%s\",\n"
+			 "%s\"statusChanged\":%s,\n"
+			 "%s\"statusChangedAt\":\"%s\",\n"
+			 "%s\"statusDuration\":%ld,\n"
+			 "%s\"history\":[",
+			 indent, plugin_status_name_minimal(item->output.prevRetCode),
+			 indent, item->statusChanged[0] == '1' ? "true" : "false",
+			 indent, item->statusChangedAt,
+			 indent, item->statusDuration,
+			 indent);
+	strcat(message, field);
+	for (size_t i = 0; i < item->historyCount; ++i) {
+		snprintf(history_item, sizeof history_item,
+				 "%s{\"state\":\"%s\",\"timestamp\":\"%s\"}",
+				 i ? "," : "",
+				 plugin_status_name_minimal(item->history[i].statusCode),
+				 item->history[i].timestamp);
+		strcat(message, history_item);
+	}
+	strcat(message, "],\n");
+}
 
 void apiMonitorItem(int plugin_id, int a_flags) {
         if (a_flags == API_MONITOR_SOFT) {
@@ -28,13 +79,13 @@ void apiMonitorItem(int plugin_id, int a_flags) {
         else if (a_flags == API_MONITOR_SOFT_VALUE) {
                 apiMonitorItemSoftValue(plugin_id);
         }
-        else if (a_flags == API_MONITOR_HARD) {
-                apiMonitorHardItem(plugin_id);
-        }
-        else if (a_flags == API_MONITOR_HARD_VALUE) {
-                apiMonitorItemHardValue(plugin_id);
-        }
-        else {
+	else if (a_flags == API_MONITOR_HARD) {
+		apiMonitorHardItem(plugin_id);
+	}
+	else if (a_flags == API_MONITOR_HARD_VALUE) {
+		apiMonitorItemHardValue(plugin_id);
+	}
+	else {
                 printf("[apiMonitorItem] a_flags do not match any run value\n");
                 writeLog("[apiMonitorItem] aflags does not have a corresponding value set.", 1, 0);
         }
@@ -48,14 +99,14 @@ void apiMonitorSoftItem(int plugin_id) {
         if (message == NULL) {
                 writeLog("Failed to allocate memory for api message.", 1, 0);
         }
-        else {  
-                message[0] = '\0';
-                sprintf(rCode, "%d", g_plugins[plugin_id]->output.retCode);
-                snprintf(message, apimessage_size, "{\n     \"plugin\":\"%s\",\n     \"output\":\"%s\",\n     \"returncode\":%s\n}\n",
-                        g_plugins[plugin_id]->description,
-                        trim(g_plugins[plugin_id]->output.retString),
-                        trim(rCode));
-        }
+        else {
+        	message[0] = '\0';
+		sprintf(rCode, "%d", g_plugins[plugin_id]->output.retCode);
+		snprintf(message, apimessage_size, "{\n     \"plugin\":\"%s\",\n     \"output\":\"%s\",\n     \"returncode\":%s\n}\n",
+         		g_plugins[plugin_id]->description,
+         		trim(g_plugins[plugin_id]->output.retString),
+         		trim(rCode));
+	}
         socket_message = malloc((size_t)(apimessage_size + 1) * sizeof(char));
         if (socket_message == NULL) {
                 fprintf(stderr, "Failed to allocate memory.\n");
@@ -63,86 +114,87 @@ void apiMonitorSoftItem(int plugin_id) {
                 return;
         }
         else
-                memset(socket_message, '\0', (size_t)(apimessage_size + 1) * sizeof(char));
-        if (message != NULL)
-                snprintf(socket_message, apimessage_size, "%s", message);
-        else
-                snprintf(socket_message, apimessage_size, "Failed to allocate memory for message.");
+        	memset(socket_message, '\0', (size_t)(apimessage_size + 1) * sizeof(char));
+	if (message != NULL)
+		snprintf(socket_message, apimessage_size, "%s", message);
+	else
+		snprintf(socket_message, apimessage_size, "Failed to allocate memory for message.");	
         free(message);
         message = NULL;
 }
 
 void apiMonitorHardItem(int plugin_id) {
-        char* message = NULL;
-        char retString[pluginoutput_size];
-        char ch = '/';
-        PluginOutput *output;
-        int rc = 0;
+	char* message = NULL;
+   	char retString[pluginoutput_size];
+	char ch = '/';
+	PluginOutput *output;
+	int rc = 0;
 
-        output = malloc(sizeof(PluginOutput));
-    	if (output == NULL) {
-        	writeLog("Failed to allocate memory for plugin output", 1, 0);
-                return;
+	output = malloc(sizeof(PluginOutput));
+   	 if (output == NULL) {
+    		writeLog("Failed to allocate memory for plugin output", 1, 0);
+        	return;
     	}
     	memset(output, 0, sizeof(PluginOutput));
-        output->retString = malloc(pluginoutput_size * sizeof(char));
+	output->retString = malloc(pluginoutput_size * sizeof(char));
     	if (output->retString == NULL) {
-        	writeLog("Failed to allocate memory for return string", 1, 0);
-        	free(output);
+    		writeLog("Failed to allocate memory for return string", 1, 0);
+    		free(output);
         	return;
     	}
     	memset(output->retString, 0, pluginoutput_size);
-        message = malloc((size_t)apimessage_size * sizeof(char)+1);
-        if (message == NULL) {
-                writeLog("Failed to allocate memory for api message.", 1, 0);
-                free(output->retString);
-                free(output);
-                return;
-        }
-        else
-                message[0] = '\0';
-        memset(message, 0, apimessage_size);
-        // Now run plugin_id and get output and rCode
+	message = malloc((size_t)apimessage_size * sizeof(char)+1);
+	if (message == NULL) {
+		writeLog("Failed to allocate memory for api message.", 1, 0);
+		free(output->retString);
+		free(output);
+		return;
+	}
+	else
+		message[0] = '\0';
+	memset(message, 0, apimessage_size);
+	// Now run plugin_id and get output and rCode 
     	snprintf(pluginCommand, plugincommand_size, "%s%c%s", pluginDir, ch, g_plugins[plugin_id]->command);
     	snprintf(infostr, infostr_size, "Running apiMonitorHard: %s.", g_plugins[plugin_id]->command);
     	writeLog(trim(infostr), 0, 0);
     	TrackedPopen tp = tracked_popen(pluginCommand);
     	if (tp.fp == NULL) {
-        	printf("Failed to run command\n");
+    		printf("Failed to run command\n");
         	writeLog("Failed to run command via tracked_popen()", 2, 0);
-                snprintf(retString, 120, "Failed to run command: %s", pluginCommand);
+		snprintf(retString, 120, "Failed to run command: %s", pluginCommand);
         	rc = -1;
     	}
     	else {
-        	add_plugin_pid(tp.pid);
+    		add_plugin_pid(tp.pid);
         	while (fgets(retString, sizeof(retString), tp.fp) != NULL) {
-                	// VERBOSE  printf("%s", retString);
-                        //printf("DEBUG: Successfully read a line: %s", retString);
+        		// VERBOSE  printf("%s", retString);
+			//printf("DEBUG: Successfully read a line: %s", retString);
             		//fflush(stdout);
         	}
         	rc = tracked_pclose(&tp);
         	if (rc == -1) {
-                	snprintf(infostr, infostr_size,"[apiMonitorHardItem] tracked_pclose failed: errno %d (%s)", errno, strerror(errno));
+        		snprintf(infostr, infostr_size,"[apiMonitorHardItem] tracked_pclose failed: errno %d (%s)", errno, strerror(errno));
             		writeLog(trim(infostr), 1, 0);
         	}
         	remove_plugin_pid(tp.pid);
     	}
-	if (rc > 0) {
-        	if (rc == 256)
-                	output->retCode = 1;
+    	if (rc > 0) {
+    		if (rc == 256)
+        		output->retCode = 1;
         	else if (rc == 512)
-                	output->retCode = 2;
+        		output->retCode = 2;
         	else
-                	output->retCode = rc;
+        		output->retCode = rc;
     	}
-    	else
-        	output->retCode = rc;
-        memset(output->retString, 0, pluginoutput_size);
-        char* checked_output = trim(retString);
-        if (checked_output) {
-        	snprintf(output->retString, pluginoutput_size, "%s", checked_output);
+    	else {
+    		output->retCode = rc;
+	}
+	memset(output->retString, 0, pluginoutput_size);
+	char* checked_output = trim(retString);
+	if (checked_output) {
+    		snprintf(output->retString, pluginoutput_size, "%s", checked_output);
     	}
-        const char* plugin_desc = (g_plugins[plugin_id] && g_plugins[plugin_id]->description)
+    	const char* plugin_desc = (g_plugins[plugin_id] && g_plugins[plugin_id]->description)
                                   ? g_plugins[plugin_id]->description
                                   : "Unknown";
 
@@ -159,7 +211,7 @@ void apiMonitorHardItem(int plugin_id) {
 
     	socket_message = malloc((size_t)(apimessage_size + 1) * sizeof(char));
     	if (socket_message == NULL) {
-        	fprintf(stderr, "Failed to allocate memory for socket messages.\n");
+    		fprintf(stderr, "Failed to allocate memory for socket messages.\n");
         	writeLog("Failed to allocate memory [apiMonitorHardItem:socket message]", 2, 0);
         	return;
     	}
@@ -167,14 +219,14 @@ void apiMonitorHardItem(int plugin_id) {
                 memset(socket_message, '\0', (size_t)(apimessage_size + 1) * sizeof(char));
     	snprintf(socket_message, apimessage_size, "%s", message);
     	free(message);
-        free(output);
+	free(output);
     	message = NULL;
-        output = NULL;
+	output = NULL;
 }
 
 void apiMonitorItemSoftValue(int id) {
         char* message = NULL;
-        bool needHelp = false;
+	bool needHelp = false;
 
         message = malloc((size_t)apimessage_size * sizeof(char)+1);
         if (message == NULL) {
@@ -183,108 +235,122 @@ void apiMonitorItemSoftValue(int id) {
         else
                 message[0] = '\0';
         const char *metrics = strchr(g_plugins[id]->output.retString, '|');
-        if (!metrics) {
-                char nstr[4];
-                sprintf(nstr, "%d", id);
-                //strcat(message,"{\n     \"customCheck\":\"");
-                //strcat(message,"Item with ID ");
-                //strcat(message, nstr);
-                //strcat(message, "does not provide metrics.");
-                //strcat(message, "\"\n}\n");
-                snprintf(message, apimessage_size, "{\n     \"customCheck\":\"Item with ID %s does not provide metrics.\" \n}\n", nstr);
-        }
-        else {
-                metrics++;
-                char output[500];
-                char return_code[2];
-                const char *semicolon = strchr(customMonitorVals, ';');
-                semicolon++;
-                char metricName[32];
-                sscanf(semicolon, "%31s", metricName);
-                int crit = 0, warn = 0;
-                char direction[16] = "below";
-                char *cpos = strstr(customMonitorVals, "--critical=");
-                if (cpos) {
-                        sscanf(cpos, "--critical=%d", &crit);
-                } else if ((cpos = strstr(customMonitorVals, "-c")) != NULL) {
-                        sscanf(cpos, "-c%d", &crit);
-                }
-                else {
-                        printf("No values read.\n");
-                        crit = 0;
-                }
-                char *wpos = strstr(customMonitorVals, "--warning=");
-                if (wpos) {
-                        sscanf(wpos, "--warning=%d", &warn);
-                } else if ((wpos = strstr(customMonitorVals, "-w")) != NULL) {
-                        sscanf(wpos, "-w%d", &warn);
-                }
-                else {
-                        printf("No values read.");
-                        warn = 0;
-                }
-                sscanf(customMonitorVals, "%*[^;];%31[^:]:%15s", metricName, direction);
-                char searchKey[70];
-                snprintf(searchKey, sizeof(searchKey), "%s=", metricName);
-                char *found = strstr(metrics, searchKey);
-                if (!found) {
-                        printf("Metric %s not found.\n", metricName);
-                        needHelp = true;
-                }
-                if (!needHelp) {
-                        double value = atof(found + strlen(searchKey));
-                        snprintf(return_code, sizeof(return_code), "%s", "0");
-                        //printf("Value of %s: %.2f\n", metricName, value);
-                        if (strcmp(direction, "above") == 0) {
-                                if (value > crit) {
-                                        snprintf(output, sizeof(output), "CRITICAL: %s=%.2f above %d", metricName, value, crit);
-                                        snprintf(return_code, sizeof(return_code), "%s", "2");
-                                }
-                                else if (value > warn) {
-                                        snprintf(output, sizeof(output), "WARNING: %s=%.2f above %d", metricName, value, warn);
-                                        snprintf(return_code, sizeof(return_code), "%s", "1");
-                                }
-                                else {
-                                        snprintf(output, sizeof(output), "OK: %s=%.2f", metricName, value);
-                                }
-                        }
-                        else { // default below
-                                if (value < crit) {
-                                        snprintf(output, sizeof(output), "CRITICAL: %s=%.2f below %d", metricName, value, crit);
-                                        snprintf(return_code, sizeof(return_code), "%s", "2");
-                                } else if (value < warn) {
-                                        snprintf(output, sizeof(output), "WARNING: %s=%.2f below %d", metricName, value, warn);
-                                        snprintf(return_code, sizeof(return_code), "%s", "1");
-                                } else {
-                                        snprintf(output, sizeof(output), "OK: %s=%.2f", metricName, value);
-                                }
-                        }
-                        /*strcat(message,"{\n     \"plugin\":\"");
-                        strcat(message, g_plugins[id]->description);
-                        strcat(message, " ");
-                        strcat(message, metricName);
-                        strcat(message, "\",\n");
-                        strcat(message, "     \"output\":\"");
-                        strcat(message, output);
-                        strcat(message, "\",\n     \"returncode\":");
-                        strcat(message, return_code);
-                        strcat(message, "\n}\n");*/
-                        snprintf(message, apimessage_size, "{\n     \"plugin\":\"%s %s \",\n     \"output\":\"%s\",\n     \"returncode\":%s\n}\n",
-                                g_plugins[id]->description,
-                                metricName,
-                                output, return_code);
-                }
-                else {
-                        char temp[500];
-                        snprintf(temp, sizeof(temp), "UNKNOWN: Metric '%.100s' not found. Metrics found = %.200s", metricName, output);
-                        strncpy(output, temp, sizeof(output) - 1);
-                        output[sizeof(output) - 1] = '\0';
-                        snprintf(message, apimessage_size, "{\n     \"plugin\":\"%s %s\",\n     \"output\":\"%s\",\n       \"returncode\":3\n}\n",
-                                g_plugins[id]->description, metricName, output); 
-                }
-        }
-        //printf("%s\n", message);
-        socket_message = malloc((size_t)(apimessage_size + 1) * sizeof(char));
+	if (!metrics) {
+		char nstr[4];
+		sprintf(nstr, "%d", id);
+        	//strcat(message,"{\n     \"customCheck\":\"");
+		//strcat(message,"Item with ID ");
+		//strcat(message, nstr);
+		//strcat(message, "does not provide metrics.");
+		//strcat(message, "\"\n}\n");
+		snprintf(message, apimessage_size, "{\n     \"customCheck\":\"Item with ID %s does not provide metrics.\" \n}\n", nstr);
+	}
+	else {
+		metrics++;
+		char output[500];
+		char return_code[2];
+		const char *semicolon = strchr(customMonitorVals, ';');
+		semicolon++;
+		char metricName[32];
+		sscanf(semicolon, "%31s", metricName);
+		//printf("Metric to check: %s\n", metricName);
+		//printf("customMonitorVal : %s\n", customMonitorVals);
+		int crit = 0, warn = 0;
+    		//sscanf(customMonitorVals, "-c %d -w %d", &crit, &warn);
+		char direction[16] = "below";
+		//char *cpos = strstr(customMonitorVals, "-c");
+		//if (cpos) sscanf(cpos, "-c%d", &crit);
+		// else need help
+		char *cpos = strstr(customMonitorVals, "--critical="); 
+		if (cpos) { 
+			sscanf(cpos, "--critical=%d", &crit); 
+		} else if ((cpos = strstr(customMonitorVals, "-c")) != NULL) { 
+			sscanf(cpos, "-c%d", &crit); 
+		}
+		else {
+			printf("No values read.\n");
+			crit = 0;
+		}
+		//char *wpos = strstr(customMonitorVals, "-w");
+		//if (wpos) sscanf(wpos, "-w%d", &warn);
+		// else need help
+		char *wpos = strstr(customMonitorVals, "--warning="); 
+		if (wpos) { 
+			sscanf(wpos, "--warning=%d", &warn); 
+		} else if ((wpos = strstr(customMonitorVals, "-w")) != NULL) { 
+			sscanf(wpos, "-w%d", &warn); 
+		}
+	       	else {
+			printf("No values read.");
+			warn = 0;
+		}	
+		sscanf(customMonitorVals, "%*[^;];%31[^:]:%15s", metricName, direction);
+    		//printf("Critical: %d, Warning: %d\n", crit, warn);
+		//printf("crit=%d, warn=%d, metric=%s, direction=%s\n",crit, warn, metricName, direction);
+		char searchKey[70];
+    		snprintf(searchKey, sizeof(searchKey), "%s=", metricName);
+		char *found = strstr(metrics, searchKey);
+    		if (!found) {
+        		printf("Metric %s not found.\n", metricName);
+			needHelp = true;
+        	}
+		if (!needHelp) {
+    			double value = atof(found + strlen(searchKey));
+			snprintf(return_code, sizeof(return_code), "%s", "0");
+    			//printf("Value of %s: %.2f\n", metricName, value);
+			if (strcmp(direction, "above") == 0) {
+				if (value > crit) {
+					snprintf(output, sizeof(output), "CRITICAL: %s=%.2f above %d", metricName, value, crit);
+					snprintf(return_code, sizeof(return_code), "%s", "2");
+				}
+				else if (value > warn) {
+					snprintf(output, sizeof(output), "WARNING: %s=%.2f above %d", metricName, value, warn);
+                                	snprintf(return_code, sizeof(return_code), "%s", "1");
+				}
+				else {
+					snprintf(output, sizeof(output), "OK: %s=%.2f", metricName, value);
+				}
+			}
+			else { // default below
+				if (value < crit) {
+        				//printf("CRITICAL: %s=%.2f below %d\n", metricName, value, crit);
+					snprintf(output, sizeof(output), "CRITICAL: %s=%.2f below %d", metricName, value, crit);
+					snprintf(return_code, sizeof(return_code), "%s", "2");
+    				} else if (value < warn) {
+        				//printf("WARNING: %s=%.2f below %d\n", metricName, value, warn);
+					snprintf(output, sizeof(output), "WARNING: %s=%.2f below %d", metricName, value, warn);
+					snprintf(return_code, sizeof(return_code), "%s", "1");
+    				} else {
+        				//printf("OK: %s=%.2f\n", metricName, value);
+					snprintf(output, sizeof(output), "OK: %s=%.2f", metricName, value);
+    				}
+			}
+			/*strcat(message,"{\n     \"plugin\":\"");
+			strcat(message, g_plugins[id]->description);
+			strcat(message, " ");
+			strcat(message, metricName);
+			strcat(message, "\",\n");
+        		strcat(message, "     \"output\":\"");
+                	strcat(message, output);
+			strcat(message, "\",\n     \"returncode\":");
+			strcat(message, return_code);
+                	strcat(message, "\n}\n");*/
+			snprintf(message, apimessage_size, "{\n     \"plugin\":\"%s %s \",\n     \"output\":\"%s\",\n     \"returncode\":%s\n}\n",
+				g_plugins[id]->description,
+				metricName,
+				output, return_code);
+		}
+		else {
+			char temp[400];
+			snprintf(temp, sizeof(temp), "UNKNOWN: Metric '%.100s' not found. Metrics found = %.200s", metricName, output);
+			strncpy(output, temp, sizeof(output) - 1);
+			output[sizeof(output) - 1] = '\0';
+			snprintf(message, apimessage_size, "{\n     \"plugin\":\"%s %s\",\n     \"output\":\"%s\",\n       \"returncode\":3\n}\n",
+				g_plugins[id]->description, metricName, output);	
+		}
+	}
+	//printf("%s\n", message);
+	socket_message = malloc((size_t)(apimessage_size + 1) * sizeof(char));
         if (socket_message == NULL) {
                 fprintf(stderr, "Failed to allocate memory.\n");
                 writeLog("Failed to allocate memory in [apiMonitorSoftItem: socket_message]", 2, 0);
@@ -295,25 +361,25 @@ void apiMonitorItemSoftValue(int id) {
 
         snprintf(socket_message, apimessage_size, "%s", message);
 
-        free(message);
-        free(customMonitorVals);
-        customMonitorVals = NULL;
-        message = NULL;
-        if (api_args) {
-                free(api_args);
-                api_args = NULL;
-        }
+	free(message);
+	free(customMonitorVals);
+	customMonitorVals = NULL;
+	message = NULL;
+	if (api_args) {
+		free(api_args);
+        	api_args = NULL;
+	}
 }
 
 void apiMonitorItemHardValue(int id) {
         char* message = NULL;
         bool needHelp = false;
-        char retString[pluginoutput_size];
+	char retString[pluginoutput_size];
         char ch = '/';
         PluginOutput *output;
-        int rc = 0;
-
-        output = malloc(sizeof(PluginOutput));
+	int rc = 0;
+   	
+	output = malloc(sizeof(PluginOutput));
         if (output == NULL) {
                 writeLog("Failed to allocate memory for plugin output", 1, 0);
                 return;
@@ -333,7 +399,7 @@ void apiMonitorItemHardValue(int id) {
         else
                 message[0] = '\0';
         memset(message, 0, apimessage_size);
-        snprintf(pluginCommand, plugincommand_size, "%s%c%s", pluginDir, ch, g_plugins[id]->command);
+	snprintf(pluginCommand, plugincommand_size, "%s%c%s", pluginDir, ch, g_plugins[id]->command);
         snprintf(infostr, infostr_size, "Running apiMonitorHardValue: %s.", g_plugins[id]->command);
         writeLog(trim(infostr), 0, 0);
         TrackedPopen tp = tracked_popen(pluginCommand);
@@ -366,9 +432,9 @@ void apiMonitorItemHardValue(int id) {
         else
                 output->retCode = rc;
         //strncpy(output.retString, trim(retString), strlen(retString));
-        memset(output->retString, 0, pluginoutput_size);
-        char* checked_output = trim(retString);
-        if (checked_output) {
+	memset(output->retString, 0, pluginoutput_size);
+	char* checked_output = trim(retString);
+	if (checked_output) {
                 snprintf(output->retString, pluginoutput_size, "%s", checked_output);
         }
         const char *metrics = strchr(output->retString, '|');
@@ -404,7 +470,7 @@ void apiMonitorItemHardValue(int id) {
                         sscanf(wpos, "-w%d", &warn);
                 }
                 else {
-                        printf("No values read\n.");
+                        printf("No values read.");
                         warn = 0;
                 }
                 sscanf(customMonitorVals, "%*[^;];%31[^:]:%15s", metricName, direction);
@@ -415,7 +481,7 @@ void apiMonitorItemHardValue(int id) {
                         printf("Metric %s not found.\n", metricName);
                         needHelp = true;
                 }
-                if (!needHelp) {
+	 	if (!needHelp) {
                         double value = atof(found + strlen(searchKey));
                         snprintf(return_code, sizeof(return_code), "%s", "0");
                         if (strcmp(direction, "above") == 0) {
@@ -433,12 +499,15 @@ void apiMonitorItemHardValue(int id) {
                         }
                         else { // default below
                                 if (value < crit) {
+                                        //printf("CRITICAL: %s=%.2f below %d\n", metricName, value, crit);
                                         snprintf(output, sizeof(output), "CRITICAL: %s=%.2f below %d", metricName, value, crit);
                                         snprintf(return_code, sizeof(return_code), "%s", "2");
                                 } else if (value < warn) {
+                                        //printf("WARNING: %s=%.2f below %d\n", metricName, value, warn);
                                         snprintf(output, sizeof(output), "WARNING: %s=%.2f below %d", metricName, value, warn);
                                         snprintf(return_code, sizeof(return_code), "%s", "1");
                                 } else {
+                                        //printf("OK: %s=%.2f\n", metricName, value);
                                         snprintf(output, sizeof(output), "OK: %s=%.2f", metricName, value);
                                 }
                         }
@@ -466,12 +535,12 @@ void apiMonitorItemHardValue(int id) {
                 memset(socket_message, '\0', (size_t)(apimessage_size + 1) * sizeof(char));
 
         snprintf(socket_message, apimessage_size, "%s", message);
-        free(message);
+ 	free(message);
         free(customMonitorVals);
-        free(output);
+	free(output);
         customMonitorVals = NULL;
         message = NULL;
-        output = NULL;
+	output = NULL;
         if (api_args) {
                 free(api_args);
                 api_args = NULL;
@@ -564,6 +633,7 @@ void apiReadData(int plugin_id, int flags) {
 		strcat(message, "     \"lastChange\":\"");
 		strcat(message, g_plugins[plugin_id]->lastChangeTimestamp);
 		strcat(message, "\",\n");
+		append_plugin_status_metadata_minimal(message, "     ", g_plugins[plugin_id]);
 		strcat(message, "     \"lastRun\":\"");
 		strcat(message, g_plugins[plugin_id]->lastRunTimestamp);
 		strcat(message, "\",\n");
@@ -855,6 +925,7 @@ void apiRunAndRead(int plugin_id, int flags) {
                 strcat(message, "          \"lastChange\":\"");
                 strcat(message, g_plugins[plugin_id]->lastChangeTimestamp);
                 strcat(message, "\",\n");
+				append_plugin_status_metadata_minimal(message, "          ", g_plugins[plugin_id]);
                 strcat(message, "          \"lastRun\":\"");
                 strcat(message, g_plugins[plugin_id]->lastRunTimestamp);
                 strcat(message, "\",\n");
@@ -900,6 +971,111 @@ void apiGetMetrics() {
 	apiReadFile(storeName, 2);
 }
 
+/*struct json_object* apiGetInventory(int type) {
+        if (access(inventoryFileName, F_OK) == 0) {
+                struct json_object *inventory_obj = json_object_from_file(inventoryFileName);
+                if (inventory_obj == NULL) {
+                        return NULL; // construct message "Could not read existing inventory file (permissions or syntax error)"
+                }
+                switch (type) {
+                        case 0:
+                                return inventory_obj;
+                        case 1: {
+                                struct json_object *changes_obj = NULL;
+                                struct json_object *result = NULL;
+
+                                if (json_object_object_get_ex(inventory_obj, "changes", &changes_obj)) {
+                                        result = json_tokener_parse(json_object_to_json_string(changes_obj));
+                                }
+                                else {
+                                        result = json_object_new_array();
+                                }
+                                json_object_put(inventory_obj); // Free root object
+                                return result;
+                        }
+                        case 2:
+                                json_object_object_del(inventory_obj, "changes");
+                                return inventory_obj;
+                        default:
+                                json_object_put(inventory_obj);
+                                return NULL;
+                }
+        }
+        else {
+                return NULL; // construct_message ("Inventory file not found")
+        }
+}*/
+
+struct json_object* getInventory(int type) {
+        if (access(inventoryFileName, F_OK) == 0) {
+                struct json_object *inventory_obj = json_object_from_file(inventoryFileName);
+                if (inventory_obj == NULL) {
+                        return NULL; // construct message "Could not read existing inventory file (permissions or syntax error)"
+                }
+                switch (type) {
+                        case 0:
+                                return inventory_obj;
+                        case 1: {
+                                struct json_object *changes_obj = NULL;
+                                struct json_object *result = NULL;
+
+                                if (json_object_object_get_ex(inventory_obj, "changes", &changes_obj)) {
+                                        result = json_tokener_parse(json_object_to_json_string(changes_obj));
+                                }
+                                else {
+                                        result = json_object_new_array();
+                                }
+                                json_object_put(inventory_obj); // Free root object
+                                return result;
+                        }
+                        case 2:
+                                json_object_object_del(inventory_obj, "changes");
+                                return inventory_obj;
+                        default:
+                                json_object_put(inventory_obj);
+                                return NULL;
+                }
+        }
+        else {
+                return NULL; // construct_message ("Inventory file not found")
+        }
+}
+
+void apiGetInventory(int type) {
+        struct json_object *result = getInventory(type);
+
+        if (result == NULL) {
+                // Handle error/file not found scenario if needed
+                constructSocketMessage("inventory", "Error: Could not read existing inventory");
+                return;
+        }
+
+        //const char *json_str = json_object_to_json_string(result);
+        // Alternatively, for formatted output:
+        const char *json_str = json_object_to_json_string_ext(result, JSON_C_TO_STRING_PRETTY);
+
+        if (json_str == NULL) {
+                json_object_put(result);
+                constructSocketMessage("inventory", "Error: Could not extract inventory json to string");
+                return;
+        }
+
+        // Determine required buffer size (length of string + null terminator)
+        size_t json_len = strlen(json_str);
+        size_t message_size = json_len + 1;
+
+        socket_message = malloc(message_size * sizeof(char));
+        if (socket_message == NULL) {
+                fprintf(stderr, "Failed to allocate memory.\n");
+                writeLog("Failed to allocate memory in [apiGetInventory: socket_message]", 2, 0);
+                json_object_put(result); // Clean up JSON object before returning
+                return;
+        }
+
+        snprintf(socket_message, message_size, "%s", json_str);
+        json_object_put(result);
+}
+
 void runPluginArgs(int id, int aflags, int api_action) {
 	//const char space[1] = " ";
 	char* command = NULL;
@@ -914,7 +1090,6 @@ void runPluginArgs(int id, int aflags, int api_action) {
         int rc = 0;
 	char* message = NULL;
 
-	id++;
 	//printf("DEBUG: ID = %d\n", id);
 	// TODO Validate args
 	message = (char *) malloc(sizeof(char) * (apimessage_size+1));
@@ -1055,8 +1230,11 @@ void runPluginArgs(int id, int aflags, int api_action) {
 			scheduler[g_plugins[id]->id].timestamp = nextTime;
 			rescheduleChecks();
 		}
-                output.prevRetCode = output.retCode;
-                g_plugins[id]->output = output;
+			g_plugins[id]->output.retCode = output.retCode;
+			g_plugins[id]->output.prevRetCode = output.retCode;
+			if (g_plugins[id]->output.retString != NULL) {
+				snprintf(g_plugins[id]->output.retString, pluginoutput_size, "%s", output.retString);
+			}
 	}
         strcat(message, pluginName);
         strcat(message, "\",\n");
@@ -1098,6 +1276,7 @@ void runPluginArgs(int id, int aflags, int api_action) {
                 	strcat(message, "          \"lastChange\":\"");
                 	strcat(message, g_plugins[id]->lastChangeTimestamp);
                 	strcat(message, "\",\n");
+				append_plugin_status_metadata_minimal(message, "          ", g_plugins[id]);
 		}
                 strcat(message, "          \"lastRun\":\"");
                 strcat(message, currTime);
@@ -1141,12 +1320,14 @@ void runPluginArgs(int id, int aflags, int api_action) {
 
 void apiGetVars(int v) {
 	switch (v) {
+		#ifndef USE_MINIMAL
 		case 1:
 			/*if (kafka_tag == NULL)
                         	constructSocketMessage("kafkatag", "NULL");
                 	else
                         	constructSocketMessage("kafkatag", kafka_tag);*/
 			break;
+		#endif
 		case 2:
 			constructSocketMessage("metricsprefix", metricsOutputPrefix);
 			break;
@@ -1156,6 +1337,7 @@ void apiGetVars(int v) {
 		case 4:
 			constructSocketMessage("metricsfilename", metricsFileName);
 			break;
+		#ifndef USE_MINIMAL
 		case 5:
 			/*if (useKafkaConfigFile) {
 				char* currentTopic = getKafkaTopic();
@@ -1171,6 +1353,7 @@ void apiGetVars(int v) {
 			else
                         	constructSocketMessage("kafkatopic", kafka_topic);*/
 			break;
+		#endif
 		case 6:
 			int length = snprintf(NULL, 0, "%d", schedulerSleep);
 			char* sleep_num = malloc(length + 1);
@@ -1188,11 +1371,13 @@ void apiGetVars(int v) {
 			sprintf(plo_val, "%s", logPluginOutput ? "true" : "false");
 			constructSocketMessage("pluginoutput", plo_val);
 			break;
+		#ifndef USE_MINIMAL
 		case 9:
 			/*char s_kStartId[2];
 			sprintf(s_kStartId, "%d", kafka_start_id);
 			constructSocketMessage("kafkastartid", s_kStartId);*/
 			break;
+		#endif
 		case 10:
 			char plts[14];
 			sprintf(plts, "%ld", tPluginFile);
@@ -1206,6 +1391,24 @@ void apiGetVars(int v) {
 				constructSocketMessage("scheduler", "external");
 			}
 			break;
+		 case 12:
+                        if (push_url == NULL)
+                                constructSocketMessage("pushurl", "NULL");
+                        else
+                                constructSocketMessage("pushurl", push_url);
+                        break;
+                case 13:
+                        char a_port[10];
+                        sprintf(a_port, "%d", push_port);
+                        constructSocketMessage("pushport", a_port);
+                        break;
+                case 14:
+                        int pi_length = snprintf(NULL, 0, "%d", push_interval);
+                        char* p_interval = malloc(pi_length + 1);
+                        snprintf(p_interval, pi_length + 1,  "%d", push_interval);
+                        constructSocketMessage("pushinterval", p_interval);
+                        free(p_interval);
+                        break;
 		default:
 			constructSocketMessage("getvar", "No matching object found");
 	}

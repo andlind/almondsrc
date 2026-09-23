@@ -3,7 +3,7 @@ AUTOMAKE_OPTIONS = foreign
 bin_PROGRAMS = almond
 
 almond_SOURCES =
-COMMON_SOURCES = plugins.c logger.c config.c collect.c jwt_validate.c
+COMMON_SOURCES = plugins.c logger.c config.c collect.c jwt_validate.c alerting.c heal.c
 
 AM_CPPFLAGS = -I/usr/include
 AM_LDFLAGS = -L/usr/lib64 -L/usr/local/lib -L/usr/lib
@@ -12,7 +12,7 @@ AM_LDFLAGS = -L/usr/lib64 -L/usr/local/lib -L/usr/lib
 almond_CPPFLAGS = -I/usr/include/json_c
 almond_CFLAGS = -g -Wall -std=c99 -O0
 almond_LDFLAGS = -L/usr/lib/x86_64-linux-gnu -fstack-protector
-almond_LDADD = -lpthread -ljson-c -lcurl -lssl -lcrypto -lz $(JWT_LIBS) 
+almond_LDADD = -lpthread -ljson-c -lcurl -lssl -lcrypto -lz -lm $(JWT_LIBS) 
 
 if USE_MINIMAL
   almond_SOURCES += main_s.c api_s.c $(COMMON_SOURCES)

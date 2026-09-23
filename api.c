@@ -34,6 +34,43 @@
 #include "api.h"               
 #include "main.h"
 
+static const char *plugin_status_name(int status_code) {
+	switch (status_code) {
+		case 0: return "OK";
+		case 1: return "WARNING";
+		case 2: return "CRITICAL";
+		default: return "UNKNOWN";
+	}
+}
+
+static void append_plugin_status_metadata(char *message, const char *indent,
+										  const PluginItem *item) {
+	char field[256];
+	char history_item[256];
+
+	snprintf(field, sizeof field,
+			 "%s\"previousStatus\":\"%s\",\n"
+			 "%s\"statusChanged\":%s,\n"
+			 "%s\"statusChangedAt\":\"%s\",\n"
+			 "%s\"statusDuration\":%ld,\n"
+			 "%s\"history\":[",
+			 indent, plugin_status_name(item->output.prevRetCode),
+			 indent, item->statusChanged[0] == '1' ? "true" : "false",
+			 indent, item->statusChangedAt,
+			 indent, item->statusDuration,
+			 indent);
+	strcat(message, field);
+	for (size_t i = 0; i < item->historyCount; ++i) {
+		snprintf(history_item, sizeof history_item,
+				 "%s{\"state\":\"%s\",\"timestamp\":\"%s\"}",
+				 i ? "," : "",
+				 plugin_status_name(item->history[i].statusCode),
+				 item->history[i].timestamp);
+		strcat(message, history_item);
+	}
+	strcat(message, "],\n");
+}
+
 void apiMonitorItem(int plugin_id, int a_flags) {
         if (a_flags == API_MONITOR_SOFT) {
                 apiMonitorSoftItem(plugin_id);
@@ -595,6 +632,7 @@ void apiReadData(int plugin_id, int flags) {
 		strcat(message, "     \"lastChange\":\"");
 		strcat(message, g_plugins[plugin_id]->lastChangeTimestamp);
 		strcat(message, "\",\n");
+		append_plugin_status_metadata(message, "     ", g_plugins[plugin_id]);
 		strcat(message, "     \"lastRun\":\"");
 		strcat(message, g_plugins[plugin_id]->lastRunTimestamp);
 		strcat(message, "\",\n");
@@ -886,6 +924,7 @@ void apiRunAndRead(int plugin_id, int flags) {
                 strcat(message, "          \"lastChange\":\"");
                 strcat(message, g_plugins[plugin_id]->lastChangeTimestamp);
                 strcat(message, "\",\n");
+				append_plugin_status_metadata(message, "          ", g_plugins[plugin_id]);
                 strcat(message, "          \"lastRun\":\"");
                 strcat(message, g_plugins[plugin_id]->lastRunTimestamp);
                 strcat(message, "\",\n");
@@ -931,6 +970,76 @@ void apiGetMetrics() {
 	apiReadFile(storeName, 2);
 }
 
+struct json_object* getInventory(int type) {
+	if (access(inventoryFileName, F_OK) == 0) { 
+		struct json_object *inventory_obj = json_object_from_file(inventoryFileName);
+		if (inventory_obj == NULL) {
+                	return NULL; // construct message "Could not read existing inventory file (permissions or syntax error)"
+              	}
+		switch (type) {
+			case 0:
+				return inventory_obj;
+			case 1: {
+				struct json_object *changes_obj = NULL;
+            			struct json_object *result = NULL;
+
+            			if (json_object_object_get_ex(inventory_obj, "changes", &changes_obj)) {
+                			result = json_tokener_parse(json_object_to_json_string(changes_obj));
+            			} 
+				else {
+                			result = json_object_new_array();
+            			}
+				json_object_put(inventory_obj); // Free root object
+            			return result;
+        		}
+			case 2:
+				json_object_object_del(inventory_obj, "changes");
+            			return inventory_obj;
+			default:
+				json_object_put(inventory_obj);
+            			return NULL;
+		}
+	}
+	else {
+		return NULL; // construct_message ("Inventory file not found")
+	}
+}
+
+void apiGetInventory(int type) {
+	struct json_object *result = getInventory(type);
+
+    	if (result == NULL) {
+        	// Handle error/file not found scenario if needed
+		constructSocketMessage("inventory", "Error: Could not read existing inventory");
+        	return;
+    	}
+
+    	//const char *json_str = json_object_to_json_string(result);
+   	// Alternatively, for formatted output:
+    	const char *json_str = json_object_to_json_string_ext(result, JSON_C_TO_STRING_PRETTY);
+
+    	if (json_str == NULL) {
+        	json_object_put(result);
+		constructSocketMessage("inventory", "Error: Could not extract inventory json to string");
+        	return;
+    	}
+
+    	// Determine required buffer size (length of string + null terminator)
+    	size_t json_len = strlen(json_str);
+    	size_t message_size = json_len + 1;
+
+    	socket_message = malloc(message_size * sizeof(char));
+    	if (socket_message == NULL) {
+        	fprintf(stderr, "Failed to allocate memory.\n");
+        	writeLog("Failed to allocate memory in [apiGetInventory: socket_message]", 2, 0);
+        	json_object_put(result); // Clean up JSON object before returning
+        	return;
+    	}
+
+    	snprintf(socket_message, message_size, "%s", json_str);
+    	json_object_put(result);
+}
+
 void runPluginArgs(int id, int aflags, int api_action) {
 	//const char space[1] = " ";
 	char* command = NULL;
@@ -945,7 +1054,6 @@ void runPluginArgs(int id, int aflags, int api_action) {
         int rc = 0;
 	char* message = NULL;
 
-	id++;
 	//printf("DEBUG: ID = %d\n", id);
 	// TODO Validate args
 	message = (char *) malloc(sizeof(char) * (apimessage_size+1));
@@ -1086,8 +1194,11 @@ void runPluginArgs(int id, int aflags, int api_action) {
 			scheduler[g_plugins[id]->id].timestamp = nextTime;
 			rescheduleChecks();
 		}
-                output.prevRetCode = output.retCode;
-                g_plugins[id]->output = output;
+			g_plugins[id]->output.retCode = output.retCode;
+			g_plugins[id]->output.prevRetCode = output.retCode;
+			if (g_plugins[id]->output.retString != NULL) {
+				snprintf(g_plugins[id]->output.retString, pluginoutput_size, "%s", output.retString);
+			}
 	}
         strcat(message, pluginName);
         strcat(message, "\",\n");
@@ -1130,6 +1241,9 @@ void runPluginArgs(int id, int aflags, int api_action) {
                 	strcat(message, g_plugins[id]->lastChangeTimestamp);
                 	strcat(message, "\",\n");
 		}
+					if (aflags == API_FLAGS_VERBOSE) {
+					append_plugin_status_metadata(message, "          ", g_plugins[id]);
+					}
                 strcat(message, "          \"lastRun\":\"");
                 strcat(message, currTime);
                 strcat(message, "\",\n");
