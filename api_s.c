@@ -73,6 +73,13 @@ static void append_plugin_status_metadata_minimal(char *message,
 }
 
 void apiMonitorItem(int plugin_id, int a_flags) {
+	if (plugin_id < 0 || plugin_id >= g_plugin_count || g_plugins == NULL || g_plugins[plugin_id] == NULL) {
+                printf("[apiMonitorItem] Plugin id or name is not correct.\n");
+                writeLog("[apiMonitorItem] The plugin id or name is not correctly set..", 1, 0);
+                constructSocketMessage("monitor", "Error: Incorrect plugin id or name");
+                return;
+        }
+
         if (a_flags == API_MONITOR_SOFT) {
                 apiMonitorSoftItem(plugin_id);
         }
@@ -247,11 +254,11 @@ void apiMonitorItemSoftValue(int id) {
 	}
 	else {
 		metrics++;
-		char output[500];
+		char output[500] = {0};
 		char return_code[2];
 		const char *semicolon = strchr(customMonitorVals, ';');
 		semicolon++;
-		char metricName[32];
+		char metricName[32] = {0};
 		sscanf(semicolon, "%31s", metricName);
 		//printf("Metric to check: %s\n", metricName);
 		//printf("customMonitorVal : %s\n", customMonitorVals);
@@ -342,7 +349,7 @@ void apiMonitorItemSoftValue(int id) {
 		}
 		else {
 			char temp[400];
-			snprintf(temp, sizeof(temp), "UNKNOWN: Metric '%.100s' not found. Metrics found = %.200s", metricName, output);
+			snprintf(temp, sizeof(temp), "UNKNOWN: Metric '%.100s' not found. Metrics found = %.200s", metricName, metrics);
 			strncpy(output, temp, sizeof(output) - 1);
 			output[sizeof(output) - 1] = '\0';
 			snprintf(message, apimessage_size, "{\n     \"plugin\":\"%s %s\",\n     \"output\":\"%s\",\n       \"returncode\":3\n}\n",
@@ -445,11 +452,11 @@ void apiMonitorItemHardValue(int id) {
         }
         else {
                 metrics++;
-                char output[200];
+		char output[200] = {0};
                 char return_code[2];
                 const char *semicolon = strchr(customMonitorVals, ';');
                 semicolon++;
-                char metricName[32];
+				char metricName[32] = {0};
                 sscanf(semicolon, "%31s", metricName);
                 int crit = 0, warn = 0;
                 char direction[16] = "below";
@@ -518,7 +525,7 @@ void apiMonitorItemHardValue(int id) {
                 }
                 else {
                         char temp[400];
-                        snprintf(temp, sizeof(temp), "UNKNOWN: Metric '%s' not found. Metrics found = %s", metricName, output);
+			snprintf(temp, sizeof(temp), "UNKNOWN: Metric '%s' not found. Metrics found = %s", metricName, metrics);
                         strncpy(output, temp, sizeof(output) - 1);
                         output[sizeof(output) - 1] = '\0';
                         snprintf(message, apimessage_size, "{\n     \"plugin\":\"%s %s\",\n     \"output\":\"%s\",\n       \"returncode\":3\n}\n",

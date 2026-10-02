@@ -2744,6 +2744,7 @@ void parseClientMessage(char str[], int arr[], bool jwt_valid) {
 		fprintf(stderr, "parseClientMessage: str is NULL.");
 		writeLog("[parseClientMessage] Recieved NULL instead of string.", 1, 0);
            	json_tokener_free(tok);
+		api_action = 0;
 		return;
 	}
         jerr = json_tokener_get_error(tok);
@@ -2756,6 +2757,7 @@ void parseClientMessage(char str[], int arr[], bool jwt_valid) {
 		writeLog("Could not parse API call. Wrong syntax.", 1, 0);
 		json_object_put(jobj);
            	json_tokener_free(tok);
+		api_action = 0;
                 return;
         }
         /*json_object_object_foreach(jobj, key, val) {
@@ -2870,6 +2872,7 @@ void parseClientMessage(char str[], int arr[], bool jwt_valid) {
 						writeLog("Could not allocate message [parseClientMessage:fname]", 2, 0);
 						json_object_put(jobj);
    						json_tokener_free(tok);
+						api_action = 0;
 						return;
 					}
 					else
@@ -2882,6 +2885,7 @@ void parseClientMessage(char str[], int arr[], bool jwt_valid) {
 						writeLog("Could not allocate message [parseClientMessage:fname]", 2, 0);
 						json_object_put(jobj);
    						json_tokener_free(tok);
+						api_action = 0;
        						return;
     					}
 					strcpy(fname, trimmed_line); 
@@ -2892,6 +2896,7 @@ void parseClientMessage(char str[], int arr[], bool jwt_valid) {
 						writeLog("Could not allocate memory [parseClientMessage:lname]", 2, 0);
 						json_object_put(jobj);
    						json_tokener_free(tok);
+						api_action = 0;
 						return;
 					}
 					else
@@ -3315,6 +3320,7 @@ void parseClientMessage(char str[], int arr[], bool jwt_valid) {
                                 writeLog("Could not allocate memory [parseClientMessage:api_args]", 2, 0);
                                 json_object_put(jobj);
                                 json_tokener_free(tok);
+				api_action = 0;
                                 return;
                         }
                         else
@@ -3989,7 +3995,6 @@ void sig_exit_app() {
 		free(scheduler);
 		scheduler = NULL;
 	}
-        free(g_plugins);
         //free(outputs);
         free_constants();
         //free(threadIds);
@@ -6586,6 +6591,51 @@ void checkRetVal(int val) {
 }
 
 int hardReloadPlugins(int cnt) {
+        int qsv = quick_start;
+
+        if (quick_start != 1) quick_start = 1;
+
+        /* Serialize teardown with plugin workers, which hold mtx while using a PluginItem. */
+        pthread_mutex_lock(&mtx);
+        free_all_plugins();
+
+        /* load_plugins() is the sole owner of plugin construction. */
+        decCount = countDeclarations(pluginDeclarationFile);
+        declaration_size = (size_t)decCount;
+
+        /* reload declarations */
+        if (check_plugin_conf_file(pluginDeclarationFile) != 0) {
+                writeLog("plugins.conf file seems to be corrupt. Program will shut down.", 2, 0);
+                pthread_mutex_unlock(&mtx);
+                return 2;
+        }
+        if (threadIds != NULL) {
+                free(threadIds);
+                threadIds = NULL;
+        }
+        threadIds = (unsigned short*)malloc((size_t)MAX_PLUGINS * sizeof(unsigned short));
+        memset(threadIds, 0, MAX_PLUGINS * sizeof(unsigned short));
+        for (int i = 0; i < decCount; i++) {
+                threadIds[i] = 0;
+        }
+        g_current_scheduler_cnt = decCount;
+        checkPluginFileStat(pluginDeclarationFile, tPluginFile, 0);
+        writeLog("No errors found in plugins.conf", 0, 0);
+        if (init_plugins() != 0) {
+                logError("Failed to initiate plugins", 2, 0);
+                flushLog();
+                        pthread_mutex_unlock(&mtx);
+                return 2;
+        }
+                pthread_mutex_unlock(&mtx);
+        flushLog();
+        // Remove schededuler?
+        initScheduler(cnt, 1000, true);
+        quick_start = qsv;
+        return 0;
+}
+
+/*int hardReloadPlugins(int cnt) {
 	int qsv = quick_start;
 
     	if (quick_start != 1) quick_start = 1;
@@ -6693,21 +6743,26 @@ int hardReloadPlugins(int cnt) {
     	initScheduler(cnt, 1000, true);
     	quick_start = qsv;
     	return 0;
-}
+}*/
 
 void apiReloadConfigHard() {
-	if (check_plugin_conf_file(pluginDeclarationFile) != 0) {
-		constructSocketMessage("reloadpluginshard", "failed");
+        writeLog("Received API call to hard reload plugin configuration", 0, 0);
+        if (check_plugin_conf_file(pluginDeclarationFile) != 0) {
+                constructSocketMessage("reloadpluginshard", "failed");
+                writeLog("Check of plugin configuration file returned error", 1, 0);
+                writeLog("Failed to hard reload plugins from API call.", 1, 0);
         }
-       	else {
-	 	if (hardReloadPlugins(decCount) == 0) {
-			constructSocketMessage("reloadpluginshard", "success");
-		}
-		else {
-			constructSocketMessage("reloadpluginshard", "fatal");
-			sig_handler(SIGSTOP);
-		}
-	}
+        else {
+                if (hardReloadPlugins(decCount) == 0) {
+                        constructSocketMessage("reloadpluginshard", "success");
+                        writeLog("Plugins file reloaded from API call.", 0, 0);
+                }
+                else {
+                        constructSocketMessage("reloadpluginshard", "fatal");
+                        writeLog("API call to reload plugins failed. Corrupt configuration file...", 2, 0);
+                        sig_handler(SIGSTOP);
+                }
+        }
 }
 
 int checkNewConfig(const char *file_name) {
@@ -6818,7 +6873,6 @@ int initTimeScheduler(bool reinit) {
 	if (!scheduler) {
         	printf("Error allocating memory");
         	writeLog("Error allocating memory [initTimeScheduler]", 2, 0);
-        	abort();
        		return 2;
         }
 	if (reinit) {
@@ -7109,13 +7163,18 @@ void clearDataCache() {
 }
 
 void apiReloadConfigSoft() {
-	if (check_plugin_conf_file(pluginDeclarationFile) != 0) {
+        writeLog("API call to soft reload plugins received.", 0, 0);
+        if (check_plugin_conf_file(pluginDeclarationFile) != 0) {
                 constructSocketMessage("softreloadplugins", "failed");
+                writeLog("Plugin declaration file check returned error.", 1, 0);
+                writeLog("Failed to reload plugins from API call.", 1, 0);
         }
         else {
                 //updatePluginDeclarations();
-		update_plugins();
+                writeLog("Running update_plugins due to API call", 0, 0);
+                update_plugins();
                 constructSocketMessage("softreloadplugins", "success");
+                writeLog("Plugin declarations reloaded from API call", 1, 0);
         }
 }
 
@@ -7605,13 +7664,16 @@ int loadPlugins() {
 }
 
 void apiReload() {
-	// Reinitiate all Almond vars, copy needed if failed?
-	if (loadConfiguration() != 0) {
-		constructSocketMessage("almond_reload", "failed");
-	}
-	else {
-		constructSocketMessage("almond_reload", "true");
-	}
+        // Reinitiate all Almond vars, copy needed if failed?
+        writeLog("Received API call to reload Almond configuration.", 0, 0);
+        if (loadConfiguration() != 0) {
+                constructSocketMessage("almond_reload", "failed");
+                writeLog("Failed to reload Almond configuration from API call.", 1, 0);
+        }
+        else {
+                constructSocketMessage("almond_reload", "true");
+                writeLog("Almond configuration reloaded from API call.", 0, 0);
+        }
 }
 
 void* zombieReaper(void* arg) {
