@@ -357,6 +357,26 @@ void update_plugins(void) {
     heal_set_reload_in_progress(false);
 }
 
+void destroy_plugins(void)
+{
+    PluginItem *item;
+    PluginItem *tmp;
+
+    HASH_ITER(hh, g_plugin_map, item, tmp) {
+        HASH_DEL(g_plugin_map, item);
+        free(item->name);
+        free(item->description);
+        free(item->command);
+        free(item->output.retString);
+        free(item);
+    }
+
+    g_plugin_map = NULL;
+    free(g_plugins);
+    g_plugins = NULL;
+    g_plugin_count = 0;
+}
+
 PluginItem *getPluginItem(size_t index) {
     if (index < g_plugin_count)
          return g_plugins[index];

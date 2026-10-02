@@ -1521,6 +1521,20 @@ def index():
             elif (action_id == 13):
                 value = request.form["name"]
                 action_str += "\"check\", \"name\":\"" + value + "\"}"
+            elif (action_id == 14):
+                reload_name = request.form["name"]
+                token = request.form.get("token", "").strip() #or session_token
+                if reload_name == 'almond':
+                    action_str += "\"reload\", \"name\":\"" + reload_name + "\""
+                elif ('soft' in reload_name):
+                    action_str += "\"reload\", \"name\":\"plugins\", \"mode\":\"soft\""
+                else:
+                    action_str += "\"reload\", \"name\":\"plugins\", \"mode\":\"hard\""
+                if (token):
+                    action_str += ", \"token\":\"" + token + "\"}"
+                else:
+                    action_str += "}"
+                #print("DEBUG: action_str: %s" % action_str)
             elif (action_id == 15):
                 name = request.form.get("name", "")
                 flags = request.form["flags"]

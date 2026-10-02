@@ -23,6 +23,7 @@ void run_plugin(PluginItem *item);
 int init_plugins();
 //void updatePluginDeclarations();
 void update_plugins(void);
+void destroy_plugins(void);
 size_t getPluginCount();
 PluginItem *getPluginItem(size_t index);
 
