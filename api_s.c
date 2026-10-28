@@ -20,6 +20,7 @@
 #include "utils.h"
 #include "api.h"
 #include "version.h"
+#include "prometheus_metrics.h"
 #include "main.h"
 #ifdef USE_AVRO
 	#include "mod_avro.h"
@@ -1421,84 +1422,112 @@ void apiGetVars(int v) {
 	}
 }
 
-void apiShowStatus() {
-	FILE *fp;
+void apiShowStatus(bool showAsMetrics) {
+        FILE *fp;
         struct rusage usage;
         getrusage(RUSAGE_SELF, &usage);
 
-	double user_time = usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1e6;
-	double system_time = usage.ru_stime.tv_sec + usage.ru_stime.tv_usec /1e6; 
-	pid_t pid = getppid();
+        double user_time = usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1e6;
+        double system_time = usage.ru_stime.tv_sec + usage.ru_stime.tv_usec /1e6;
+        pid_t pid = getppid();
 
         json_object *jobj = json_object_new_object();
-	json_object_object_add(jobj, "hostname", json_object_new_string(hostName));
+        json_object_object_add(jobj, "hostname", json_object_new_string(hostName));
         json_object_object_add(jobj, "almond_version", json_object_new_string(VERSION));
-	json_object_object_add(jobj, "pid", json_object_new_int(pid));
-	fp = fopen("/proc/uptime", "r");
-    	if (fp) { 
-		double uptime = 0.0;
-    		if (fscanf(fp, "%lf", &uptime) == 1) {
-        		json_object_object_add(jobj, "uptime_seconds", json_object_new_double(uptime));
-    		}
-    		fclose(fp);
-	}
-	json_object_object_add(jobj, "plugin_count", json_object_new_int(decCount));
-	json_object_object_add(jobj, "user_cpu_time", json_object_new_double(user_time));
-	json_object_object_add(jobj, "system_cpu_tume", json_object_new_double(system_time));
-	struct mallinfo2 mi = mallinfo2();  // glibc >= 2.33
+        json_object_object_add(jobj, "pid", json_object_new_int(pid));
+        fp = fopen("/proc/uptime", "r");
+        if (fp) {
+                double uptime = 0.0;
+                if (fscanf(fp, "%lf", &uptime) == 1) {
+                        json_object_object_add(jobj, "uptime_seconds", json_object_new_double(uptime));
+                }
+                fclose(fp);
+        }
+        json_object_object_add(jobj, "plugin_count", json_object_new_int(decCount));
+        json_object_object_add(jobj, "user_cpu_time", json_object_new_double(user_time));
+        json_object_object_add(jobj, "system_cpu_tume", json_object_new_double(system_time));
+        struct mallinfo2 mi = mallinfo2();  // glibc >= 2.33
         json_object_object_add(jobj, "heap_allocated_kb", json_object_new_int64(mi.uordblks / 1024));
         json_object_object_add(jobj, "heap_total_kb",     json_object_new_int64(mi.arena / 1024));
-	json_object_object_add(jobj, "max_resident_set_size_kb", json_object_new_int64(usage.ru_maxrss));
-	struct rlimit rl;
-    	if (getrlimit(RLIMIT_STACK, &rl) == 0) {
-        	json_object_object_add(jobj, "stack_size_kb", json_object_new_int64(rl.rlim_cur / 1024));
-    	}
-	fp = fopen("/proc/self/statm", "r");
-    	if (fp) {
-		long rss_pages = 0;
-    		if (fscanf(fp, "%*s %ld", &rss_pages) == 1) {
-        		long page_size_kb = sysconf(_SC_PAGESIZE) / 1024;
-        		json_object_object_add(jobj, "rss_kb", json_object_new_int64(rss_pages * page_size_kb));
-    		}
-    		fclose(fp);
-	}
-	json_object_object_add(jobj, "minor_page_faults", json_object_new_int64(usage.ru_minflt));
-	json_object_object_add(jobj, "major_page_faults", json_object_new_int64(usage.ru_majflt));
-	json_object_object_add(jobj, "swaps", json_object_new_int64(usage.ru_nswap));
-	json_object_object_add(jobj, "block_input_ops", json_object_new_int64(usage.ru_inblock));
-	json_object_object_add(jobj, "block_output_ops", json_object_new_int64(usage.ru_oublock));
-	json_object_object_add(jobj, "ipc_msgs_sent", json_object_new_int64(usage.ru_msgsnd));
-	json_object_object_add(jobj, "ipc_msgs_received", json_object_new_int64(usage.ru_msgrcv));
-	json_object_object_add(jobj, "signals_received", json_object_new_int64(usage.ru_nsignals));
-	json_object_object_add(jobj, "voluntary_context_switches", json_object_new_int64(usage.ru_nvcsw));
-	json_object_object_add(jobj, "involuntary_context_switches", json_object_new_int64(usage.ru_nivcsw));
-	json_object_object_add(jobj, "thread_count", json_object_new_int(get_thread_count()));
-	json_object_object_add(jobj, "total_threads_since_start", json_object_new_int(total_threads_run));
-	json_object_object_add(jobj, "open_file_descriptors", json_object_new_int64(get_fd_count()));
-	fp = fopen("/proc/self/io", "r");
-	if (fp) {
-		char line[256];
-    		while (fgets(line, sizeof(line), fp)) {
-        		char key[64];
-        		unsigned long long value;
-			if (sscanf(line, "%63[^:]: %llu", key, &value) == 2) {
-            			json_object_object_add(jobj, key, json_object_new_int64(value));
-        		}
-    		}
-		fclose(fp);
-	}
-        const char *json_str = json_object_to_json_string_ext(jobj, JSON_C_TO_STRING_PRETTY);
-        int size = strlen(json_str) + 2;
-        socket_message = malloc((size_t)size);
+        json_object_object_add(jobj, "max_resident_set_size_kb", json_object_new_int64(usage.ru_maxrss));
+        struct rlimit rl;
+        if (getrlimit(RLIMIT_STACK, &rl) == 0) {
+                json_object_object_add(jobj, "stack_size_kb", json_object_new_int64(rl.rlim_cur / 1024));
+        }
+        fp = fopen("/proc/self/statm", "r");
+        if (fp) {
+                long rss_pages = 0;
+                if (fscanf(fp, "%*s %ld", &rss_pages) == 1) {
+                        long page_size_kb = sysconf(_SC_PAGESIZE) / 1024;
+                        json_object_object_add(jobj, "rss_kb", json_object_new_int64(rss_pages * page_size_kb));
+                }
+                fclose(fp);
+        }
+        json_object_object_add(jobj, "minor_page_faults", json_object_new_int64(usage.ru_minflt));
+        json_object_object_add(jobj, "major_page_faults", json_object_new_int64(usage.ru_majflt));
+        json_object_object_add(jobj, "swaps", json_object_new_int64(usage.ru_nswap));
+        json_object_object_add(jobj, "block_input_ops", json_object_new_int64(usage.ru_inblock));
+        json_object_object_add(jobj, "block_output_ops", json_object_new_int64(usage.ru_oublock));
+        json_object_object_add(jobj, "ipc_msgs_sent", json_object_new_int64(usage.ru_msgsnd));
+        json_object_object_add(jobj, "ipc_msgs_received", json_object_new_int64(usage.ru_msgrcv));
+        json_object_object_add(jobj, "signals_received", json_object_new_int64(usage.ru_nsignals));
+        json_object_object_add(jobj, "voluntary_context_switches", json_object_new_int64(usage.ru_nvcsw));
+        json_object_object_add(jobj, "involuntary_context_switches", json_object_new_int64(usage.ru_nivcsw));
+        json_object_object_add(jobj, "thread_count", json_object_new_int(get_thread_count()));
+        json_object_object_add(jobj, "total_threads_since_start", json_object_new_int(total_threads_run));
+        json_object_object_add(jobj, "open_file_descriptors", json_object_new_int64(get_fd_count()));
+        fp = fopen("/proc/self/io", "r");
+        if (fp) {
+                char line[256];
+                while (fgets(line, sizeof(line), fp)) {
+                        char key[64];
+                        unsigned long long value;
+                        if (sscanf(line, "%63[^:]: %llu", key, &value) == 2) {
+                                json_object_object_add(jobj, key, json_object_new_int64(value));
+                        }
+                }
+                fclose(fp);
+        }
+        char *response = NULL;
+        size_t size = 0;
+        if (showAsMetrics) {
+                response = writePrometheusMetrics(jobj);
+                if (response != NULL) {
+                        size = strlen(response) + 1;
+                }
+        }
+        else {
+                const char *json_str = json_object_to_json_string_ext(jobj, JSON_C_TO_STRING_PRETTY);
+                if (json_str != NULL) {
+                        size = strlen(json_str) + 2;
+                        response = malloc(size);
+                        if (response != NULL) {
+                                snprintf(response, size, "%s\n", json_str);
+                        }
+                }
+        }
+        json_object_put(jobj);
+        if (response == NULL) {
+                writeLog("[apiShowStatus] Failed to construct status reponse.", 2, 0);
+                constructSocketMessage("almond", "Error: Failed to create status respone");
+                return;
+        }
+        char *new_message = malloc(size);
+        if (new_message == NULL) {
+                free(response);
+                constructSocketMessage("almond", "Error: Failed to allocate status response");
+                return;
+        }
+        socket_message = malloc(size);
         if (socket_message == NULL) {
                 printf("Memory allocation failed.\n");
                 writeLog("Memory allocation failed [constructSocketMessage:socket_message]", 2, 0);
+                free(response);
                 return;
         }
-        else
-                memset(socket_message, '\0', (size_t)size * sizeof(char));
-        snprintf(socket_message, (size_t)size, "%s\n", json_str);
-        json_object_put(jobj);
+        memcpy(new_message, response, size);
+        free(response);
+        socket_message = new_message;
 }
 
 void apiShowPluginStatus() {

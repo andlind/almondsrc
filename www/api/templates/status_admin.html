@@ -54,7 +54,7 @@
 		    <tr>
 	        {% endif %}
 			    {% if not obj['pluginName'] == 'Not loaded' %}
-			    <td><a href="/almond/admin?page=graph&name={{obj['pluginName']}}"> {{ obj['pluginName'] }} </a>
+                            <td><a href="{{ url_for('admin_page.view_metrics', file_name=obj['name']) }}"> {{ obj['pluginName'] }} </a>
                             {% if obj.labels is mapping %}
                                <br>
                                {% for key, value in obj.labels.items() %}

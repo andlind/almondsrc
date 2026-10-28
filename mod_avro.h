@@ -39,6 +39,7 @@ int send_avro_message_to_kafka(char*, char*, const char*, const char*, const cha
 int send_ssl_avro_message_to_kafka(char*, char*, char*, char*, char*, const char*, const char*, const char*, const char*, const char*, const char*, const char*, const char*, const char*, const char*, const char*, int);
 int send_ssl_avro_message_to_gkafka(char*, char*, char*, char*, char*, const GKafkaMessage *msg);
 void process_kafka_avro(ConfVal);
+void process_kafka_key_type(ConfVal);
 void free_kafka_memalloc();
 
 #endif // ALMOND_MODKAFKA_AVRO_H 

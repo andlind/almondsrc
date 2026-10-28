@@ -110,12 +110,12 @@ CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
 am__almond_SOURCES_DIST = main_s.c api_s.c plugins.c logger.c config.c \
-	collect.c jwt_validate.c alerting.c heal.c main.c api.c \
-	mod_kafka.c mod_avro.c
+	collect.c jwt_validate.c alerting.c heal.c \
+	prometheus_metrics.c main.c api.c mod_kafka.c mod_avro.c
 am__objects_1 = almond-plugins.$(OBJEXT) almond-logger.$(OBJEXT) \
 	almond-config.$(OBJEXT) almond-collect.$(OBJEXT) \
 	almond-jwt_validate.$(OBJEXT) almond-alerting.$(OBJEXT) \
-	almond-heal.$(OBJEXT)
+	almond-heal.$(OBJEXT) almond-prometheus_metrics.$(OBJEXT)
 #am__objects_2 = almond-main_s.$(OBJEXT) \
 #	almond-api_s.$(OBJEXT) $(am__objects_1)
 #am__objects_3 = almond-main.$(OBJEXT) \
@@ -152,7 +152,8 @@ am__depfiles_remade = ./$(DEPDIR)/almond-alerting.Po \
 	./$(DEPDIR)/almond-heal.Po ./$(DEPDIR)/almond-jwt_validate.Po \
 	./$(DEPDIR)/almond-logger.Po ./$(DEPDIR)/almond-main.Po \
 	./$(DEPDIR)/almond-main_s.Po ./$(DEPDIR)/almond-mod_avro.Po \
-	./$(DEPDIR)/almond-mod_kafka.Po ./$(DEPDIR)/almond-plugins.Po
+	./$(DEPDIR)/almond-mod_kafka.Po ./$(DEPDIR)/almond-plugins.Po \
+	./$(DEPDIR)/almond-prometheus_metrics.Po
 am__mv = mv -f
 AM_V_lt = $(am__v_lt_$(V))
 am__v_lt_ = $(am__v_lt_$(AM_DEFAULT_VERBOSITY))
@@ -218,12 +219,12 @@ distuninstallcheck_listfiles = find . -type f -print
 am__distuninstallcheck_listfiles = $(distuninstallcheck_listfiles) \
   | sed 's|^\./|$(prefix)/|' | grep -v '$(infodir)/dir$$'
 distcleancheck_listfiles = find . -type f -print
-ACLOCAL = ${SHELL} /workspace/26.2.0/almond-26.2.0/missing aclocal-1.16
+ACLOCAL = ${SHELL} /workspace/almond-26.2.1/missing aclocal-1.16
 AMTAR = $${TAR-tar}
 AM_DEFAULT_VERBOSITY = 1
-AUTOCONF = ${SHELL} /workspace/26.2.0/almond-26.2.0/missing autoconf
-AUTOHEADER = ${SHELL} /workspace/26.2.0/almond-26.2.0/missing autoheader
-AUTOMAKE = ${SHELL} /workspace/26.2.0/almond-26.2.0/missing automake-1.16
+AUTOCONF = ${SHELL} /workspace/almond-26.2.1/missing autoconf
+AUTOHEADER = ${SHELL} /workspace/almond-26.2.1/missing autoheader
+AUTOMAKE = ${SHELL} /workspace/almond-26.2.1/missing automake-1.16
 AWK = gawk
 CC = gcc
 CCDEPMODE = depmode=gcc3
@@ -249,25 +250,25 @@ LDFLAGS =  -L/usr/lib64 -L/usr/local/lib -L/usr/lib
 LIBOBJS = 
 LIBS = -lavro -lrdkafka  -lserdes -lavro
 LTLIBOBJS = 
-MAKEINFO = ${SHELL} /workspace/26.2.0/almond-26.2.0/missing makeinfo
+MAKEINFO = ${SHELL} /workspace/almond-26.2.1/missing makeinfo
 MKDIR_P = /usr/bin/mkdir -p
 OBJEXT = o
 PACKAGE = almond
 PACKAGE_BUGREPORT = andreas.lindell@almondmonitor.com
 PACKAGE_NAME = almond
-PACKAGE_STRING = almond 26.2.0
+PACKAGE_STRING = almond 26.2.1
 PACKAGE_TARNAME = almond
 PACKAGE_URL = 
-PACKAGE_VERSION = 26.2.0
+PACKAGE_VERSION = 26.2.1
 PATH_SEPARATOR = :
 SET_MAKE = 
 SHELL = /bin/sh
 STRIP = 
-VERSION = 26.2.0
-abs_builddir = /workspace/26.2.0/almond-26.2.0
-abs_srcdir = /workspace/26.2.0/almond-26.2.0
-abs_top_builddir = /workspace/26.2.0/almond-26.2.0
-abs_top_srcdir = /workspace/26.2.0/almond-26.2.0
+VERSION = 26.2.1
+abs_builddir = /workspace/almond-26.2.1
+abs_srcdir = /workspace/almond-26.2.1
+abs_top_builddir = /workspace/almond-26.2.1
+abs_top_srcdir = /workspace/almond-26.2.1
 ac_ct_CC = gcc
 am__include = include
 am__leading_dot = .
@@ -286,7 +287,7 @@ host_alias =
 htmldir = ${docdir}
 includedir = ${prefix}/include
 infodir = ${datarootdir}/info
-install_sh = ${SHELL} /workspace/26.2.0/almond-26.2.0/install-sh
+install_sh = ${SHELL} /workspace/almond-26.2.1/install-sh
 libdir = ${exec_prefix}/lib
 libexecdir = ${exec_prefix}/libexec
 localedir = ${datarootdir}/locale
@@ -309,7 +310,7 @@ top_builddir = .
 top_srcdir = .
 AUTOMAKE_OPTIONS = foreign
 almond_SOURCES = $(am__append_1) $(am__append_2) $(am__append_5)
-COMMON_SOURCES = plugins.c logger.c config.c collect.c jwt_validate.c alerting.c heal.c
+COMMON_SOURCES = plugins.c logger.c config.c collect.c jwt_validate.c alerting.c heal.c prometheus_metrics.c
 AM_CPPFLAGS = -I/usr/include
 AM_LDFLAGS = -L/usr/lib64 -L/usr/local/lib -L/usr/lib
 
@@ -439,6 +440,7 @@ include ./$(DEPDIR)/almond-main_s.Po # am--include-marker
 include ./$(DEPDIR)/almond-mod_avro.Po # am--include-marker
 include ./$(DEPDIR)/almond-mod_kafka.Po # am--include-marker
 include ./$(DEPDIR)/almond-plugins.Po # am--include-marker
+include ./$(DEPDIR)/almond-prometheus_metrics.Po # am--include-marker
 
 $(am__depfiles_remade):
 	@$(MKDIR_P) $(@D)
@@ -585,6 +587,20 @@ almond-heal.obj: heal.c
 #	$(AM_V_CC)source='heal.c' object='almond-heal.obj' libtool=no \
 #	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) \
 #	$(AM_V_CC_no)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(almond_CPPFLAGS) $(CPPFLAGS) $(almond_CFLAGS) $(CFLAGS) -c -o almond-heal.obj `if test -f 'heal.c'; then $(CYGPATH_W) 'heal.c'; else $(CYGPATH_W) '$(srcdir)/heal.c'; fi`
+
+almond-prometheus_metrics.o: prometheus_metrics.c
+	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(almond_CPPFLAGS) $(CPPFLAGS) $(almond_CFLAGS) $(CFLAGS) -MT almond-prometheus_metrics.o -MD -MP -MF $(DEPDIR)/almond-prometheus_metrics.Tpo -c -o almond-prometheus_metrics.o `test -f 'prometheus_metrics.c' || echo '$(srcdir)/'`prometheus_metrics.c
+	$(AM_V_at)$(am__mv) $(DEPDIR)/almond-prometheus_metrics.Tpo $(DEPDIR)/almond-prometheus_metrics.Po
+#	$(AM_V_CC)source='prometheus_metrics.c' object='almond-prometheus_metrics.o' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) \
+#	$(AM_V_CC_no)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(almond_CPPFLAGS) $(CPPFLAGS) $(almond_CFLAGS) $(CFLAGS) -c -o almond-prometheus_metrics.o `test -f 'prometheus_metrics.c' || echo '$(srcdir)/'`prometheus_metrics.c
+
+almond-prometheus_metrics.obj: prometheus_metrics.c
+	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(almond_CPPFLAGS) $(CPPFLAGS) $(almond_CFLAGS) $(CFLAGS) -MT almond-prometheus_metrics.obj -MD -MP -MF $(DEPDIR)/almond-prometheus_metrics.Tpo -c -o almond-prometheus_metrics.obj `if test -f 'prometheus_metrics.c'; then $(CYGPATH_W) 'prometheus_metrics.c'; else $(CYGPATH_W) '$(srcdir)/prometheus_metrics.c'; fi`
+	$(AM_V_at)$(am__mv) $(DEPDIR)/almond-prometheus_metrics.Tpo $(DEPDIR)/almond-prometheus_metrics.Po
+#	$(AM_V_CC)source='prometheus_metrics.c' object='almond-prometheus_metrics.obj' libtool=no \
+#	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) \
+#	$(AM_V_CC_no)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(almond_CPPFLAGS) $(CPPFLAGS) $(almond_CFLAGS) $(CFLAGS) -c -o almond-prometheus_metrics.obj `if test -f 'prometheus_metrics.c'; then $(CYGPATH_W) 'prometheus_metrics.c'; else $(CYGPATH_W) '$(srcdir)/prometheus_metrics.c'; fi`
 
 almond-main.o: main.c
 	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(almond_CPPFLAGS) $(CPPFLAGS) $(almond_CFLAGS) $(CFLAGS) -MT almond-main.o -MD -MP -MF $(DEPDIR)/almond-main.Tpo -c -o almond-main.o `test -f 'main.c' || echo '$(srcdir)/'`main.c
@@ -929,6 +945,7 @@ distclean: distclean-am
 	-rm -f ./$(DEPDIR)/almond-mod_avro.Po
 	-rm -f ./$(DEPDIR)/almond-mod_kafka.Po
 	-rm -f ./$(DEPDIR)/almond-plugins.Po
+	-rm -f ./$(DEPDIR)/almond-prometheus_metrics.Po
 	-rm -f Makefile
 distclean-am: clean-am distclean-compile distclean-generic \
 	distclean-hdr distclean-tags
@@ -989,6 +1006,7 @@ maintainer-clean: maintainer-clean-am
 	-rm -f ./$(DEPDIR)/almond-mod_avro.Po
 	-rm -f ./$(DEPDIR)/almond-mod_kafka.Po
 	-rm -f ./$(DEPDIR)/almond-plugins.Po
+	-rm -f ./$(DEPDIR)/almond-prometheus_metrics.Po
 	-rm -f Makefile
 maintainer-clean-am: distclean-am maintainer-clean-generic
 

@@ -33,6 +33,8 @@ char* kafka_sasl_mechanisms = NULL;
 char* kafka_sasl_username = NULL;
 char* kafka_sasl_password = NULL;
 char* kafka_security_protocol = NULL;
+char* kafka_key_type = NULL;
+char* kafka_index_key = NULL;
 bool use_transactions = false;
 bool enable_idempotence = false;
 bool kafka_dr_cb = true;
@@ -87,6 +89,7 @@ void process_kafka_log_connection_close(ConfVal);
 void process_kafka_ssl_ca_location(ConfVal);
 void process_kafka_certificate(ConfVal);
 void process_kafka_key(ConfVal);
+void process_kafka_key_type(ConfVal);
 void process_kafka_security_protocol(ConfVal);
 void process_kafka_sasl_mechanisms(ConfVal);
 void process_kafka_sasl_password(ConfVal);
@@ -128,7 +131,8 @@ ConfigEntry kafka_entries[] = {
     {"kafka.socket.timeout.ms", process_kafka_socket_timeout},
     {"kafka.socket.blocking.max.ms", process_kafka_socket_blocking},
     {"kafka.transaction.timeout.ms", process_kafka_transaction_timeout},
-    {"kafka.partitioner", process_kafka_partitioner}
+    {"kafka.partitioner", process_kafka_partitioner},
+    {"kafka.key.type", process_kafka_key_type}
 };
 
 char *triminfo(char *s) {
@@ -665,6 +669,49 @@ void process_kafka_avro(ConfVal value) {
                 kafkaAvro = false;
 }
 
+
+void process_kafka_key_type(ConfVal value)
+{
+	if (value.strval == NULL || strlen(value.strval) <= 1) {
+        	return;
+    	}
+    	size_t vlen = strlen(value.strval) + 1;
+    	char *new_key_type = malloc(vlen);
+
+    	if (new_key_type == NULL) {
+        	writeLog("[mod_kafka] Failed to allocate memory for Kafka key type.", 1, 1);
+        	return;
+    	}
+    	snprintf(new_key_type, vlen, "%s", value.strval);
+    	free(kafka_key_type);
+    	kafka_key_type = new_key_type;
+    	snprintf(infostr, INFO_STR_SIZE,"[mod_kafka] Kafka key is set to: %s",kafka_key_type);
+    	writeLog(trim(infostr), 0, 1);
+    	if (strcmp(kafka_key_type, "host") == 0) {
+        	if (hostName == NULL) {
+            		writeLog("[mod_kafka] Hostname is NULL; cannot set Kafka index key.", 1, 1);
+            		return;
+        	}
+
+        	char *new_index_key = strdup(hostName);
+
+        	if (new_index_key == NULL) {
+            		writeLog("[mod_kafka] Failed to allocate memory for Kafka index key.", 1, 1);
+            		return;
+        	}
+        	free(kafka_index_key);
+        	kafka_index_key = new_index_key;
+        	writeLog("[mod_kafka] Hostname will be used as key by Kafka producer.", 0, 1);
+	}
+    	else if (strcmp(kafka_key_type, "id") == 0) {
+    		writeLog("[mod_kafka] Kafka will use id as index, which is not yet implemented.", 1, 1);
+    	}
+    	else {
+       		free(kafka_key_type);
+        	kafka_key_type = NULL;
+    	}
+}
+
 static bool parse_conf_line(char *line, char *name_out, size_t name_len, char *val_out, size_t val_len) {
     if (!line) return false;
     triminfo(line);
@@ -1001,14 +1048,27 @@ int send_message_to_gkafka(const char *payload) {
     const int max_attempts = 5;
 
     do {
-        err = rd_kafka_producev(
-            global_producer,
-            RD_KAFKA_V_TOPIC(topic),
-            RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
-            RD_KAFKA_V_VALUE((void *)payload, plen),
-            RD_KAFKA_V_OPAQUE(NULL),
-            RD_KAFKA_V_END);
-
+	if (kafka_key_type != NULL && kafka_index_key != NULL) {
+		size_t index_len = strlen(kafka_index_key);
+		err = rd_kafka_producev(
+            		global_producer,
+            		RD_KAFKA_V_TOPIC(topic),
+            		RD_KAFKA_V_PARTITION(RD_KAFKA_PARTITION_UA),
+            		RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
+            		RD_KAFKA_V_VALUE((void *)payload, plen),
+            		RD_KAFKA_V_KEY((void *)kafka_index_key, index_len),
+            		RD_KAFKA_V_OPAQUE(NULL),
+            		RD_KAFKA_V_END);
+    	}
+	else {
+        	err = rd_kafka_producev(
+            		global_producer,
+            		RD_KAFKA_V_TOPIC(topic),
+            		RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
+            		RD_KAFKA_V_VALUE((void *)payload, plen),
+            		RD_KAFKA_V_OPAQUE(NULL),
+            		RD_KAFKA_V_END);
+	}
         if (err == RD_KAFKA_RESP_ERR__QUEUE_FULL) {
             if (use_transactions) {
                 rd_kafka_abort_transaction(global_producer, timeout_ms);
@@ -1086,13 +1146,25 @@ int send_message_to_kafka(char *brokers, char *topic, char *payload) {
         int attempts = 0; const int max_attempts = 5;
         rd_kafka_resp_err_t err = RD_KAFKA_RESP_ERR__UNKNOWN;
         do {
-                err  = rd_kafka_producev(producer,
-                                RD_KAFKA_V_TOPIC(topic),
-                                RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
-                                RD_KAFKA_V_VALUE(payload, plen),
-                                RD_KAFKA_V_OPAQUE(NULL),
-                                RD_KAFKA_V_END);
-
+		if (kafka_key_type != NULL && kafka_index_key != NULL) {
+                	size_t index_len = strlen(kafka_index_key);
+                	err = rd_kafka_producev(producer,
+                       	 	RD_KAFKA_V_TOPIC(topic),
+                        	RD_KAFKA_V_PARTITION(RD_KAFKA_PARTITION_UA),
+                        	RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
+                        	RD_KAFKA_V_VALUE((void *)payload, plen),
+                        	RD_KAFKA_V_KEY((void *)kafka_index_key, index_len),
+                        	RD_KAFKA_V_OPAQUE(NULL),
+                        	RD_KAFKA_V_END);
+        	}
+        	else {
+                	err = rd_kafka_producev(producer,
+                        	RD_KAFKA_V_TOPIC(topic),
+                        	RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
+                        	RD_KAFKA_V_VALUE((void *)payload, plen),
+                        	RD_KAFKA_V_OPAQUE(NULL),
+                        	RD_KAFKA_V_END);
+        	}
                 if (err) {
 			snprintf(info, 810, "%% Failed to produce topic %s: %s", topic, rd_kafka_err2str(err));
 			writeLog(triminfo(info), 1, 0);
@@ -1169,13 +1241,25 @@ int send_ssl_message_to_kafka(char *brokers, char *cacertificate, char *certific
         int attempts = 0; const int max_attempts = 5;
         rd_kafka_resp_err_t err = RD_KAFKA_RESP_ERR__UNKNOWN;
         do {
-                err  = rd_kafka_producev(producer,
-                                RD_KAFKA_V_TOPIC(topic),
-                                RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
-                                RD_KAFKA_V_VALUE(payload, plen),
-                                RD_KAFKA_V_OPAQUE(NULL),
-                                RD_KAFKA_V_END);
-
+		if (kafka_key_type != NULL && kafka_index_key != NULL) {
+                	size_t index_len = strlen(kafka_index_key);
+               		err = rd_kafka_producev(producer,
+                        	RD_KAFKA_V_TOPIC(topic),
+                        	RD_KAFKA_V_PARTITION(RD_KAFKA_PARTITION_UA),
+                        	RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
+                        	RD_KAFKA_V_VALUE((void *)payload, plen),
+                        	RD_KAFKA_V_KEY((void *)kafka_index_key, index_len),
+                        	RD_KAFKA_V_OPAQUE(NULL),
+                        	RD_KAFKA_V_END);
+        	}
+        	else {
+                	err = rd_kafka_producev(producer,
+                        RD_KAFKA_V_TOPIC(topic),
+                        RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
+                        RD_KAFKA_V_VALUE((void *)payload, plen),
+                        RD_KAFKA_V_OPAQUE(NULL),
+                        RD_KAFKA_V_END);
+        	}
                 if (err) {
                         snprintf(info, 810, "%% Failed to produce topic %s: %s", topic, rd_kafka_err2str(err));
                         writeLog(triminfo(info), 1, 0);
@@ -1262,4 +1346,6 @@ void free_kafka_memalloc() {
 	free_and_null(&kafka_sasl_username);
 	free_and_null(&kafka_sasl_password);
 	free_and_null(&kafka_security_protocol);
+	if (kafka_key_type != NULL) 
+		free_and_null(&kafka_key_type);
 }

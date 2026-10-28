@@ -230,7 +230,7 @@ crit_quotes = ["I'm not fine", "I feel sick, please call the doctor", "Not good,
 
 MAX_META_READ = 64 * 1024  # read first 64 KB for metadata
 
-current_version = '26.2.0'
+current_version = '26.2.1'
 __STARTED__ = datetime.datetime.now()
 
 app.secret_key = 'BAD_SECRET_KEY'

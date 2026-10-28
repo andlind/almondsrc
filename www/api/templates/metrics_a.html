@@ -11,7 +11,7 @@
 				<select name="metric" width="300px">
 					<option value="-1" SELECTED>Metrics</option>
 				{% for m in metrics_list %}
-    					<option value="{{ m }}">{{ m }}</option>
+    					<option value="{{ m.value }}">{{ m.display }}</option>
 				{% endfor %}
 				</select>
 			</td>

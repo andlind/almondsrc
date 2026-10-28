@@ -42,6 +42,8 @@ char* kafka_sasl_username = NULL;
 char* kafka_sasl_password = NULL;
 char* kafka_security_protocol = NULL;
 char* avro_declaration_file = NULL;
+char* kafka_key_type = NULL;
+char* kafka_index_key = NULL;
 bool use_transactions = false;
 bool enable_idempotence = false;
 bool kafka_dr_cb = true;
@@ -137,6 +139,7 @@ ConfigEntry kafka_entries[] = {
     {"kafka.socket.blocking.max.ms", process_kafka_socket_blocking},
     {"kafka.transaction.timeout.ms", process_kafka_transaction_timeout},
     {"kafka.partitioner", process_kafka_partitioner},
+    {"kafka.key.type", process_kafka_key_type},
     {"scheduler.kafkaAvroDeclarationFile", process_scheduler_avro_declaration}
 };
 
@@ -372,11 +375,23 @@ static int serialize_and_send(char *dummy_topic, const GKafkaMessage *msg) {
         if (use_transactions) rd_kafka_begin_transaction(global_producer);
 
         retry:
-        err = rd_kafka_producev(global_producer,
+		if (kafka_key_type != NULL && kafka_index_key != NULL) {
+                	size_t index_len = strlen(kafka_index_key);
+        		err = rd_kafka_producev(global_producer,
+                                RD_KAFKA_V_TOPIC(topic),
+				RD_KAFKA_V_PARTITION(RD_KAFKA_PARTITION_UA),
+                                RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
+                                RD_KAFKA_V_VALUE(buffer, length),
+				RD_KAFKA_V_KEY((void *)kafka_index_key, index_len),
+                                RD_KAFKA_V_END);
+		}
+		else {
+			err = rd_kafka_producev(global_producer,
                                 RD_KAFKA_V_TOPIC(topic),
                                 RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
                                 RD_KAFKA_V_VALUE(buffer, length),
                                 RD_KAFKA_V_END);
+		}
 
         if (err) {
                 snprintf(debug_msg, sizeof(debug_msg), "[DEBUG] rd_kafka_producev FAILED: %s", rd_kafka_err2str(err));
@@ -893,6 +908,48 @@ void process_kafka_avro(ConfVal value) {
 	}
 }
 
+void process_kafka_key_type(ConfVal value)
+{
+        if (value.strval == NULL || strlen(value.strval) <= 1) {
+                return;
+        }
+        size_t vlen = strlen(value.strval) + 1;
+        char *new_key_type = malloc(vlen);
+
+        if (new_key_type == NULL) {
+                writeLog("[mod_kafka] Failed to allocate memory for Kafka key type.", 1, 1);
+                return;
+        }
+        snprintf(new_key_type, vlen, "%s", value.strval);
+        free(kafka_key_type);
+        kafka_key_type = new_key_type;
+        snprintf(infostr, INFO_STR_SIZE,"[mod_kafka] Kafka key is set to: %s",kafka_key_type);
+        writeLog(trim(infostr), 0, 1);
+        if (strcmp(kafka_key_type, "host") == 0) {
+                if (hostName == NULL) {
+                        writeLog("[mod_kafka] Hostname is NULL; cannot set Kafka index key.", 1, 1);
+                        return;
+                }
+
+                char *new_index_key = strdup(hostName);
+
+                if (new_index_key == NULL) {
+                        writeLog("[mod_kafka] Failed to allocate memory for Kafka index key.", 1, 1);
+                        return;
+                }
+                free(kafka_index_key);
+                kafka_index_key = new_index_key;
+                writeLog("[mod_kafka] Hostname will be used as key by Kafka producer.", 0, 1);
+        }
+        else if (strcmp(kafka_key_type, "id") == 0) {
+                writeLog("[mod_kafka] Kafka will use id as index, which is not yet implemented.", 1, 1);
+        }
+        else {
+                free(kafka_key_type);
+                kafka_key_type = NULL;
+        }
+}
+
 void process_scheduler_avro_declaration(ConfVal value) {
         const char *path = (value.strval && strlen(value.strval) > 0) 
                            ? value.strval 
@@ -1204,13 +1261,27 @@ int send_message_to_gkafka(const char *payload) {
     const int max_attempts = 5;
 
     do {
-        err = rd_kafka_producev(
-            global_producer,
-            RD_KAFKA_V_TOPIC(topic),
-            RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
-            RD_KAFKA_V_VALUE((void *)payload, plen),
-            RD_KAFKA_V_OPAQUE(NULL),
-            RD_KAFKA_V_END);
+	if (kafka_key_type != NULL && kafka_index_key != NULL) {
+        	size_t index_len = strlen(kafka_index_key);
+                err = rd_kafka_producev(
+			global_producer,
+                         RD_KAFKA_V_TOPIC(topic),
+                         RD_KAFKA_V_PARTITION(RD_KAFKA_PARTITION_UA),
+                         RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
+                         RD_KAFKA_V_VALUE((void *)payload, plen),
+                         RD_KAFKA_V_KEY((void *)kafka_index_key, index_len),
+                         RD_KAFKA_V_OPAQUE(NULL),
+                         RD_KAFKA_V_END);
+        }
+        else {
+        	err = rd_kafka_producev(
+			global_producer,
+                	RD_KAFKA_V_TOPIC(topic),
+                	RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
+                	RD_KAFKA_V_VALUE((void *)payload, plen),
+                	RD_KAFKA_V_OPAQUE(NULL),
+               	 	RD_KAFKA_V_END);
+	}
 
         if (err == RD_KAFKA_RESP_ERR__QUEUE_FULL) {
             if (use_transactions) {
@@ -1292,12 +1363,25 @@ int send_message_to_kafka(char *brokers, char *topic, char *payload) {
         int attempts = 0; const int max_attempts = 5;
         rd_kafka_resp_err_t err = RD_KAFKA_RESP_ERR__UNKNOWN;
         do {
-                err  = rd_kafka_producev(producer,
-                                RD_KAFKA_V_TOPIC(topic),
-                                RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
-                                RD_KAFKA_V_VALUE(payload, plen),
-                                RD_KAFKA_V_OPAQUE(NULL),
-                                RD_KAFKA_V_END);
+		if (kafka_key_type != NULL && kafka_index_key != NULL) {
+                 	size_t index_len = strlen(kafka_index_key);
+               		err = rd_kafka_producev(producer,
+                         	RD_KAFKA_V_TOPIC(topic),
+                         	RD_KAFKA_V_PARTITION(RD_KAFKA_PARTITION_UA),
+                         	RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
+                         	RD_KAFKA_V_VALUE((void *)payload, plen),
+                         	RD_KAFKA_V_KEY((void *)kafka_index_key, index_len),
+                         	RD_KAFKA_V_OPAQUE(NULL),
+                         	RD_KAFKA_V_END);
+         	}
+         	else {
+                	err = rd_kafka_producev(producer,
+                         	RD_KAFKA_V_TOPIC(topic),
+                         	RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
+                         	RD_KAFKA_V_VALUE((void *)payload, plen),
+                         	RD_KAFKA_V_OPAQUE(NULL),
+                         	RD_KAFKA_V_END);
+         	}
                 if (err) {
                         snprintf(info, 810, "%% Failed to produce topic %s: %s", topic, rd_kafka_err2str(err));
                         writeLog(triminfo(info), 1, 0);
@@ -1374,12 +1458,25 @@ int send_ssl_message_to_kafka(char *brokers, char *cacertificate, char *certific
         int attempts = 0; const int max_attempts = 5;
         rd_kafka_resp_err_t err = RD_KAFKA_RESP_ERR__UNKNOWN;
         do {
-                err  = rd_kafka_producev(producer,
-                                RD_KAFKA_V_TOPIC(topic),
-                                RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
-                                RD_KAFKA_V_VALUE(payload, plen),
-                                RD_KAFKA_V_OPAQUE(NULL),
-                                RD_KAFKA_V_END);
+		if (kafka_key_type != NULL && kafka_index_key != NULL) {
+			size_t index_len = strlen(kafka_index_key);
+                	err = rd_kafka_producev(producer,
+                         	RD_KAFKA_V_TOPIC(topic),
+                         	RD_KAFKA_V_PARTITION(RD_KAFKA_PARTITION_UA),
+                         	RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
+                         	RD_KAFKA_V_VALUE((void *)payload, plen),
+                         	RD_KAFKA_V_KEY((void *)kafka_index_key, index_len),
+                         	RD_KAFKA_V_OPAQUE(NULL),
+                         	RD_KAFKA_V_END);
+         	}
+         	else {
+                 	err = rd_kafka_producev(producer,
+                         	RD_KAFKA_V_TOPIC(topic),
+                         	RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
+                         	RD_KAFKA_V_VALUE((void *)payload, plen),
+                         	RD_KAFKA_V_OPAQUE(NULL),
+                         	RD_KAFKA_V_END);
+         	}
 
                 if (err) {
                         snprintf(info, 810, "%% Failed to produce topic %s: %s", topic, rd_kafka_err2str(err));
@@ -1539,12 +1636,27 @@ int send_avro_message_to_kafka(char *brokers, char *topic,
         }
 
         retry:
-                rd_kafka_resp_err_t err  = rd_kafka_producev(producer,
+		rd_kafka_resp_err_t err;
+		if (kafka_key_type != NULL && kafka_index_key != NULL) {
+                 	size_t index_len = strlen(kafka_index_key);
+                	err = rd_kafka_producev(producer,
+                         	RD_KAFKA_V_TOPIC(topic),
+                         	RD_KAFKA_V_PARTITION(RD_KAFKA_PARTITION_UA),
+                         	RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
+                         	RD_KAFKA_V_VALUE(buffer, length),
+                         	RD_KAFKA_V_KEY((void *)kafka_index_key, index_len),
+                         	RD_KAFKA_V_OPAQUE(NULL),
+                         	RD_KAFKA_V_END);
+         	}
+         	else {
+			 err  = rd_kafka_producev(producer,
                                 RD_KAFKA_V_TOPIC(topic),
                                 RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
                                 RD_KAFKA_V_VALUE(buffer,length),
                                 RD_KAFKA_V_OPAQUE(NULL),
                                 RD_KAFKA_V_END);
+         	}
+
 
                 if (err) {
 			snprintf(info, 810, "%% Failed to produce topic %s: %s", topic, rd_kafka_err2str(err));
@@ -1704,13 +1816,26 @@ int send_ssl_avro_message_to_kafka(char *brokers, char *cacertificate, char *cer
                 return 1;
         }
         retry:
-                rd_kafka_resp_err_t err  = rd_kafka_producev(producer,
+		rd_kafka_resp_err_t err;
+		if (kafka_key_type != NULL && kafka_index_key != NULL) {
+                	size_t index_len = strlen(kafka_index_key);
+			err  = rd_kafka_producev(producer,
+                        	RD_KAFKA_V_TOPIC(topic),
+                        	RD_KAFKA_V_PARTITION(RD_KAFKA_PARTITION_UA),
+                        	RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
+                        	RD_KAFKA_V_VALUE(buffer, length),
+                        	RD_KAFKA_V_KEY((void *)kafka_index_key, index_len),
+                        	RD_KAFKA_V_OPAQUE(NULL),
+                        	RD_KAFKA_V_END);
+        	}
+        	else {
+			err  = rd_kafka_producev(producer,
                                 RD_KAFKA_V_TOPIC(topic),
                                 RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
-                                RD_KAFKA_V_VALUE(buffer, length),
+                                RD_KAFKA_V_VALUE(buffer,length),
                                 RD_KAFKA_V_OPAQUE(NULL),
                                 RD_KAFKA_V_END);
-
+		}
                 if (err) {
                         snprintf(info, 810, "%% Failed to produce topic %s: %s", topic, rd_kafka_err2str(err));
                         writeLog(triminfo(info), 1, 0);

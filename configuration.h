@@ -88,7 +88,7 @@ void process_push_url(ConfVal);
 void process_push_port(ConfVal);
 void process_push_interval(ConfVal);
 
-int parse__conf_line(char *buf);
+int parse__conf_line(char *buf, const char *pluginDir);
 
 // External declarations for globals used in config processing
 extern bool collector_metrics;
