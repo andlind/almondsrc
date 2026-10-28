@@ -1,0 +1,29 @@
+# HEAL FUNCTION INTRODUCTION #
+##############################
+# This is the preferred directory to put your heal scripts.
+# The use case could be in a scenario described below.
+# Consider you have an application that runs into a bad state and your plugin check returns warning and critical.
+# If you for instance know that a restart of the application will restore it to a good state you can use a heal script to (try to) restart it.
+# You will need to toggle the Almond setting 
+
+almond.tryToHeal = true
+
+# in the almond.conf file and you need to add a settings to heal.conf file, for instance like this:
+
+{
+  "react_on_state": "WARNING",
+  "heals": [
+    {
+      "plugin": "check_application",
+      "run": "/opt/almond/scripts/heal_application",
+      "timeout_seconds": 30
+    }
+  ]
+}
+
+# if the above example the plugin "check_application" will trigger a run of the script "/opt/almond/scripts/heal_application" if the check state changes
+# from OK to WARNING. If the script doesn´t return a result in 30 seconds Almond will see the heal script execution as a failure.
+# Take note, Almond will only try to execute a heal script (the triggered script) once.
+# Also take note that if tryToHeal is enabled Almond will try to find a heal script for every state change away from OK. If no script is available for
+# the event Almond will return a "failed to heal" in the logs.
+# Finally take note that Almond does not come with predefined heal scripts. This is all up to the user to enable and implement if you have good use for it.

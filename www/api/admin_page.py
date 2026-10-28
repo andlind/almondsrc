@@ -60,14 +60,14 @@ api_conf = []
 scheduler_conf = []
 extra_conf = []
 graph_names = {}
-api_available_conf = ['api.activeMods', 'api.adminUser', 'api.adminPassword', 'api.authProvider', 'api.authType', 'api.bindPort', 'api.dataDir','api.enableAliases', 'api.enableFile', 'api.enableGUI','api.enableLoginRedirect', 'api.enableMods', 'api.enableOauth','api.enableOtelExporter', 'api.enableOtelFileWatcher', 'api.enablePeriodicOtelExport', 'api.enableProxyCleaner','api.enableScraper', 'api.enableSSL','api.isContainer', 'api.isMetricsProxy', 'api.isProxy', 'api.metricsDir', 'api.multiMetrics', 'api.multiServer', 'api.otelExportInterval', 'api.otlpEndpoint', 'api.persistant2fa', 'api.proxyCleanerSeconds', 'api.showDashboard', 'api.sslCertificate', 'api.sslKey', 'api.startPage', 'api.stateType', 'api.useGUI', 'api.useProxyAlerting', 'api.userFile', 'api.useSSL', 'api.wsgi', 'data.jsonFile', 'data.metricsFile', 'scheduler.storeDir', 'scheduler.configFile', 'scheduler.dataDir', 'plugins.directory', 'plugins.declaration']
+api_available_conf = ['api.activeMods', 'api.adminUser', 'api.adminPassword', 'api.authProvider', 'api.authType', 'api.bindPort', 'api.dataDir','api.enableAliases', 'api.enableFile', 'api.enableGUI','api.enableLoginRedirect', 'api.enableMods', 'api.enableOauth','api.enableOtelExporter', 'api.enableOtelFileWatcher', 'api.enablePeriodicOtelExport', 'api.enableProxyCleaner','api.enableScraper', 'api.enableSSL','api.isContainer', 'api.isMetricsProxy', 'api.isProxy', 'api.localMetrics','api.metricsDir', 'api.multiMetrics', 'api.multiServer', 'api.otelExportInterval', 'api.otlpEndpoint', 'api.persistant2fa', 'api.proxyCleanerSeconds', 'api.showDashboard', 'api.sslCertificate', 'api.sslKey', 'api.startPage', 'api.stateType', 'api.useGUI', 'api.useProxyAlerting', 'api.userFile', 'api.useSSL', 'api.wsgi', 'data.jsonFile', 'data.metricsFile', 'scheduler.storeDir', 'scheduler.configFile', 'scheduler.dataDir', 'plugins.directory', 'plugins.declaration']
 
 scheduler_available_conf = ['almond.api', 'almond.enableCollector', 'almond.enableIamAud', 'almond.enforeIAMRoles', 'almond.iamAud', 'almond.iamIssuer', 'almond.iamPublicKey', 'almond.iamRolesAccepted', 'almond.inventoryFileName', 'almond.port', 'almond.pushInterval', 'almond.pushPort', 'almond.pushUrl', 'almond.saveInventory', 'almond.standalone', 'almond.tryToHeal', 'almond.useMetricsPush', 'almond.usePush', 'almond.useSSL', 'almond.certificate', 'almond.key', 'collector.getPluginMetadata', 'collector.getPluginMetrics', 'collector.getServerData', 'collector.isVerbose', 'data.jsonFile', 'data.saveOnExit', 'data.metricsFile', 'data.metricsOutputPrefix', 'plugins.directory', 'plugins.declaration', 'scheduler.allowAllHosts', 'scheduler.useTLS', 'scheduler.certificate', 'scheduler.key','scheduler.confDir', 'scheduler.kafkaConfigFile', 'scheduler.logDir', 'scheduler.logToStdout', 'scheduler.logPluginOutput', 'scheduler.runGardenerAtStart','scheduler.storeResults', 'scheduler.format', 'scheduler.initSleepMs', 'scheduler.sleepMs', 'scheduler.kafkaAvro', 'scheduler.schemaName', 'scheduler.schemaRegistryUrl', 'scheduler.useExternal','scheduler.truncateLog', 'scheduler.truncateLogInterval', 'scheduler.tuneTimer', 'scheduler.tunerCycle', 'scheduler.tuneMaster', 'scheduler.dataDir', 'scheduler.storeDir', 'scheduler.hostName', 'scheduler.enableGardener', 'scheduler.gardenerScript', 'scheduler.gardenerRunInterval', 'scheduler.quickStart', 'scheduler.metricsOutputPrefix', 'scheduler.enableClearDataCache', 'scheduler.enableKafkaExport', 'scheduler.enableKafkaTag', 'scheduler.enableKafkaId', 'scheduler.kafkaStartId', 'scheduler.kafkaBrokers', 'scheduler.kafkaTopic', 'scheduler.kafkaTag', 'scheduler.enableKafkaSSL', 'scheduler.kafkaCACertificate', 'scheduler.kafkaProducerCertificate', 'scheduler.kafkaSSLKey', 'scheduler.useKafkaConfigFile','scheduler.clearDataCacheInterval', 'scheduler.dataCacheTimeFrame', 'scheduler.type', 'gardener.CleanUpTime']
 
 users = {}
 hasToken=False
 usertoken = "None"
-current_version = '26.2.0'
+current_version = '26.2.1'
 
 auth_provider_name = "local"
 auth_init = False
@@ -79,6 +79,7 @@ almond_api = False
 is_container = False
 logger_enabled = False
 almond_port = 9909
+local_metrics_only = True 
 jasonFile = '/opt/almond/data/monitor.json'
 store_dir = '/opt/almond/data/metrics'
 plugins_directory = '/opt/almond/plugins'
@@ -456,6 +457,7 @@ def read_conf():
     global almond_port
     global auth_provider_name
     global metrics_file_name
+    global local_metrics_only
 
     admin_password = ''
     admin_user = ''
@@ -513,6 +515,13 @@ def read_conf():
                     enable_login_redirect = True
                 else:
                     enable_login_redirect = False
+            if (x.find('localMetrics') > 0):
+                pos = x.find('=')
+                is_local_metrics = x[pos01:].strip().lower()
+                if is_local_metrics in ["0", "false", "off"]:
+                    local_metrics_only = False
+                else:
+                    local_metrics_only = True
             if (x.find('multiServer') > 0):
                 pos = x.find('=')
                 #multi = x[pos+1]
@@ -779,14 +788,18 @@ def execute_plugin_object(id):
         print ("Almond api is not enabled.")
         return 1;
 
-def add_plugin_object(description, plugin, arguments, interval, active):
+def add_plugin_object(description, plugin, arguments, interval, active, labels=None):
     global declaration_file
 
     write_active = "0"
     if (active):
         write_active = "1"
     # Check description
-    write_str = description + ";" + plugin + " " + arguments + ";" + write_active + ";" + interval +  "\n"
+    write_str = (description + ";" + plugin + " " + arguments + ";" + write_active + ";" + interval)
+    if labels:
+        labels_json = json.dumps(labels, separators=(",", ":"))
+        write_str += " " + labels_json
+    write_str += "\n"
     f = open(declaration_file, "a")
     f.write(write_str)
     f.close()
@@ -1000,6 +1013,171 @@ def beautify_json(text):
     
     return Markup(result)
 
+@admin_page.route('/almond/admin/metrics/<file_name>')
+def view_metrics(file_name, return_list=None, user_image=None):
+    actual_file_path = None
+    
+    if return_list is None:
+        if file_name == metrics_file_name or file_name == 'Current metrics':
+             actual_file_path = f"{store_dir}/{metrics_file_name}"
+        else:
+             # Grab the hostname exactly like your old route did
+             this_data = load_status_data()
+             hostname = this_data['host']['name'].split('.')[0]
+             
+             if file_name.startswith(f"{hostname}_"):
+                 exact_file_name = file_name
+             else:
+                 exact_file_name = f"{hostname}_{file_name}"
+                 
+             actual_file_path = f"{store_dir}/{exact_file_name}"
+
+        # Now just open the file directly!
+        if not os.path.exists(actual_file_path):
+            return f"Error: Could not find log file {actual_file_path}", 404
+
+        try:
+            with open(actual_file_path, 'r') as f:
+                return_list = f.readlines()
+            
+            if not actual_file_path.endswith(metrics_file_name):
+                return_list.reverse()
+        except Exception as e:
+            return f"Error opening file: {str(e)}", 500
+
+    if user_image is None:
+        user_image = '/static/almond_small.png'
+    # Check if this is the current metrics file
+    is_monitor = (actual_file_path or file_name).endswith(metrics_file_name)
+    parsed_logs = []
+    
+    # --- HANDLING FOR CURRENT METRICS (PROMETHEUS FORMAT) ---
+    if is_monitor:
+        # Regex to capture: metric_name{labels} value
+        promo_pattern = re.compile(r"^(.*?)\{(.*?)\}\s+(.*)$")
+        
+        for line in return_list:
+            line = line.strip()
+            if not line:
+                continue
+                
+            match = promo_pattern.search(line)
+            if match:
+                parsed_logs.append({
+                    'metric': match.group(1),
+                    'labels': match.group(2),
+                    'value': match.group(3)
+                })
+            else:
+                # Fallback if line doesn't match expected pattern
+                parsed_logs.append({'raw': line})
+                
+        return render_template(
+            'metrics_an.html',
+            file=file_name,
+            user_image=user_image,
+            is_monitor=True, # Pass flag to frontend
+            logs=parsed_logs
+        )
+        
+    # --- HANDLING FOR HISTORICAL LOGS (NAGIOS FORMAT) ---
+    timestamps = []
+    history = [] 
+    num_pattern = re.compile(r"([-+]?\d*\.\d+|\d+)")
+    status_codes = {'OK': 0, 'WARNING': 1, 'CRITICAL': 2, 'UNKNOWN': 3}
+
+    for line in return_list:
+        line = line.replace('\n', '').strip()
+        if not line:
+            continue
+            
+        parts = line.split('|')
+        main_part = parts[0].strip()
+        perf_part = parts[1].strip() if len(parts) > 1 else ""
+        
+        try:
+            main_split = [x.strip() for x in main_part.split(',', 2)]
+            if len(main_split) >= 3:
+                date_str, plugin, message = main_split[0], main_split[1], main_split[2]
+            else:
+                date_str, plugin, message = main_split[0], "Unknown", main_part
+            #status = message.split(' ')[0]
+            known_statuses = ['OK', 'WARNING', 'CRITICAL', 'UNKNOWN']
+            status = "UNKNOWN" # Default fallback
+            clean_message = message.replace(':', ' ').replace('-', ' ').replace('.', ' ').replace(',', ' ')
+            for word in clean_message.split():
+                if word.upper() in known_statuses:
+                    status = word.upper()
+                    break
+        except Exception:
+            continue
+            
+        current_metrics = {}
+        if perf_part:
+            metrics = perf_part.split()
+            for metric_str in metrics:
+                if '=' in metric_str:
+                    label, val_data = metric_str.split('=', 1)
+                    label = label.replace("'", "").replace('"', "") 
+                    raw_val = val_data.split(';')[0]
+                    match = num_pattern.search(raw_val)
+                    if match:
+                        current_metrics[label] = float(match.group(1))
+
+        if not current_metrics:
+            current_metrics['return_code'] = status_codes.get(status, 3)
+
+        parsed_logs.append({
+            'date': date_str,
+            'plugin': plugin,
+            'status': status,
+            'message': message,
+            'perf': perf_part
+        })
+        
+        if current_metrics:
+            date_parts = date_str.split(' ')
+            time_label = date_parts[3] if len(date_parts) > 3 else date_str
+            timestamps.append(time_label)
+            history.append(current_metrics)
+
+    timestamps.reverse()
+    history.reverse()
+
+    all_metric_names = set()
+    for h in history:
+        all_metric_names.update(h.keys())
+        
+    colors = ['#007bff', '#28a745', '#dc3545', '#ffc107', '#17a2b8', '#6610f2', '#e83e8c', '#fd7e14']
+    charts_data = []
+    
+    # Build a separate chart config for each metric
+    for idx, metric_name in enumerate(sorted(all_metric_names)):
+        data = []
+        for h in history:
+            data.append(h.get(metric_name, None))
+            
+        # Create a safe HTML ID for the canvas element (no spaces or special chars)
+        safe_id = re.sub(r'\W+', '_', metric_name)
+            
+        charts_data.append({
+            'id': f"chart_{safe_id}",
+            'title': metric_name,
+            'data': data,
+            'color': colors[idx % len(colors)]
+        })
+
+    return render_template(
+        'metrics_an.html', 
+        file=file_name,
+        user_image=user_image,
+        is_monitor=False,
+        logs=parsed_logs,
+        chart_labels=json.dumps(timestamps),
+        charts_data=charts_data,                     # For the Jinja HTML loop
+        charts_data_json=json.dumps(charts_data)     # For the JavaScript loop
+    )
+
 @admin_page.route('/almond/admin', methods=['GET', 'POST'])
 #@auth.login_required
 def index():
@@ -1030,6 +1208,7 @@ def index():
     global logger
     global logger_enabled
     global auth_provider_name
+    global local_metrics_only
 
     #print("SESSION AT ADMIN:", session)
     if not logger_enabled:
@@ -1301,26 +1480,69 @@ def index():
             test_this = request.form["test_plugin"]
             arguments = request.form["arguments"]
             interval = request.form["intervall"]
+
             if 'active' in request.form:
                 plugin_active = True
             else:
                 plugin_active = False
+
+            label_keys = request.form.getlist("label_key[]")
+            label_values = request.form.getlist("label_value[]")
+            labels = {}
+
+            for key, value in zip(label_keys, label_values):
+                key = key.strip()
+                value = value.strip()
+                if key and value:
+                    labels[key] = value
+            #print (labels)
             if (test_this == 'True'):
                 plugin_cmd = plugins_directory + '/' + plugin
                 plugin_args = arguments.strip()
                 runcmd = plugin_cmd + " " + plugin_args
                 try:
-                    out = subprocess.check_output([runcmd], shell=True, stderr=subprocess.STDOUT)
+                    out = subprocess.check_output(
+                      [runcmd],
+                      shell=True,
+                      stderr=subprocess.STDOUT
+                    )
                 except subprocess.CalledProcessError as e:
-                    #raise RuntimeError("command '{}' return with error (code {}): {}".format(e.cmd, e.returncode, e.output))
                     out = e.output
                     logger.warning("CalledProcessError: " + out.decode('utf-8'))
+
                 logger.info("Rendering template testplugin.html")
-                return render_template('testplugin.html', description=description.strip(), output=out.decode('UTF-8').strip(), plugin=plugin.strip(), args=plugin_args.strip(), active=plugin_active, interval=interval, user_image=image_file, avatar=almond_avatar)
+
+                return render_template(
+                    'testplugin.html',
+                    description=description.strip(),
+                    output=out.decode('UTF-8').strip(),
+                    plugin=plugin.strip(),
+                    args=plugin_args.strip(),
+                    active=plugin_active,
+                    interval=interval,
+                    labels=labels,
+                    user_image=image_file,
+                    avatar=almond_avatar
+                )
             else:
-                add_plugin_object(description.strip(), plugin.strip(), arguments.strip(), interval, plugin_active)
-                logger.info("Rendering template pluginadded.html")
-                return render_template('pluginadded.html', description=description, user_image=image_file, avatar=almond_avatar)
+                add_plugin_object(
+                description.strip(),
+                plugin.strip(),
+                arguments.strip(),
+                interval,
+                plugin_active,
+                labels
+            )
+
+            logger.info("Rendering template pluginadded.html")
+
+            return render_template(
+                'pluginadded.html',
+                description=description,
+                user_image=image_file,
+                avatar=almond_avatar
+            )
+
         if (action_type == "install"):
             logger.info("Received action type 'install'")
             logger.info("Rendering template installplugin.html")
@@ -1410,8 +1632,10 @@ def index():
                         return_list.reverse()
                     f.close()
             if is_metrics:
-                logger.info("Rendering template show_metrics_a.html")
-                return render_template("show_metrics_a.html", file=metric_selection, user_image=image_file, avatar=almond_avatar,  b_lines=return_list)
+                #logger.info("Rendering template show_metrics_a.html")
+                #return render_template("show_metrics_a.html", file=metric_selection, user_image=image_file, avatar=almond_avatar,  b_lines=return_list)
+                logger.info("Rendering template metrics_an.html")
+                return view_metrics(file_name, return_list, user_image=image_file)
             else:
                 logger.info("Rendering template show_metrics.html")
                 return render_template("show_metrics.html", user_image=image_file, avatar=almond_avatar)
@@ -1521,20 +1745,6 @@ def index():
             elif (action_id == 13):
                 value = request.form["name"]
                 action_str += "\"check\", \"name\":\"" + value + "\"}"
-            elif (action_id == 14):
-                reload_name = request.form["name"]
-                token = request.form.get("token", "").strip() #or session_token
-                if reload_name == 'almond':
-                    action_str += "\"reload\", \"name\":\"" + reload_name + "\""
-                elif ('soft' in reload_name):
-                    action_str += "\"reload\", \"name\":\"plugins\", \"mode\":\"soft\""
-                else:
-                    action_str += "\"reload\", \"name\":\"plugins\", \"mode\":\"hard\""
-                if (token):
-                    action_str += ", \"token\":\"" + token + "\"}"
-                else:
-                    action_str += "}"
-                #print("DEBUG: action_str: %s" % action_str)
             elif (action_id == 15):
                 name = request.form.get("name", "")
                 flags = request.form["flags"]
@@ -1902,11 +2112,22 @@ def index():
         return render_template('logs.html', logo_image=image_file, avatar=almond_avatar, logfiles=logs_list)
     elif page == 'metrics':
         metrics_list = []
+        prefix = None
+        this_data = load_status_data()
+        hostname = this_data['host']['name'].split('.')[0]
+        prefix = f"{hostname}_"
         for f in os.listdir(store_dir):
-            if (f == metrics_file_name):
-                f = "Current metrics"
-            metrics_list.append(f)
-        metrics_list.sort()
+            if local_metrics_only and not f.startswith(prefix) and f != metrics_file_name:
+                continue
+            val = f
+            display = f
+            if (val == metrics_file_name):
+                val = "Current metrics"
+                display = "Current metrics"
+            elif display.startswith(prefix):
+                display = display[len(prefix):]
+            metrics_list.append({'value': val, 'display': display})
+        metrics_list.sort(key=lambda x: x['display'])
         if not standalone:
             info = "Note! API is running in multimode, but Metrics will only be shown for the local server."
             logger.info(info)

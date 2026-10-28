@@ -1,0 +1,10 @@
+{
+  "react_on_state": "WARNING",
+  "heals": [
+    {
+      "plugin": "check_root",
+      "run": "/opt/almond/scripts/heal_root_disk.sh",
+      "timeout_seconds": 30
+    }
+  ]
+}

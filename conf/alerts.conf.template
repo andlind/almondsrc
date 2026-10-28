@@ -1,0 +1,22 @@
+# Copy to /etc/almond/alerting.conf and protect it because it may contain a password.
+# Set only the notification method(s) you use.
+
+send_alerts_to_slack=false
+send_alerts_to_email=false
+
+# Slack incoming webhook URL.
+slack_webhook_url=
+
+# SMTP URL, for example: smtps://smtp.example.com:465
+smtp_url=
+smtp_username=
+smtp_password=
+email_from=almond@example.com
+email_recipient=operations@example.com
+email_subject=Almond monitoring alert
+
+# Optional per-check routing. Indexes are zero-based and match PluginItem.id.
+# A configured check inherits unspecified values from the global settings.
+# check.1.slack_webhook_url=https://hooks.slack.com/services/...
+# check.2.email_recipient=database@example.com
+# check.3.enabled=false

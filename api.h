@@ -61,7 +61,7 @@
 #define API_GET_JSONFILENAME 87
 #define API_GET_METRICSFILENAME 88
 #define API_GET_PLUGIN_RELOAD_TS 91
-#define API_GET_SCHEDULER 113
+#define API_GET_SCHEDULER 114
 #define API_GET_PUSH_URL 303
 #define API_GET_PUSH_PORT 304
 #define API_GET_PUSH_INTERVAL 305
@@ -75,6 +75,7 @@
 #define API_ALMOND_VERSION 110
 #define API_ALMOND_STATUS 111
 #define API_ALMOND_PLUGINSTATUS 112
+#define API_ALMOND_METRICS 113
 #define API_MONITOR_SOFT 200
 #define API_MONITOR_SOFT_VALUE 201
 #define API_MONITOR_HARD 205
@@ -120,7 +121,7 @@ void apiReloadConfigHard();
 void apiReloadConfigSoft();
 void apiReload();
 void apiShowVersion();
-void apiShowStatus();
+void apiShowStatus(bool);
 void apiShowPluginStatus();
 void apiGetInventory(int);
 int createSocket(int);

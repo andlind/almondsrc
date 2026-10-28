@@ -1,0 +1,157 @@
+{% include 'head.html' %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+    .metrics-container { max-width: 1200px; margin: 0 auto; font-family: sans-serif; }
+    
+    /* Top Header Layout */
+    .header-section { display: flex; align-items: center; justify-content: space-between; margin-bottom: 30px; }
+    .header-title { text-align: center; flex-grow: 1; }
+    .btn-back { padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; }
+    .btn-back:hover { background: #0056b3; }
+    .spacer { width: 100px; } 
+
+    /* Image Framing */
+    .logo-framed {
+        max-height: 80px;
+        background: #fff; /* White backdrop for padding */
+        padding: 5px;
+        border: 3px solid #8b4513; /* SaddleBrown */
+        border-radius: 8px; /* Slightly rounded corners */
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* Drop shadow */
+    }
+
+    /* Grid Layout for Multiple Charts */
+    .charts-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    .chart-container { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    
+    /* Table Styling */
+    .log-table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .log-table th, .log-table td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
+    .log-table th { background-color: #f8f9fa; font-weight: 600; }
+    .status-OK { color: #155724; background-color: #d4edda; padding: 3px 8px; border-radius: 4px; font-weight: bold;}
+    .status-WARNING { color: #856404; background-color: #fff3cd; padding: 3px 8px; border-radius: 4px; font-weight: bold;}
+    .status-CRITICAL { color: #721c24; background-color: #f8d7da; padding: 3px 8px; border-radius: 4px; font-weight: bold;}
+    .metric-value { font-family: monospace; font-weight: bold; color: #d63384; font-size: 15px;}
+</style>
+
+<div class="metrics-container">
+    
+    <!-- Top Navigation & Header -->
+    <div class="header-section">
+        <a href="{{ request.referrer or '/almond/admin?page=metrics' }}" class="btn-back">&laquo; Go back</a>
+        <div class="header-title">
+            <!-- Framed Image -->
+            <img src="{{ user_image }}" alt="User Image" class="logo-framed">
+            <h2>Metrics: {{ file }}</h2>
+        </div>
+        <div class="spacer"></div> 
+    </div>
+
+    <!-- Chart Grid (Only render if NOT monitor.metrics) -->
+    {% if not is_monitor %}
+    <div class="charts-grid">
+        {% for chart in charts_data %}
+        <div class="chart-container">
+            <!-- Using relative height to allow the grid to size it nicely -->
+            <div style="position: relative; height: 250px;">
+                <canvas id="{{ chart.id }}"></canvas>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Beautified Table -->
+    <table class="log-table">
+        <thead>
+            {% if is_monitor %}
+            <tr>
+                <th>Metric Name</th>
+                <th>Attributes / Labels</th>
+                <th>Value</th>
+            </tr>
+            {% else %}
+            <tr>
+                <th>Timestamp</th>
+                <th>Status</th>
+                <th>Message</th>
+                <th>Raw Performance Data</th>
+            </tr>
+            {% endif %}
+        </thead>
+        <tbody>
+            {% for log in logs %}
+                {% if is_monitor %}
+                    {% if log.raw %}
+                    <tr><td colspan="3">{{ log.raw }}</td></tr>
+                    {% else %}
+                    <tr>
+                        <td style="font-weight: bold;">{{ log.metric }}</td>
+                        <td style="color: #666; font-size: 13px;">{{ log.labels }}</td>
+                        <td class="metric-value">{{ log.value }}</td>
+                    </tr>
+                    {% endif %}
+                {% else %}
+                <tr>
+                    <td>{{ log.date }}</td>
+                    <td><span class="status-{{ log.status }}">{{ log.status }}</span></td>
+                    <td>{{ log.message }}</td>
+                    <td style="color: #666; font-family: monospace; font-size: 12px;">{{ log.perf }}</td>
+                </tr>
+                {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Chart Script (Only initialize if NOT monitor.metrics) -->
+{% if not is_monitor %}
+<script>
+    const labels = {{ chart_labels | safe }};
+    const chartsData = {{ charts_data_json | safe }};
+    
+    // Loop through our charts array and initialize each canvas
+    chartsData.forEach(chart => {
+        const ctx = document.getElementById(chart.id).getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: chart.title,
+                    data: chart.data,
+                    borderColor: chart.color,
+                    backgroundColor: chart.color + '1A', // Hex for 10% opacity
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    title: { display: true, text: chart.title },
+                    legend: { display: false } // Hidden because the title explains it
+                },
+                scales: {
+                    y: { beginAtZero: true }
+                },
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                }
+            }
+        });
+    });
+</script>
+{% endif %}
+
+{% include 'foot.html' %}

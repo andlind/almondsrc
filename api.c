@@ -20,6 +20,7 @@
 #include "utils.h"
 #include "api.h"
 #include "version.h"
+#include "prometheus_metrics.h"
 #include "main.h"
 #ifdef USE_AVRO
 	#include "mod_avro.h"
@@ -1387,7 +1388,7 @@ void apiGetVars(int v) {
 	}
 }
 
-void apiShowStatus() {
+void apiShowStatus(bool showAsMetrics) {
 	FILE *fp;
         struct rusage usage;
         getrusage(RUSAGE_SELF, &usage);
@@ -1453,18 +1454,51 @@ void apiShowStatus() {
     		}
 		fclose(fp);
 	}
-        const char *json_str = json_object_to_json_string_ext(jobj, JSON_C_TO_STRING_PRETTY);
-        int size = strlen(json_str) + 2;
-        socket_message = malloc((size_t)size);
+	char *response = NULL;
+	size_t size = 0;
+	if (showAsMetrics) {
+		response = writePrometheusMetrics(jobj);
+		if (response != NULL) {
+			size = strlen(response) + 1;
+		}
+	}
+	else {
+        	const char *json_str = json_object_to_json_string_ext(jobj, JSON_C_TO_STRING_PRETTY);
+		if (json_str != NULL) {
+			size = strlen(json_str) + 2;
+			response = malloc(size);
+			if (response != NULL) {
+				snprintf(response, size, "%s\n", json_str);
+			}
+		}
+	}
+	json_object_put(jobj);
+	if (response == NULL) {
+		writeLog("[apiShowStatus] Failed to construct status reponse.", 2, 0);
+		constructSocketMessage("almond", "Error: Failed to create status respone");
+		return;
+	}
+	char *new_message = malloc(size);
+	if (new_message == NULL) {
+		free(response);
+		constructSocketMessage("almond", "Error: Failed to allocate status response");
+    		return;
+	}
+        socket_message = malloc(size);
         if (socket_message == NULL) {
                 printf("Memory allocation failed.\n");
                 writeLog("Memory allocation failed [constructSocketMessage:socket_message]", 2, 0);
+		free(response);
                 return;
         }
-        else
-                memset(socket_message, '\0', (size_t)size * sizeof(char));
+	memcpy(new_message, response, size);
+	free(response);
+        /*else
+                memset(socket_message, '\0', size * sizeof(char));
         snprintf(socket_message, (size_t)size, "%s\n", json_str);
-        json_object_put(jobj);
+        memcpy(socket_message, response, size);
+	free(response);*/
+	socket_message = new_message;
 }
 
 void apiShowPluginStatus() {
