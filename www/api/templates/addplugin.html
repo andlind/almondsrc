@@ -1,0 +1,431 @@
+{% include 'head.html' %}
+
+<p align="center">
+    <img src="{{ user_image }}" alt="User Image">
+</p>
+
+<hr size="1">
+
+<table style="margin-left:auto;margin-right:auto;border:1px solid #000000;text-align:center;" width="90%">
+    <tr>
+        <td>
+            <p style="font-family:Verdana;color:#491c0f;font-size:22px;font-weight:bold;">
+                Add monitoring object
+            </p>
+        </td>
+    </tr>
+</table>
+
+<p>&nbsp;</p>
+<form name="update_plugins" method="post" action="/almond/admin">
+<input type="hidden" name="action_type" value="addplugin">
+<input type="hidden" name="plugin_name" value="{{ plugin }}">
+<input type="hidden" name="test_plugin" id="test_plugin" value="False">
+<table style="margin-left:auto;margin-right:auto;border:none;text-align:center;" width="90%">
+
+    <tr style="background-color:#491c0f;color:#ffffff;">
+        <td>Service and description</td>
+        <td>Plugin</td>
+        <td>Arguments</td>
+        <td>&nbsp;</td>
+        <td>Interval</td>
+        <td>Active</td>
+    </tr>
+        <tr>
+            <td>
+                <input type="text"
+                       size="30"
+                       name="description"
+                       value="[check_yourval] Your description">
+            </td>
+
+            <td>
+                {{ plugin }}
+            </td>
+
+            <td>
+                <input type="text"
+                       size="20"
+                       name="arguments">
+            </td>
+
+            <td>
+	        <a href="/almond/admin?page=addplugin&test=true"><button onClick="document.getElementById('test_plugin').value='True'" style="width:auto;">Test plugin</button></a>
+                <!--<a href="/almond/admin?page=addplugin&test=true"
+                    style="
+                    display:inline-block;
+                    padding:2px 8px;
+                    border:1px solid #767676;
+                    border-radius:2px;
+                    background:#efefef;
+                    color:#000;
+                    text-decoration:none;
+                    font-family:Arial,sans-serif;
+                    font-size:13px;
+               ">Test plugin
+               </a>-->
+            </td>
+
+            <td>
+                <input type="number"
+                       min="1"
+                       max="1440"
+                       value="1"
+                       size="4"
+                       name="intervall">
+            </td>
+
+            <td>
+                <input type="checkbox"
+                       name="active"
+                       checked>
+            </td>
+        </tr>
+
+        <!-- Add label button -->
+        <tr>
+            <td colspan="6" style="text-align:left;padding:10px 0 5px 0;">
+
+                <button type="button"
+                        id="add-label-button"
+                        onclick="addLabel()">
+                    Add label(s)
+                </button>
+
+            </td>
+        </tr>
+
+        <!-- Label rows are inserted here -->
+        <tr id="labels-row" style="display:none;">
+            <td colspan="6">
+
+                <div id="labels-container"></div>
+
+            </td>
+        </tr>
+
+        <!-- Submit buttons -->
+        <tr>
+            <td colspan="6" style="text-align:center;padding-top:15px;">
+
+                <input type="submit"
+                       value="Add this monitoring object">
+
+                <a href="/almond/admin?page=plugins">
+                    <input type="button"
+                           value="Go back">
+                </a>
+
+            </td>
+        </tr>
+</table>
+</form>
+
+<style>
+
+#add-label-button {
+    display: inline-block;
+    width: auto;
+    padding: 5px 12px;
+    margin: 0;
+    cursor: pointer;
+}
+
+
+/* The area containing all label rows */
+#labels-container {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px 0;
+}
+
+
+/* One label row */
+.label-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    width: 100%;
+    box-sizing: border-box;
+
+    margin: 6px 0;
+    padding: 8px;
+
+    background-color: #f5f5f5;
+    border: 1px solid #cccccc;
+    border-radius: 3px;
+
+    text-align: left;
+}
+
+
+/* Key / Value labels */
+.label-row label {
+    font-family: Verdana, sans-serif;
+    font-size: 13px;
+    font-weight: bold;
+    color: #491c0f;
+}
+
+
+/* Key / Value input fields */
+.label-row input[type="text"] {
+    padding: 5px;
+    border: 1px solid #999999;
+    border-radius: 3px;
+}
+
+
+/* Remove button */
+.label-row .remove-label {
+    display: inline-block;
+
+    width: auto;
+    min-width: 60px;
+
+    margin-left: auto;
+    padding: 5px 10px;
+
+    background-color: #d9534f;
+    color: white;
+
+    border: 1px solid #c9302c;
+    border-radius: 3px;
+
+    font-size: 13px;
+    cursor: pointer;
+}
+
+
+.label-row .remove-label:hover {
+    background-color: #c9302c;
+}
+
+
+/* When there are no labels, don't show the label area */
+#labels-row {
+    display: none;
+}
+
+</style>
+
+<script>
+
+let labelCount = 0;
+
+const MAX_LABELS = 5;
+
+
+/*
+ * Add the first label row.
+ *
+ * This is called by the "Add label(s)" button.
+ */
+function addLabel() {
+
+    if (labelCount >= MAX_LABELS) {
+        return;
+    }
+
+    labelCount++;
+
+    createLabelRow(labelCount);
+
+    updateAddButton();
+}
+
+
+/*
+ * Create one label row.
+ */
+function createLabelRow(number) {
+
+    const labelsRow = document.getElementById("labels-row");
+    const container = document.getElementById("labels-container");
+
+    // Show the label area
+    labelsRow.style.display = "table-row";
+
+
+    // Create row
+    const row = document.createElement("div");
+
+    row.className = "label-row";
+    row.id = "label-row-" + number;
+
+
+    // Key label
+    const keyLabel = document.createElement("label");
+
+    keyLabel.textContent = "Key:";
+
+    keyLabel.htmlFor = "label-key-" + number;
+
+
+    // Key input
+    const keyInput = document.createElement("input");
+
+    keyInput.type = "text";
+    keyInput.id = "label-key-" + number;
+    keyInput.name = "label_key[]";
+    keyInput.size = 15;
+
+
+    // Value label
+    const valueLabel = document.createElement("label");
+
+    valueLabel.textContent = "Value:";
+
+    valueLabel.htmlFor = "label-value-" + number;
+
+
+    // Value input
+    const valueInput = document.createElement("input");
+
+    valueInput.type = "text";
+    valueInput.id = "label-value-" + number;
+    valueInput.name = "label_value[]";
+    valueInput.size = 25;
+
+
+    /*
+     * Pressing ENTER in the value field:
+     *
+     * 1. Make sure both fields contain something.
+     * 2. If possible, create another label row.
+     */
+    valueInput.addEventListener("keydown", function(event) {
+
+        if (event.key === "Enter") {
+
+            event.preventDefault();
+
+            const key = keyInput.value.trim();
+            const value = valueInput.value.trim();
+
+
+            // Don't accept an incomplete label
+            if (key === "" || value === "") {
+
+                alert("Please enter both a key and a value.");
+                if (key === "") {
+                    keyInput.focus();
+                } else {
+                    valueInput.focus();
+                }
+
+                return;
+            }
+
+
+            /*
+             * We have a complete label.
+             *
+             * If we haven't reached five labels,
+             * create the next empty row.
+             */
+            if (labelCount < MAX_LABELS) {
+
+                labelCount++;
+
+                createLabelRow(labelCount);
+
+                updateAddButton();
+
+
+                /*
+                 * Put the cursor directly into
+                 * the new Key field.
+                 */
+                document
+                    .getElementById("label-key-" + labelCount)
+                    .focus();
+            }
+
+        }
+
+    });
+
+
+    // Remove button
+    const removeButton = document.createElement("button");
+
+    removeButton.type = "button";
+    removeButton.className = "remove-label";
+    removeButton.textContent = "Remove";
+
+
+    removeButton.addEventListener("click", function() {
+
+        removeLabel(row.id);
+
+    });
+
+
+    // Build row
+    row.appendChild(keyLabel);
+    row.appendChild(keyInput);
+
+    row.appendChild(valueLabel);
+    row.appendChild(valueInput);
+
+    row.appendChild(removeButton);
+
+
+    // Add to page
+    container.appendChild(row);
+}
+
+
+/*
+ * Remove a label row.
+ */
+function removeLabel(rowId) {
+
+    const row = document.getElementById(rowId);
+
+    if (row) {
+        row.remove();
+    }
+
+
+    // Count actual rows instead of relying on labelCount
+    const rows = document.querySelectorAll(".label-row");
+
+    labelCount = rows.length;
+
+
+    // If there are no rows, hide the section
+    if (labelCount === 0) {
+
+        document.getElementById("labels-row").style.display = "none";
+
+    }
+
+
+    updateAddButton();
+}
+
+
+/*
+ * Enable/disable the Add label(s) button.
+ */
+function updateAddButton() {
+
+    const button = document.getElementById("add-label-button");
+
+    if (labelCount >= MAX_LABELS) {
+
+        button.disabled = true;
+
+    } else {
+
+        button.disabled = false;
+
+    }
+}
+
+</script>
+
+{% include 'foot.html' %}

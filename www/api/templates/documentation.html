@@ -1,0 +1,408 @@
+<html lang="en">
+<head>
+    <title>Almond Documentation</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #f4f6f9;
+            --text-color: #333;
+            --card-bg: #fff;
+            --accent: #491c0f;
+            --header-bg: linear-gradient(90deg, #491c0f, #6b2a1a);
+        }
+        body.dark {
+            --bg-color: #1e1e2f;
+            --text-color: #e0e0e0;
+            --card-bg: #2a2a3d;
+            --accent: #d07c65;
+            --header-bg: linear-gradient(90deg, #6b2a1a, #a34d36);
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            transition: background 0.3s, color 0.3s;
+        }
+        .toggle-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .toggle-btn:hover {
+            opacity: 0.9;
+        }
+        .logo {
+            max-width: 300px;
+            height: auto;
+            display: block;
+            margin: 0 auto 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        h1 {
+            text-align: center;
+            background: var(--header-bg);
+            color: #fff;
+            padding: 12px;
+            border-radius: 8px;
+        }
+        h2 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-top: 20px;
+            text-decoration: underline;
+        }
+        p {
+            font-size: 0.95rem;
+            line-height: 1.6;
+            margin: 10px 0;
+        }
+        code, pre {
+            background: var(--card-bg);
+            padding: 8px 12px;
+            border-radius: 6px;
+            display: block;
+            margin: 8px 0;
+            font-family: monospace;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+        }
+        footer {
+            margin-top: 30px;
+            font-size: 0.85rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <button class="toggle-btn">Toggle Theme</button>
+    <p align="center"><img src="{{ user_image }}" alt="User Image" class="logo"></p>
+                <p align="center"><h1>Documentation</h1></p>
+                <hr size="1">
+                <p style="font-family: Verdana; font-size: 14px; font-weight: bold; text-decoration: underline">1. What is Almond?</p>
+                <p style="font-family: Verdana; font-size: 12px">
+                <b>Almond (or Another Linux Monitor Daemon) is a (Nagios)nrpe compliant scheduler with a Python API, named HowRU, that show results of plugin actions in the Almond daemon</b>.<br>&nbsp;<br>
+                Almond is not a direct replacement for Nagios/Op5/Icinga, since it does not have any central administrative GUI and alerting system.<br>
+                However it introduces an API where you could query and get json results of plugins run by Almond , which you could parse/save with whatever tools you prefer to use.<br>
+                Any Nagios plugin which you currently run with nrpe should be compatible with Almond. The difference between Almond and nrpe, is that the later communicates on a socket with a Nagios server and Almond only runs locally.<br>
+                Nrpe invokes commands on the client where it runs when called upon from the scheduler on the Nagios server. The Nagios server receive the result on the socket and show data in its GUI.<br>
+                Almond on the other side, is not a client-server piece of software. It has its own scheduler, runs plugins based on its configuration and stores the results in json which can be accessed from the HowRU API.
+                <br>Almond can also export Prometheus metrics and act as a Kafka producer putting all the monitoring actions in a data stream.<br>Furthermore, there is an integration available for Nagios that even have to capability to integrate Docker containers seamless into the Nagios monitoring GUI.
+                </p>
+                <p style="font-family: Verdana; font-size: 14px; font-weight: bold; text-decoration: underline">1.1 Installation practise</p>
+                <p style="font-family: Verdana; font-size: 12px">
+                There are currently packages for Ubuntu (Debian) and RedHat to install HowRU, which you can download from <a href="https://github.com/andlind/almond">github</a>. You should preferably put them in your repository of choice, since the installation have dependencies to python and nagios plugins.
+                </p>
+                <p style="font-family: Verdana; font-size: 12px">You can of course install the service without putting it in a repository, for instance on Ubuntu you type the following (as root) to install the application:</p>
+                 <code>
+                dpkg -i almond-monitor_0.9.10.deb
+                </code>
+                <br>
+                <code>
+                apt-get -f install
+                </code>
+                <p style="font-family: Verdana; font-size: 12px"><b>Note!</b>
+                 If you do not have Nagios already in use, make sure to install your distros nagios-plugin package to be able to use standard plugins.</p>
+                <p style="font-family: Verdana; font-size: 12px">You have now installed and started the HowRU services. However, you might want to check and customize the settings before moving on. The recommendation is therefore to stop the services before continuing:</p>
+                <code>
+                systemctl stop almond.service
+                </code>
+                <br>
+                <code>
+                systemctl stop howru.service
+                </code>
+                <p style="font-family: Verdana; font-size: 12px">After stopping the service, check the configuration file for changes and edit the plugins file for your needs. These files are shortly described here below.<br>Finally start the services again and enjoy your API.</p>
+                <code>
+                systemctl start almond.service
+                </code>
+                <br>
+                <code>
+                systemctl start howru.service
+                </code>
+                <p style="font-family: Verdana; font-size: 14px; font-weight: bold; text-decoration: underline">2. Almond Scheduler</p>
+                <p style="font-family: Verdana; font-size: 12px">There are currently two versions of the scheduler, both in developement stages. One version is written in C# and runs with mono on Linux systems. The reason is crossplattform compatability, where you would make the scheduler run on Windows as well. The other version is a native scheduler for Linux, written in C.<br>It should be noted that the native linux version is far ahead of the crossplattform version and should be your first choice.</p>
+                <p style="font-family: Verdana; font-size: 12px">The scheduler in started manually with the command:
+                </p>
+                <xmp>
+                mono /opt/howru/howruScheduler.exe
+                </xmp>
+                <p style="font-family: Verdana; font-size: 12px">or if running the native Linux-version</p>
+                <xmp>
+                /opt/almond/almond
+                </xmp>
+                <p style="font-family: Verdana; font-size: 12px">or through systemctl init-script:</p>
+                <xmp>
+                systemctl start almond.service
+                </xmp>
+                <p style="font-family: Verdana; font-size: 12px">
+                The scheduler requires two configuration files <i>almond.conf</i> (or <i>howru.conf</i> running mono) and <i>plugins.conf</i> located under /etc/almond.<br>
+                <i>howru.conf</i> is used by the mono-version and <i>almond.conf</i> is used by the native Linux scheduler.
+                </p>
+                <p style="font-family: Verdana; font-size: 12px">The native Linux scheduler is currently a quite far ahead of the mono version and its configuration values will be described here below.<br>
+                <p style="font-family: Verdana; font-size: 12px; font-weight: bold">2.1 Almond configuration file (almond.conf)</p>
+<table style="border: 1px solid black">
+                <tr>
+                <td style="font-family: Verdana; font-size: 12px">Configuration</td><td style="font-family: Verdana; font-size: 12px">Default value</td><td style="font-family: Verdana; font-size: 12px">Description</td>/<tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">almond.api=</td><td style="font-family: Verdana; font-size: 12px">1</td><td style="font-family: Verdana; font-size: 12px">1 means Almond API is enabled, 0 disabled.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">almond.port=</td><td style="font-family: Verdana; font-size: 12px">9909</td><td style="font-family: Verdana; font-size: 12px">Port used by Almond API</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">almond.standalone=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Changing this to 1 will make Almond run in standalone mode.<br>This means it will no longer export files to Howru.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">api.adminUser=</td><td style="font-family: Verdana; font-size: 12px">admin</td><td style="font-family: Verdana; font-size: 12px">Username for logon to admin page.<br>This will update <i>users.conf</i> and will be removed from config after being read.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">api.adminPassword=</td><td style="font-family: Verdana; font-size: 12px">password</td><td style="font-family: Verdana; font-size: 12px">Password for logon to admin page.<br>This will update <i>users.conf</i> and will be removed from config after being read.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">api.bindPort=</td><td style="font-family: Verdana; font-size: 12px">80</td><td style="font-family: Verdana; font-size: 12px">Port used by the api.<br>Should be 443 if you use SSL, otherwise the API can use any port.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">api.enableAliases=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Changing the value to 1 will allow the api to uses aliases as specified in the file <i>/etc/almond/aliases.conf</i>.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">api.enableFile=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Changing the value to 1 will allow the api to read from a specific file specified by <i>whichjson</i>.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">api.enableScraper=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Changing the value to 1 will allow the api to make sure metrics exported as prometheus will function as an exporter.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">api.dataDir=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">The directory from where the api should read (the) data file(s).</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">api.multiMetrics=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Changing the value to 1 will allow the api to read metrics from multiple servers</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">api.multiServer=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Changing the value to 1 will allow the api to read output from multiple servers</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">api.sslCertificate=</td><td style="font-family: Verdana; font-size: 12px">/opt/almond/www/api/ssl/cert.pem</td><td style="font-family: Verdana; font-size: 12px">The path to your SSL certificate. The default value is just an example.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">api.sslKey=</td><td style="font-family: Verdana; font-size: 12px">/opt/almond/www/api/ssl/key.pem</td><td style="font-family: Verdana; font-size: 12px">The path to your SSL key used with the certificate. The default value is just an example.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">api.stateType=</td><td style="font-family: Verdana; font-size: 12px">systemctl</td><td style="font-family: Verdana; font-size: 12px">This should be <i>supervisorctl</i> when running with supervisord in Docker containers.<br>Otherwise the default value should be used.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">api.startPage=</td><td style="font-family: Verdana; font-size: 12px">admin</td><td style="font-family: Verdana; font-size: 12px">Which page should be startpage when using http(s).<br>Allowed values are <i>admin</i>, <i>status</i> and </i>metrics</i>.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">api.useGUI=</td><td style="font-family: Verdana; font-size: 12px">1</td><td style="font-family: Verdana; font-size: 12px">Changing the value to 0 will disable HowRU http pages.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">api.userFile=</td><td style="font-family: Verdana; font-size: 12px">/etc/almond/users.conf</td><td style="font-family: Verdana; font-size: 12px">The file where HowRu stores login credentials for the admin page..</td></tr>
+                 <tr><td style="font-family: Verdana; font-size: 12px">api.useSSL=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Changing the value to 1 will force the API to run through SSL. Make sure you have <i>api.sslCertificate</i> and <i>api.sslKey</i> values in your config.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">data.jsonFile=</td><td style="font-family: Verdana; font-size: 12px">monitor_data.json</td><td style="font-family: Verdana; font-size: 12px">The name of the file where the scheduler writes data and from where the api will read it</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">data.metricsFile=</td><td style="font-family: Verdana; font-size: 12px">monitor.metrics</td><td style="font-family: Verdana; font-size: 12px">The name of the file where the scheduler should write current metrics.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">data.metricsOutputPrefix=</td><td style="font-family: Verdana; font-size: 12px">almond</td><td style="font-family: Verdana; font-size: 12px">Prefix given to all metrics created by this instance of Almond.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">data.saveOnExit=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Changing the value to 1 will append data to files when restarting the application. If <i>api.multiServer</i> is enabled or you run the scheduler in a container this value is recommended to be 0</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">gardener.CleanUpTime=</td><td style="font-family: Verdana; font-size: 12px">86400</td><td style="font-family: Verdana; font-size: 12px">Value is given in seconds.<br>Default value will drop all metrics files older than 24 hours when gardener runs.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">plugins.declaration=</td><td style="font-family: Verdana; font-size: 12px">/etc/almond/plugins.conf</td><td style="font-family: Verdana; font-size: 12px">The file where you configure how plugins should run.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">plugins.directory=</td><td style="font-family: Verdana; font-size: 12px">/opt/almond/plugins/</td><td style="font-family: Verdana; font-size: 12px">The directory where you store your plugins.<br>You can also point to for instance <i>/usr/local/nagios/libexec/</i> or symlink other directories to the howru plugins directory.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.certificate=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Path to server certificate if enabling TLS for Almond API.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.clearDataCacheInterval=</td><td style="font-family: Verdana; font-size: 12px">300</td><td style="font-family: Verdana; font-size: 12px">The interval on which Almond wil run its clearDataCash-function, if it´s enabled.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.confDir=</td><td style="font-family: Verdana; font-size: 12px">/etc/almond/</td><td style="font-family: Verdana; font-size: 12px">Path to configuration file</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.dataCacheTimeFrame=</td><td style="font-family: Verdana; font-size: 12px">330</td><td style="font-family: Verdana; font-size: 12px">The timeframe an unused data file is allowed to be stored in the Almond data directory.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.dataDir=</td><td style="font-family: Verdana; font-size: 12px">/opt/almond/data/</td><td style="font-family: Verdana; font-size: 12px">The directory where to store output</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.enableClearDataCache=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Changing this value to 1 will make Almond start a thread to clear old data files.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.enableGardener=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">If set to 1 Almond will trigger a <i>gardener script</i> to remove old files.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.enableKafkaExport=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Changing the value to 1 will make Almond start its Kafka producer.<br>The producer will not start if not all Kafka settings are correct..</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.enableKafkaSSL=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Changing this value to 1 will force Almond to connect to Kafka with SSL.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.enableKafkaTags=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">If set to 1 you can add an additional tag to the message Almond is producing to a Kafka topic.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.format=</td><td style="font-family: Verdana; font-size: 12px">json</td><td style="font-family: Verdana; font-size: 12px">Format of output. The default is <i>json</i>, other possible formats are <i>metrics</i> and the combination of the two <i>jsonmetrics</i><br>You can also use <i>prometheus</i> style metrics.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.gardenerRunInterval=</td><td style="font-family: Verdana; font-size: 12px">43200</td><td style="font-family: Verdana; font-size: 12px">This parameter tell Almond how often it should run the gardener script. The default value will make it run every 12 houers.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.gardenerScript=</td><td style="font-family: Verdana; font-size: 12px">/opt/almond/gardener.py</td><td style="font-family: Verdana; font-size: 12px">Path to the script you want to run to &quot;garden&quot; your metrics files.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.hostName=</td><td style="font-family: Verdana; font-size: 12px"><i>virtual hostname</i></td><td style="font-family: Verdana; font-size: 12px">Howru will automatically look up hostname on the server where it´ running and this configuration is therefor optional. However if running in a container you might want to give a virtual hostname to the exports from the container..</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.initSleepMs=</td><td style="font-family: Verdana; font-size: 12px">7000</td><td style="font-family: Verdana; font-size: 12px">The sleep time in miliseconds between start of each plugin at startup</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.kafkaBrokers=</td><td style="font-family: Verdana; font-size: 12px"><i>ip:port</i></td><td style="font-family: Verdana; font-size: 12px">Url and port to Kafka broker(s)r.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.kafkaCACertificate=</td><td style="font-family: Verdana; font-size: 12px">-</td><td style="font-family: Verdana; font-size: 12px">If <i>scheduler.enableKafkaSSL</i> is set you need to provide the path to the CA certificate used in the SSL key chain.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.kafkaProducerCertificate=</td><td style="font-family: Verdana; font-size: 12px">-</td><td style="font-family: Verdana; font-size: 12px">If <i>scheduler.enableKafkaSSL</i> is set you need to provide the path to the certificate that Almond should use when producing to its Kafka topic</td></tr>
+                 <tr><td style="font-family: Verdana; font-size: 12px">scheduler.kafkaTag=</td><td style="font-family: Verdana; font-size: 12px">-</td><td style="font-family: Verdana; font-size: 12px">The tag that you want to add to a the data Almond produces to a Kafka topic.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.kafkaTopic=</td><td style="font-family: Verdana; font-size: 12px">almond_monitoring</td><td style="font-family: Verdana; font-size: 12px">Name of the Kafka topic where you want to produce your monitoring data.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.key=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Path to key used by server certificate if enabling TLS for Almond API.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.logDir=</td><td style="font-family: Verdana; font-size: 12px">/var/log/almond/</td><td style="font-family: Verdana; font-size: 12px">Path to log file</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.logPluginOutput=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Changing the value to 1 will make Almond write the results of plugin runs to the standard log file.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.logToStdout=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Changing the value to 1 will make Almond write verbose to stdout.<br>Might be interesting if it runs in a container..</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.quickStart=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Changing the value to 1 will force Almond to run all plugins at once before starting the scheduler.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.storeResults=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Changing the value to 1 will make Almond  write the results of plugins to the directory specified in <i>scheduler.storeDir</i>. The value should be set to 1 if you use metrics instead of or together with json.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.sleepMs=</td><td style="font-family: Verdana; font-size: 12px">5000</td><td style="font-family: Verdana; font-size: 12px">Sleep time for the scheduler timer. Default is looking every 5th second if it´s time to run a command<td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.storeDir=</td><td style="font-family: Verdana; font-size: 12px">/opt/almond/data/metrics</td><td style="font-family: Verdana; font-size: 12px">The directory where you store plugin results if enabled in the <i>scheduler.storeResults</i> parameter.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.templateDir=</td><td style="font-family: Verdana; font-size: 12px">/opt/almond/templates/</td><td style="font-family: Verdana; font-size: 12px">The directory where you put output templates. This function is depricated..</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.tuneMaster=</td><td style="font-family: Verdana; font-size: 12px">1</td><td style="font-family: Verdana; font-size: 12px">Value given as plugin id.<br>The tune master could be any declared plugin whose next run timestamp is used to calculate runtimes for the scheduler. Only valid if tuneTimer is enabled.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.tunerCycle=</td><td style="font-family: Verdana; font-size: 12px">15</td><td style="font-family: Verdana; font-size: 12px">Value given in minutes.<br>How often the time tuner function (if enabled) will checking for plugin runs being scheduled to run in proximity to each other.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.tuneTimer=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Changing the value to 1 will activate the tuneTimer function.<br>The tune timer will try to prevent chunks of plugins running simultaneously. It might delay plugin runs, in order to minimize load.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.type=</td><td style="font-family: Verdana; font-size: 12px">classic</td><td style="font-family: Verdana; font-size: 12px">Changing the value to <i>time</i> instead of <i>classic</i> will implement the new scheduler introduced in version 0.9.6.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">scheduler.useTLS=</td><td style="font-family: Verdana; font-size: 12px">0</td><td style="font-family: Verdana; font-size: 12px">Changing the value to 1 will force Almond API to use TLS connection. You will need to use certificates on the server and also provide valid certificates while connecting to Almond API..</td></tr>
+                </table>
+                <p style="font-family: Verdana; font-size: 12px; font-weight: bold">2.2 Almond plugins configuration file (plugins.conf)</p>
+                <p style="font-family: Verdana; font-size: 12px">The plugins configuration file is a semicolon separated file where each line refers to a specific plugin, using the following schema:</p>
+                <xmp>
+                [service_name] description; plugin args;active;interval
+                </xmp>
+                <p style="font-family: Verdana; font-size: 12px">As for an example:</p>
+                <p style="font-family: Verdana; font-size: 12px"><i>You have a plugin called check_disk in the plugin directory declared in the <b>plugins.directory</b> configuration above.<br>
+                        The plugin takes three parameters, <b>-w, -c</b> and <b>-p</b> for warning, critical and the path to the directory you want to control. You want the plugin to respond with warning if 10% or less is unused and if 5% or less is unused you want a critical response from the plugin.<br>You want to check your /var/log directory every minute and have the description &quot;Control /var/log&quot; in the api.</i><br>
+                Your plugin configuration for this check would look like this:</p>
+                <xmp>
+                [check_var_log] Control /var/log;check_disk -w 10% -c 5% -p /var/log;1;1
+                </xmp>
+                <p style="font-family: Verdana; font-size: 12px">Say, you want to use the same check to also control /boot and /home, but you feel it´s enough to check them every 15th and every 30th minutes respectively - and your file cc
+ould look like:</p>
+                <xmp>
+                [check_boot] Control /boot;check_disk -w 10% -c 5% -p /boot;1;15
+                [check_home] Control /home;check_disk -w 10% -c 5% -p /home;1;30
+                [check_var_log] Control /var/log;check_disk -w 10% -c 5% -p /var/log;1;1
+                </xmp>
+                <p style="font-family: Verdana; font-size: 12px"><b>Note</b>: The second last field, <i>active</i> is always <b>1</b> in these examples. If you for instance want to disable a check for some reason, you give it the value 0, as an example</p>
+                <xmp>
+                [check_myservice] Control MyOwnService;my_own_control_script.sh;0;1
+                </xmp>
+                <p style="font-family: Verdana; font-size: 12px; font-weight: bold">2.3 Almond memory allocation configuration file (memalloc.conf)</p>
+                <p style="font-family: Verdana; font-size: 12px">The memalloc.conf file should consist of either the word <i>enabled</i> or the word</i> disabled</i>.<br>
+                By default &quot;disabled&quot; is written in the file. By changing this to <i>enabled</i> Almond will read how much memory the program will allocate to a number of important variables.<br>
+                The file read from is found in:</p>
+                <xmp>
+                /opt/almond/memalloc.alm
+                </xmp>
+                <p style="font-family: Verdana; font-size: 12px"><b>Note! Do not change values in <i>memalloc.alm</i> without knowing the consequences!</b></p>
+                <p style="font-family: Verdana; font-size: 14px; font-weight: bold; text-decoration: underline">3. HowRU API</p>
+                <p style="font-family: Verdana; font-size: 12px">The scheduler will run the plugins with the parameters and with the intervals declared in the <i>plugins.conf</i> file briefly described above.<br>
+                The result of the runs will be stored in the <i>data.jsonFile</i>. To access the information through a local web page (or through external calls on the <i>api.bindPort</i> you need to start the API.</p>
+                <p style="font-family: Verdana; font-size: 12px">HowRU uses Python Flask and to start in manually you need to install the required packages before running the command:</p>
+                <xmp>
+                python /opt/almond/www/api/howru.py
+                </xmp>
+                <p style="font-family: Verdana; font-size: 12px">If you install HowRU with packages you will most likely prefer the to start it with systemd:</p>
+                <xmp>
+                systemctl start howru.service
+                </xmp>
+                <p style="font-family: Verdana; font-size: 12px; font-weight: bold">3.1 HowRU configuration files</p>
+                <p style="font-family: Verdana; font-size: 12px">By default HowRu uses the same configuration file as almond, namely <i>almond.conf</i>. However if you prefer you can put configuration in an own file called <i>api.conf</i>.<br>
+                The <i>api.conf</i> file should include all parameters from the <i>almond.conf</i>-file prefixed <b>api.</b> as well as the following entries:
+                <ul>
+                        <li>data.jsonFile</li>
+                        <li>data.metricsFile</li>
+                        <li>scheduler.storeDir</li>
+                        <li>scheduler.configFile</li>
+                        <li>scheduler.dataDir</li>
+                        <li>plugins.directory</lI>
+                        <li>plugins.declaration</li>
+                </ul></p>
+                <p style="font-family: Verdana; font-size: 12px"><b>Note!</b> If an <i>api.conf</i> file exists alongside <i>almond.conf</i>, HowRU will prefer the values in the <i>api.conf</i>-file.</p>
+                <p style="font-family: Verdana; font-size: 12px">Apart from the standard configuration, HowRU also uses <i>users.conf</i> and <i>aliases.conf</i>.<br>
+                <i>users.conf</i> holds the encrypted allowed logins for the admin page and the <i>aliases.conf</i> holds aliases for API calls.</p>
+                <p style="font-family: Verdana; font-size: 12px">The <i>aliases.conf</i> files containins json entries, for an example </p>
+                <xmp>
+                {"ID":1, "check_name":"check_cpu_stats","alias":"cpu"}
+                </xmp>
+                <p style="font-family: Verdana; font-size: 12px">which will create an api alias for the check that could be used with the parameter<i>name</i> in HowRU API calls.</p>
+                <p style="font-family: Verdana; font-size: 14px; font-weight: bold; text-decoration: underline">4. HOWRU API CALLS</p>
+                <p style="font-family: Verdana; font-size: 12px">
+                <p style="font-family: Verdana; font-size: 12px; font-weight: bold">4.1 Available API calls </p>
+                <p style="font-family: Verdana; font-size: 12px">
+                <p style="font-family: Verdana; font-size: 12px">The following API:s will be available:</p>
+                <table style="border: 1px solid black">
+                <tr>
+                <td style="font-family: Verdana; font-size: 12px; text-decoration: underline">API call</td><td style="font-family: Verdana; font-size: 12px; text-decoration: underline">Description</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/status</td><td style="font-family: Verdana; font-size: 12px">Short compilation of server state.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/summary</td><td style="font-family: Verdana; font-size: 12px">Same as above.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/howru</td><td style="font-family: Verdana; font-size: 12px">Same as above.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/howareyou</td><td style="font-family: Verdana; font-size: 12px">Same as above.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/api/howareyou</td><td style="font-family: Verdana; font-size: 12px">Same as above.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/monitoring/howareyou</td><td style="font-family: Verdana; font-size: 12px">Same as above.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/criticals</td><td style="font-family: Verdana; font-size: 12px">Compilation of all plugins in critical state.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/api/criticals</td><td style="font-family: Verdana; font-size: 12px">Same as above.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/monitoring/criticals</td><td style="font-family: Verdana; font-size: 12px">Compilation of all plugins in critical state.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/warnings</td><td style="font-family: Verdana; font-size: 12px">Compilation of all plugins in warning state.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/api/warnings</td><td style="font-family: Verdana; font-size: 12px">Same as above.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/monitoring/warnings</td><td style="font-family: Verdana; font-size: 12px">Compilation of all plugins in warning state.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/ok</td><td style="font-family: Verdana; font-size: 12px">Compilation of all plugins in state ok.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/oks</td><td style="font-family: Verdana; font-size: 12px">Same as above.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/api/ok</td><td style="font-family: Verdana; font-size: 12px">Same as above.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/monitoring/ok</td><td style="font-family: Verdana; font-size: 12px">Compilation of all plugins in state ok.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/changes</td><td style="font-family: Verdana; font-size: 12px">Compilation of changes</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/api/changes</td><td style="font-family: Verdana; font-size: 12px">Same as above</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/monitoring/changes</td><td style="font-family: Verdana; font-size: 12px">Compilation of changes</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/showall</td><td style="font-family: Verdana; font-size: 12px">All plugin results are shown</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/all</td><td style="font-family: Verdana; font-size: 12px">Same as above</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/json</td><td style="font-family: Verdana; font-size: 12px">Same as above</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howeu/api/showall</td><td style="font-family: Verdana; font-size: 12px">Same as above</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/api/all</td><td style="font-family: Verdana; font-size: 12px">Same as above</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/api/json</td><td style="font-family: Verdana; font-size: 12px">Same as above</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/monitoring/json</td><td style="font-family: Verdana; font-size: 12px">All plugin results are shown</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/servers</td><td style="font-family: Verdana; font-size: 12px">Results from specifik server in multimode. <i>id</i> or </i>name</i> must be provided.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/api/servers</td><td style="font-family: Verdana; font-size: 12px">Same as above</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/<i>alias</i></td><td style="font-family: Verdana; font-size: 12px">Show results from <i>alias</i> as provided in the <i>aliases.conf</i> file.</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/search?name=<i>searchstring</i></td><td style="font-family: Verdana; font-size: 12px">Search results from string</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/querysearch?name=<i>searchstring</i></td><td style="font-family: Verdana; font-size: 12px">Same as above</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/api/search?name=<i>searchstring</i></td><td style="font-family: Verdana; font-size: 12px">Same as above</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/query?id=<i>plugin_id</i></td><td style="font-family: Verdana; font-size: 12px">Search result of a specific plugin id</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/plugin?id=<i>plugin_id</i></td><td style="font-family: Verdana; font-size: 12px">Same as above</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/api/plugin?id=<i>plugin_id</i></td><td style="font-family: Verdana; font-size: 12px">Same as above</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/monitoring/plugin?id=<i>plugin_id</i></td><td style="font-family: Verdana; font-size: 12px">Result of a specific plugin by id </td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/monitoring/plugin?name=<i>plugin_name</i></td><td style="font-family: Verdana; font-size: 12px">Result of specific plugin by plugin name</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/settings/plugins</td><td style="font-family: Verdana; font-size: 12px">Show settings of plugins running on the server</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/settings/scheduler</td><td style="font-family: Verdana; font-size: 12px">Show all settings in the <i>almond.conf</i> file</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/countjobs</td><td style="font-family: Verdana; font-size: 12px">Returns the number of plugins</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/api/countjobs</td><td style="font-family: Verdana; font-size: 12px">Same as above</td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/api/unixupdatetime</td><td style="font-family: Verdana; font-size: 12px">Returns the unixtimestamp for changes in <i>plugins.conf</i></td></tr>
+                <tr><td style="font-family: Verdana; font-size: 12px">/howru/api/unixupdatetime</td><td style="font-family: Verdana; font-size: 12px">Same as above</td></tr>
+                </table>
+                <br>
+                <p style="font-family: Verdana; font-size: 12px">All of the API calls can take the parameter <i>whichjson</i> if you want the API to look only in a particular json-file if you are running in <i>multiserver</i>-mode.</p>
+                <p style="font-family: Verdana; font-size: 12px">In <i>multiserver</i>-mode the parameter <i>server</i> can also be used if you want to look at the result from a particular server of many:</p>
+                <xmp>
+                curl url_to_hostserver:port/howru/monitoring/howareyou
+                </xmp>
+                <p style="font-family: Verdana; font-size: 12px">will return status information from all servers running under the api.</p>
+                <xmp>
+                curl url_to_hostserver:port/howru/monitoring/howareyou&server=testserver.test.domain.com
+                </xmp>
+                <p style="font-family: Verdana; font-size: 12px">will only show status from the particular server <i>testserver.test.domain.com</i>.</p>
+                <p style="font-family: Verdana; font-size: 14px; font-weight: bold; text-decoration: underline">5. Using the Almond API</p>
+                <p style="font-family: Verdana; font-size: 12px">Almond itself has its own API, which should be used with more caution than the more easygoing HowRU API. The Almond API is running on the port specified in the<br>
+                <i>almond.conf</i>, if enabled. As a user the HowRU API should generally be preferred to use in all cases where it provides the same service as Almond API.</p>
+                <p style="font-family: Verdana; font-size: 12px">Almond API will require you to send a valid json object which it can evalutate, as will be explained further later. An API call to Almond could look like this:</p>
+                <xmp>
+                curl localhost:9909 -d '{"action":"set","name":"hostname","value":"newservername","token":"qwyhb67jnds1qee9x"}'
+                </xmp>
+                <p style="font-family: Verdana; font-size: 12px">With Almond API you have the possibility to change some variables that was written in configuration files, read plugin results, run and toggle processes inside Almond as well
+                 as executing plugins, <br> including sending arbitary parameters to them. While Almond API is somewhat dangerous to play around with, it does provide a great opportunity to make integrations with other systems and optimize
+                the Almond process.</p>
+                <p style="font-family: Verdana; font-size: 12px"><b>Note!</b> All calls to Almond API that involves executing code or change variables with the program require you to use a <i>token</i> ackknowledged by Almond.<br>
+                You find an <i>almond_token_generator</i> in the directory <i>/opt/almond/utilities</i> that will help you create and install tokens.</p>
+                <p style="font-family: Verdana; font-size: 12px">All calls to Almond API must have the &quot;action&quot; parameter specified, as well as following parameters depending on what you want to achieve.<br>
+                A list of valid parameters are specified below:</p>
+                <p style="font-family: Verdana; font-size: 12px">Allowed actions are the following:</p>
+                <ul>
+                <li>almond</li>
+                <li>enable</li>
+                <li>execute</li>
+                <li>exread</li>
+                <li>disable</li>
+                <li>getvar</li>
+                <li>getm</li>
+                <li>metrics</li>
+                <li>read</li>
+                <li>run</li>
+                <li>runread</li>
+                <li>setvar</li>
+                </ul>
+                <p style="font-family: Verdana; font-size: 14px; font-weight: bold; text-decoration: underline">6. Tips and recommendations</p>
+                <p style="font-family: Verdana; font-size: 12px">If you run the HowRU API on port 80 (default) you get a very simplistic web GUI where you can explore and test the API.<br>
+                If you wish to run the API on another port you can always curl to get API responses in json-format, for instance:</p>
+                <xmp>
+                curl url.to.my.server:port/howru/monitoring/howareyou
+                </xmp>
+                <p style="font-family: Verdana; font-size: 12px"><b>Note!</b> If you run SSL you should set port to 443.</p>
+                <p style="font-family: Verdana; font-size: 12px"><b>Note!</b> If running the scheduler as a Prometheus exporter, port as 9245, 9267 or 9927 could be used as these are reserved for Nagios exporters.</p>
+                <p style="font-family: Verdana; font-size: 12px">If running HowRU scheduler in a Docker container, you either need to EXPOSE the port used by the API or you can use the multiServer or enableFile options running the API service on the server hosting the container.</p>
+                <p style="font-family: Verdana; font-size: 12px">Running the API on the server hosting containers is the preferred way to use HowRU. In this case you need to make sure your container(s) have access to the local directory where the API reads data. If using <i>multiServer</i> the API will expose all files written to the data directory.</p>
+                <p style="font-family: Verdana; font-size: 12px"><b>Note!</b> Make sure your containers don´t use the same name in the <i>data.jsonFile</i> settin.</p>
+                <p style="font-family: Verdana; font-size: 12px">Setting the <i>api.enableFile</i> option will make it possible to run API against one of many data files. <br>Imagine you have three containers writing data files to the API data directory. Let´s say the names ar <i>container1.json</i>,<i> container2.json</i> and <i>container3.json</i> respectively.
+                Running the API on the server hosting the containers in <i>api.multiServer</i> mode would let you get the results from all containers, for instance running:</p>
+                <code>
+                curl url_to_hostserver:port/howru/json
+                </code>
+                <p style="font-family: Verdana; font-size: 12px">Running <i>api.enableFile</i> would also make it possible to get API results from the containers individually, eg:</p>
+                <code>
+                curl url_to_hostserer:port:/howru/monitoring/howareyou?whichjson=container2
+                </code>
+                <p style="font-family: Verdana; font-size: 12px">There are also some additional tools to HowRU, not included in the installation package but available at <a href="https://github.com/andlind/howru">GitHub</a>, including an alerter which can run standalone and a Nagios plugin if you want to use the HowRU scheduler to send data to an existing Nagios system.</p>
+    <footer>
+        Almond Monitor — Documentation © 2025
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const body = document.body;
+            const toggleBtn = document.querySelector('.toggle-btn');
+            if (localStorage.getItem('theme') === 'dark') {
+                body.classList.add('dark');
+            }
+            toggleBtn.addEventListener('click', () => {
+                body.classList.toggle('dark');
+                localStorage.setItem('theme', body.classList.contains('dark') ? 'dark' : 'light');
+            });
+        });
+    </script>
+</body>
+</html>

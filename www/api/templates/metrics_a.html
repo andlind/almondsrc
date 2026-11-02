@@ -1,0 +1,47 @@
+{% include 'head.html' %}	
+<p align="center"><img src="{{ user_image }}" alt="User Image"></p>
+<hr size="1">
+<h1 align="center">Available metrics</h1>
+
+<form id="metricSelectionForm" onsubmit="event.preventDefault(); navigateToMetric();">
+    <table style="margin-left:auto; margin-right:auto; border: 1px solid green; text-align:center;" width="75%">
+        <tr style="text-align:center">
+            <td style="padding: 15px;">
+                <select id="metricSelect" name="metric" style="width: 300px;" required>
+                    <option value="-1" disabled selected>Metrics</option>
+                    {% for m in metrics_list %}
+                        <option value="{{ m.value }}">{{ m.display }}</option>
+                    {% endfor %}
+                </select>
+            </td>
+        </tr>
+        <tr style="text-align:center">
+            <td style="padding-bottom: 15px;">
+                <input type="submit" value=" Select ">
+            </td>
+        </tr>
+    </table>
+</form>
+
+<script>
+function navigateToMetric() {
+    const metricSelect = document.getElementById('metricSelect');
+    const selectedMetric = metricSelect.value;
+
+    if (!selectedMetric || selectedMetric === "-1") {
+        alert("Please select a valid metric.");
+        return;
+    }
+
+    // Preserve any existing query parameters (like ?host=...)
+    const urlParams = new URLSearchParams(window.location.search);
+    urlParams.delete('metric');
+    const queryString = urlParams.toString() ? `?${urlParams.toString()}` : '';
+
+    // Redirect to the clean route path
+    window.location.href = `/almond/admin/metrics/${encodeURIComponent(selectedMetric)}${queryString}`;
+}
+</script>
+
+<p>&nbsp;</p>
+{% include 'foot.html' %}

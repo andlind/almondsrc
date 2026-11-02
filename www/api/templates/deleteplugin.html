@@ -1,0 +1,27 @@
+{% include 'head.html' %}
+<p align="center"> {{ info }} </p>
+<p align="center"><img src="{{ user_image }}" alt="User Image"></p>
+<hr size="1">
+<table style="margin-left:auto;margin-right:auto;border:1px solid #000000; text-align:center; " width="90%">
+	<tr style="text-align:center">
+                <td>
+                        <p style="font-family: Verdana; color: #491c0f; font-size: 22px;font-weight:bold">Delete monitoring object</p>
+                </td>
+       </tr>
+</table>
+<p>&nbsp;</p>
+<p align="center" style="font-family: Verdana; font-size: 16px; color:#ff0000">Are you sure you want to delete this line?</p>
+<p align="center" style="font-family: Verdana; font-size: 14px; color:#491c0f;"><b>Note!</b> This will reload the Almond module.</p>
+<table style="margin-left:auto;margin-right:auto;border:none0; text-align:center; " width="90%">
+	      <tr style="text-align:center">
+		      <td>
+<form name="update_plugins" method="post" action="/almond/admin">
+	<input type="hidden" name="action_type" value="deleteplugin">
+	<input type="hidden" name="line" value="{{ line }}">
+	<input type="submit" value="Delete">
+	<a href="/almond/admin?page=plugins"><input type="button" value="Abort"></a>
+</form>
+		      </td>
+	      </tr>
+</table>
+{% include 'foot.html' %}

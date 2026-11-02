@@ -1,0 +1,26 @@
+{% include 'head.html' %}
+<p align="center"> {{ info }} </p>
+<p align="center"><img src="{{ user_image }}" alt="Logo Image"></p>
+<hr size="1">
+<table style="margin-left:auto;margin-right:auto;border:1px solid #000000; text-align:center; " width="90%">
+<tr style="text-align:center">
+<td>
+<p style="font-family: Verdana; color: #491c0f; font-size: 22px;font-weight:bold">Upload monitoring object</p>
+</td>
+</tr>
+</table>
+<p>&nbsp;</p>
+<table style="margin-left:auto;margin-right:auto;border:none0; text-align:center; " width="90%">
+<tr style="text-align:center">
+<td>
+<form enctype = "multipart/form-data" action="/almond/admin" method="post">
+<input type="hidden" name="action_type" value="upload_plugin">
+<p>File: <input type="file" name="filename" /></p>
+<p><input type="submit" value="Upload" />&nbsp;&nbsp;&nbsp;<a href="/almond/admin?page=plugins"><input type="button" value="Go back"></a></p>
+</form>
+</p>
+<p align="center" style="font-family: Verdana; font-size: 14px; color:#491c0f"><b>Note!</b> Almond currently only support upload of script files (Bash, Ruby, Python, Perl) </p>
+</td>
+</tr>
+</table>
+{% include 'foot.html' %}

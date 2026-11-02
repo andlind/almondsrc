@@ -1,0 +1,177 @@
+{% if user_image == '/static/almond_small.png' %}
+    {% include 'head.html' %}
+{% else %}
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Almond admin</title>
+    </head>
+    <body>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+    /* Keep all your existing CSS exactly as it was! */
+    .metrics-container { max-width: 1200px; margin: 0 auto; font-family: sans-serif; }
+    .header-section { display: flex; align-items: center; justify-content: space-between; margin-bottom: 30px; }
+    .header-title { text-align: center; flex-grow: 1; }
+    .btn-back { padding: 10px 20px; background: #007bff; color: white; text-decoration: none; border-radius: 5px; font-weight: bold; }
+    .btn-back:hover { background: #0056b3; }
+    .spacer { width: 100px; }
+    .logo-framed { max-height: 80px; background: #fff; padding: 5px; border: 3px solid #8b4513; border-radius: 8px; box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); }
+    .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; margin-bottom: 30px; }
+    .chart-container { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .log-table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #fff; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+    .log-table th, .log-table td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; font-size: 14px; }
+    .log-table th { background-color: #f8f9fa; font-weight: 600; }
+    .status-OK { color: #155724; background-color: #d4edda; padding: 3px 8px; border-radius: 4px; font-weight: bold;}
+    .status-WARNING { color: #856404; background-color: #fff3cd; padding: 3px 8px; border-radius: 4px; font-weight: bold;}
+    .status-CRITICAL { color: #721c24; background-color: #f8d7da; padding: 3px 8px; border-radius: 4px; font-weight: bold;}
+    .metric-value { font-family: monospace; font-weight: bold; color: #d63384; font-size: 15px;}
+</style>
+
+<div class="metrics-container">
+    <div class="header-section">
+        <a href="{{ request.referrer or '/almond/admin?page=metrics' }}" class="btn-back">&laquo; Go back</a>
+        <div class="header-title">
+            <img src="{{ user_image }}" alt="User Image" class="logo-framed">
+            <h2>Metrics: {{ file }}</h2>
+        </div>
+        <div class="spacer"></div>
+    </div>
+
+    <!-- Empty container for JavaScript to inject charts -->
+    {% if not is_monitor %}
+    <div class="charts-grid" id="charts-grid"></div>
+    {% endif %}
+
+    <table class="log-table">
+        <thead>
+            {% if is_monitor %}
+            <tr>
+                <th>Metric Name</th>
+                <th>Attributes / Labels</th>
+                <th>Value</th>
+            </tr>
+            {% else %}
+            <tr>
+                <th>Timestamp</th>
+                <th>Status</th>
+                <th>Message</th>
+                <th>Raw Performance Data</th>
+            </tr>
+            {% endif %}
+        </thead>
+        <!-- Empty body for JavaScript to inject rows -->
+        <tbody id="table-body">
+            <tr><td colspan="4" style="text-align:center;">Loading data...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<script>
+    const fileName = "{{ file }}";
+    const isMonitor = {{ 'true' if is_monitor else 'false' }};
+    const chartInstances = {}; // Keeps track of active charts so we update, not recreate
+
+    async function updateDashboard() {
+        try {
+            // Hit your new JSON endpoint!
+            const response = await fetch(`/almond/admin/metrics/get/${encodeURIComponent(fileName)}${window.location.search}`);
+            if (!response.ok) {
+    		const errorText = await response.text();
+    		throw new Error(`HTTP ${response.status}: ${errorText}`);
+	    }
+            const data = await response.json();
+
+            // 1. Handle Charts (if applicable)
+            if (!isMonitor && data.charts_data) {
+                const chartsGrid = document.getElementById('charts-grid');
+                
+                data.charts_data.forEach(chartConfig => {
+                    // If chart doesn't exist yet, build the HTML and initialize Chart.js
+                    if (!chartInstances[chartConfig.id]) {
+                        // Create HTML wrapper
+                        const chartWrapper = document.createElement('div');
+                        chartWrapper.className = 'chart-container';
+                        chartWrapper.innerHTML = `<div style="position: relative; height: 250px;"><canvas id="${chartConfig.id}"></canvas></div>`;
+                        chartsGrid.appendChild(chartWrapper);
+
+                        // Initialize Chart.js
+                        const ctx = document.getElementById(chartConfig.id).getContext('2d');
+                        chartInstances[chartConfig.id] = new Chart(ctx, {
+                            type: 'line',
+                            data: {
+                                labels: data.chart_labels,
+                                datasets: [{
+                                    label: chartConfig.title,
+                                    data: chartConfig.data,
+                                    borderColor: chartConfig.color,
+                                    backgroundColor: chartConfig.color + '1A',
+                                    borderWidth: 2,
+                                    fill: true,
+                                    tension: 0.3,
+                                    pointRadius: 2
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: { title: { display: true, text: chartConfig.title }, legend: { display: false } },
+                                scales: { y: { beginAtZero: true } },
+                                interaction: { mode: 'index', intersect: false }
+                            }
+                        });
+                    } else {
+                        // Chart already exists, just update the data smoothly
+                        const chart = chartInstances[chartConfig.id];
+                        chart.data.labels = data.chart_labels;
+                        chart.data.datasets[0].data = chartConfig.data;
+                        chart.update('none'); // 'none' prevents the draw animation from flashing every 5 seconds
+                    }
+                });
+            }
+
+            // 2. Handle Table Rows
+            const tableBody = document.getElementById('table-body');
+            let htmlContent = '';
+
+            data.logs.forEach(log => {
+                if (isMonitor) {
+                    if (log.raw) {
+                        htmlContent += `<tr><td colspan="3">${log.raw}</td></tr>`;
+                    } else {
+                        htmlContent += `
+                            <tr>
+                                <td style="font-weight: bold;">${log.metric}</td>
+                                <td style="color: #666; font-size: 13px;">${log.labels}</td>
+                                <td class="metric-value">${log.value}</td>
+                            </tr>`;
+                    }
+                } else {
+                    htmlContent += `
+                        <tr>
+                            <td>${log.date}</td>
+                            <td><span class="status-${log.status}">${log.status}</span></td>
+                            <td>${log.message}</td>
+                            <td style="color: #666; font-family: monospace; font-size: 12px;">${log.perf}</td>
+                        </tr>`;
+                }
+            });
+
+            tableBody.innerHTML = htmlContent;
+
+        } catch (error) {
+            console.error("Failed to update metrics:", error);
+        }
+    }
+
+    // Run once immediately on page load
+    updateDashboard();
+    
+    // Then set it to poll every 5 seconds (5000 milliseconds)
+    setInterval(updateDashboard, 5000);
+</script>
+
+{% include 'foot.html' %}

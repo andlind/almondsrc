@@ -1,0 +1,38 @@
+{% include 'head.html' %}
+<p align="center"><img src="{{ user_image }}" alt="User Image"></p>
+<hr size="1">
+<table style="margin-left:auto;margin-right:auto;border:1px solid #000000; text-align:center; " width="90%">
+	<tr style="text-align:center">
+        <td>
+        <p style="font-family: Verdana; font-size: 22px; color: #491c0f; font-weight:bold">API configuration</p>
+        </td>
+        </tr>
+</table>
+<p align="center" style="font-family: Verdana; font-size: 14px; font-weight: bold"> {{ info }}</p>
+<form name="add_param" method="post" action="/almond/admin">
+	<input type="hidden" name="action_type" value="add_conf">
+	<input type="hidden" name="config_type" value="{{config}}">
+	<input type="hidden" name="add_conf_value" value="{{item}}">
+	<p align="center" style="text-decoration:underline; font-size: 18px; color: #491c0f">Add {{config}} configuration parameter</p> 
+	<table width="60%" style="margin-left: auto; margin-right: auto">
+		<tr>
+			<td align="center">{{item}}</td>
+
+			<td>
+			<input type="text" name="add_value">
+			</td>
+		</tr>
+	    	<tr>
+		<td colspan="2" align="center">
+			<input type="submit" value="Add parameter">
+		</td>
+		</tr>
+        </table>
+</form>
+<hr size=1>
+<p align="center">
+<script language="javascript">document.write('<a href="' + document.referrer + '">Go back</a>');
+</script>
+</p>
+<p>&nbsp;</p>
+{% include 'foot.html' %}

@@ -1,0 +1,33 @@
+{% include 'head.html' %}	
+<p align="center"><img src="{{ logo_image }}" alt="User Image"></p>
+	<hr size="1">
+        <h1>Select log file</h1>
+	<table style="margin-left:auto;margin-right:auto;border=1px solid green; text-align:center" width="75%">
+		<form name="logSelection" method="post" action="/almond/admin">
+			<input type="hidden" name="page" value="logs">
+			<input type="hidden" name="action_type" value="show_log">
+		<tr style="text-align:center">
+                        <td>
+				<select name="logfile" width="300px">
+					<option value="-1" SELECTED>Available log files</option>
+				{% for f in logfiles %}
+    					<option value="{{ f }}">{{ f }}</option>
+				{% endfor %}
+				</select>
+			</td>
+		</tr>
+		<tr style="text-align:center">
+                        <td>
+				<label for="limit">Limit</label>
+				<input type="number" value="100" min="1" max="5000" step="1" name="limit">
+                        </td>
+                </tr>
+		<tr style="text-align:center">
+			<td>
+				<input type="submit" value=" Select ">
+			</td>
+                </tr>
+		</form>
+	</table>
+	<p>&nbsp;</p>
+{% include 'foot.html' %}

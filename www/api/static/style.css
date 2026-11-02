@@ -1,0 +1,18 @@
+body {
+  background-color: #ffffff;
+}
+
+h1 {
+  color: #000000;
+  text-align: center;
+}
+
+p {
+  font-family: Verdana;
+  font-size: 12px;
+}
+
+ul {
+  text-align: center;
+  list-style: inside;
+}
