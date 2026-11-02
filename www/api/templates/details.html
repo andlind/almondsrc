@@ -60,6 +60,40 @@
         .toggle-btn:hover {
             background: #357ab8;
         }
+	.btn-back { padding: 10px 20px; background: var(--accent); color: white; text-decoration: none; border-radius: 5px; font-weight: bold; }
+    	.btn-back:hover { background: #357ab8; }
+	.header-section {
+    		position: relative;
+		width: 100%;
+    		padding: 20px 0;
+	}
+	.header-actions {
+    		display: flex;
+    		align-items: center;
+    		gap: 10px;
+    		flex: 1;
+    		min-width: 0;
+	}
+	.header-title {
+    		display: flex;
+    		flex-direction: column;
+    		align-items: center;
+    		justify-content: center;
+    		text-align: center;
+    		gap: 10px;
+    		padding-top: 20px;
+	}
+        .header-title h1 {
+    		margin: 5px 0 15px;
+	}
+	.header-spacer {
+    		flex: 1;
+	}
+	.btn-back,
+	.toggle-btn {
+    		position: static;
+    		flex-shrink: 0;
+	}
         .styled-table {
             border-collapse: collapse;
             margin: 20px auto;
@@ -70,6 +104,11 @@
             overflow: hidden;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
+        .theme-container {
+    		position: absolute;
+    		top: 10px;
+    		right: 20px;
+	}
         .logo {
             max-width: 400px;   /* adjust as needed */
             height: auto;
@@ -88,6 +127,16 @@
         .styled-table td.plugin-output {
             text-align: left;
         }
+        .table-navigation {
+    		width: 90%;
+    		margin: 10px auto 0;
+    		text-align: left;
+	}
+
+	.table-navigation .btn-back {
+    		position: static;
+    		display: inline-block;
+	}
         .status-ok { color: #28a745; font-weight: 600; }
         .status-warning { color: #ffc107; font-weight: 600; }
         .status-critical { color: #dc3545; font-weight: 600; }
@@ -95,12 +144,21 @@
     </style>
 </head>
 <body>
-    <button class="toggle-btn">Toggle Theme</button>
-
-    <img src="{{ user_image }}" alt="User Image" class="logo">
-    <p style="font-size: 14px; font-weight: bold;">HowRU is running on this server</p>
-    <h1>{{ server }}</h1>
-
+    <div class="header-section">
+        <div class="theme-container">
+            <button class="toggle-btn">Toggle Theme</button>
+        </div>
+        <div class="header-title">
+            <img src="{{ user_image }}" alt="User Image" class="logo">
+            <h1>{{ server }}</h1>
+        </div>
+        <div class="header-spacer"></div>
+    </div>
+    <div class="table-navigation">
+        <a href="/howru/monitoring/status" class="toggle-btn btn-back">
+            &laquo; Go back
+        </a>
+    </div>
     <table class="styled-table" width="90%">
         <thead>
             <tr>
@@ -131,7 +189,8 @@
         <tbody>
         {% for obj in monitoring %}
             <tr>
-                <td>{{ obj['pluginName'] }}
+                <!--<td>{{ obj['pluginName'] }}-->
+                <td><a href="{{ url_for('admin_page.view_metrics', file_name=obj['name'], host=request.args.get('name')) }}"> {{ obj['pluginName'] }} </a>
                      {% if obj.labels is mapping %}
                          <br>
                          {% for key, value in obj.labels.items() %}

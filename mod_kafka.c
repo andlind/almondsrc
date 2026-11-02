@@ -869,77 +869,78 @@ int init_kafka_producer() {
         }
 
 	rd_kafka_conf_t *conf = rd_kafka_conf_new();
+        if (!conf) return 1;
 
         if (rd_kafka_conf_set(conf, "bootstrap.servers", brokers, errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
                 writeLog(errstr, 1, 0);
-                return 1;
+                goto fail_conf;
         }
-	if (set_kafka_conf(conf, "bootstrap.servers", brokers)) return 1;
+	if (set_kafka_conf(conf, "bootstrap.servers", brokers)) goto fail_conf;
         if (kafka_client_id != NULL) {
-		if (set_kafka_conf(conf, "client.id", kafka_client_id)) return 1;
+		if (set_kafka_conf(conf, "client.id", kafka_client_id)) goto fail_conf;
 	}
 	snprintf(value_str, sizeof(value_str), "%d", metadata_request_timeout);
-	if (set_kafka_conf(conf, "metadata.max.age.ms", value_str)) return 1;
+	if (set_kafka_conf(conf, "metadata.max.age.ms", value_str)) goto fail_conf;
 	snprintf(value_str, sizeof(value_str), "%d", linger_ms);
-	if (set_kafka_conf(conf, "linger.ms", value_str)) return 1;
+	if (set_kafka_conf(conf, "linger.ms", value_str)) goto fail_conf;
 	snprintf(value_str, sizeof(value_str), "%d", queue_buffering_max_messages);
-        if (set_kafka_conf(conf, "queue.buffering.max.messages", value_str)) return 1;
-        if (set_kafka_conf(conf, "compression.codec", kafka_compression)) return 1; 
+        if (set_kafka_conf(conf, "queue.buffering.max.messages", value_str)) goto fail_conf;
+        if (set_kafka_conf(conf, "compression.codec", kafka_compression)) goto fail_conf; 
 	snprintf(value_str, sizeof(value_str), "%d", message_max);
-	if (set_kafka_conf(conf, "message.max.bytes", value_str)) return 1;
+	if (set_kafka_conf(conf, "message.max.bytes", value_str)) goto fail_conf;
 	snprintf(value_str, sizeof(value_str), "%d", message_copy_max);
-        if (set_kafka_conf(conf, "message.copy.max.bytes", value_str)) return 1;
+        if (set_kafka_conf(conf, "message.copy.max.bytes", value_str)) goto fail_conf;
         snprintf(value_str, sizeof(value_str), "%d", request_timeout);
-        if (set_kafka_conf(conf, "request.timeout.ms", value_str)) return 1;
+        if (set_kafka_conf(conf, "request.timeout.ms", value_str)) goto fail_conf;
         snprintf(value_str, sizeof(value_str), "%d", message_timeout_ms);
-        if (set_kafka_conf(conf, "delivery.timeout.ms", value_str)) return 1;
+        if (set_kafka_conf(conf, "delivery.timeout.ms", value_str)) goto fail_conf;
         snprintf(value_str, sizeof(value_str), "%d", retry_backoff);
-        if (set_kafka_conf(conf, "retry.backoff.ms", value_str)) return 1;
+        if (set_kafka_conf(conf, "retry.backoff.ms", value_str)) goto fail_conf;
         snprintf(value_str, sizeof(value_str), "%d", statistics_interval);
-	if (set_kafka_conf(conf, "statistics.interval.ms", value_str)) return 1;
+	if (set_kafka_conf(conf, "statistics.interval.ms", value_str)) goto fail_conf;
 	const char *log_close_str = kafka_log_connection_close ? "true" : "false";
-	if (set_kafka_conf(conf, "log.connection.close", log_close_str)) return 1;
-        if (set_kafka_conf(conf, "partitioner", kafka_partitioner)) return 1;
+	if (set_kafka_conf(conf, "log.connection.close", log_close_str)) goto fail_conf;
+        if (set_kafka_conf(conf, "partitioner", kafka_partitioner)) goto fail_conf;
 	if (enable_idempotence) { // and transactions!?
 		const char *enable_idempotence_str = enable_idempotence ? "true" : "false";
-		if (set_kafka_conf(conf, "enable.idempotence", enable_idempotence_str)) return 1;
+		if (set_kafka_conf(conf, "enable.idempotence", enable_idempotence_str)) goto fail_conf;
 		if (acks != -1) {
 			writeLog("[mod_kafka] Setting kafka.acks to 'all' since you enabled idempotency.", 1, 0);
 			snprintf(acks_str, sizeof(acks_str), "%s", "all");
 		}
-		if (set_kafka_conf(conf, "acks", acks_str)) return 1;
+		if (set_kafka_conf(conf, "acks", acks_str)) goto fail_conf;
 		if (retries > 0) {
 			snprintf(value_str, sizeof(value_str), "%d", retries);
-			if (set_kafka_conf(conf, "retries", value_str)) return 1;
+			if (set_kafka_conf(conf, "retries", value_str)) goto fail_conf;
 		}
 		else {
 			writeLog("[mod_kafka] Setting kafka.retries to 5 since you enabled idempotency.", 1, 0);
-			if (set_kafka_conf(conf, "retries", "5")) return 1;
+			if (set_kafka_conf(conf, "retries", "5")) goto fail_conf;
 		}
 		if (max_in_flight_requests <= 5) {
 			snprintf(value_str, sizeof(value_str), "%d", max_in_flight_requests);
-			if (set_kafka_conf(conf, "max.in.flight.requests.per.connection", value_str)) return 1;
+			if (set_kafka_conf(conf, "max.in.flight.requests.per.connection", value_str)) goto fail_conf;
 		}
 		else {
 			writeLog("[mod_kafka] Setting kafka.max.in.flight.requests.per.connection to 5 since idempotency is enabled.", 1, 0);
-			if (set_kafka_conf(conf, "max.in.flight.requests.per.connection", "5")) return 1;
+			if (set_kafka_conf(conf, "max.in.flight.requests.per.connection", "5")) goto fail_conf;
 		}
 		if (transactional_id != NULL) {
-			if (set_kafka_conf(conf, "transactional.id", transactional_id)) return 1;
+			if (set_kafka_conf(conf, "transactional.id", transactional_id)) goto fail_conf;
 			snprintf(value_str, sizeof(value_str), "%d", timeout_ms);
-			if (set_kafka_conf(conf, "transaction.timeout.ms", value_str)) return 1;
+			if (set_kafka_conf(conf, "transaction.timeout.ms", value_str)) goto fail_conf;
 			use_transactions = true;
 		}
 	}
 	else {
-		if (set_kafka_conf(conf, "acks", acks_str)) return 1;
+		if (set_kafka_conf(conf, "acks", acks_str)) goto fail_conf;
 		snprintf(value_str, sizeof(value_str), "%d", retries);
-		if (set_kafka_conf(conf, "retries", value_str)) return 1;
+		if (set_kafka_conf(conf, "retries", value_str)) goto fail_conf;
 		snprintf(value_str, sizeof(value_str), "%d", max_in_flight_requests);
-		if (set_kafka_conf(conf, "max.in.flight.requests.per.connection", value_str)) return 1;
+		if (set_kafka_conf(conf, "max.in.flight.requests.per.connection", value_str)) goto fail_conf;
 	}
 	if (kafka_security_protocol != NULL) {
-		if (set_kafka_conf(conf, "security.protocol", kafka_security_protocol)) return 1;
+		if (set_kafka_conf(conf, "security.protocol", kafka_security_protocol)) goto fail_conf;
 		if (kafka_sasl_mechanisms != NULL) {
 			if ((strcmp(kafka_security_protocol, "SASL_PLAINTEXT") == 0) || (strcmp(kafka_security_protocol,  "SASL_SSL") == 0)) {
 				writeLog("[mod_kafka] kafka.sasl.mechanisms requiere SASL_SSL or SASL_PLAINTEXT which is not set.", 1, 1);
@@ -948,41 +949,53 @@ int init_kafka_producer() {
 				writeLog("[mod_kafka] Almond will not initiate kafka.sasl.mechanisms.", 0, 0);
 			}
 			else {
-				if (set_kafka_conf(conf, "sasl.mechanisms", kafka_sasl_mechanisms)) return 1;
-				if (set_kafka_conf(conf, "sasl.username", kafka_sasl_username)) return 1;
-				if (set_kafka_conf(conf, "sasl.password", kafka_sasl_password)) return 1;
+				if (set_kafka_conf(conf, "sasl.mechanisms", kafka_sasl_mechanisms)) goto fail_conf;
+				if (set_kafka_conf(conf, "sasl.username", kafka_sasl_username)) goto fail_conf;
+				if (set_kafka_conf(conf, "sasl.password", kafka_sasl_password)) goto fail_conf;
 			}
 		}
 		if (kafkaCALocation != NULL) {
-			if (set_kafka_conf(conf, "ssl.ca.location", kafkaCALocation)) return 1;
+			if (set_kafka_conf(conf, "ssl.ca.location", kafkaCALocation)) goto fail_conf;
 		}
 	}
 	if (kafkaSSLCertificate != NULL) {
-		if (set_kafka_conf(conf, "ssl.certificate.location", kafkaSSLCertificate)) return 1;
+		if (set_kafka_conf(conf, "ssl.certificate.location", kafkaSSLCertificate)) goto fail_conf;
 		if (kafka_SSLKey != NULL) {
-			if (set_kafka_conf(conf, "ssl.key.location", kafka_SSLKey)) return 1;
+			if (set_kafka_conf(conf, "ssl.key.location", kafka_SSLKey)) goto fail_conf;
 		}
 	}
 	snprintf(value_str, sizeof(value_str), "%d", kafka_socket_timeout);
-	if (set_kafka_conf(conf, "socket.timeout.ms", value_str)) return 1;
+	if (set_kafka_conf(conf, "socket.timeout.ms", value_str)) goto fail_conf;
 	/* This config is deprecated
 	snprintf(value_str, sizeof(value_str), "%d", kafka_socket_blocking);
-	if (set_kafka_conf(conf, "socket.blocking.max.ms", value_str)) return 1; */
+	if (set_kafka_conf(conf, "socket.blocking.max.ms", value_str)) goto fail_conf; */
 
         rd_kafka_conf_set_dr_msg_cb(conf, dr_msg_cb);
 
         global_producer = rd_kafka_new(RD_KAFKA_PRODUCER, conf, errstr, sizeof(errstr));
+        conf = NULL;
         if (!global_producer) {
                 writeLog(errstr, 2, 0);
-                return 1;
+                goto fail_conf;
         }
 	if (use_transactions) {
-    		if (rd_kafka_init_transactions(global_producer, timeout_ms) != RD_KAFKA_RESP_ERR_NO_ERROR) {
-        		writeLog("[mod_kafka] Failed to initialize transactions", 2, 0);
-        		return 1;
-    		}
+    		rd_kafka_error_t *init_error = rd_kafka_init_transactions(global_producer, timeout_ms);
+        if (init_error) {
+            writeLog(rd_kafka_error_string(init_error), 2, 0);
+            rd_kafka_error_destroy(init_error);
+            goto fail_conf;
+        }
 	}
         return 0;
+
+fail_conf:
+        /* rd_kafka_new consumes conf, even when it fails. */
+        if (conf) rd_kafka_conf_destroy(conf);
+        if (global_producer) {
+            rd_kafka_destroy(global_producer);
+            global_producer = NULL;
+        }
+        return 1;
 }
 
 /*int send_message_to_gkafka(const char *payload) {
@@ -1346,6 +1359,7 @@ void free_kafka_memalloc() {
 	free_and_null(&kafka_sasl_username);
 	free_and_null(&kafka_sasl_password);
 	free_and_null(&kafka_security_protocol);
-	if (kafka_key_type != NULL) 
-		free_and_null(&kafka_key_type);
+	free_and_null(&kafka_key_type);
+        free_and_null(&kafka_index_key);
+        free_and_null(&configFile);
 }

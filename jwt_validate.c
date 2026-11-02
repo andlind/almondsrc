@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 #include <strings.h>     // strcasecmp
 #include <stdlib.h>
@@ -27,11 +28,12 @@ static void b64url_to_b64(char *s) {
 // decode base64 (no newlines) using OpenSSL BIO
 static int b64_decode(const char *in, unsigned char *out, size_t out_size) {
     BIO *b64 = BIO_new(BIO_f_base64());
+    if (!b64) return -1;
+    BIO *source = BIO_new_mem_buf(in, -1);
+    if (!source) { BIO_free(b64); return -1; }
     BIO_set_flags(b64, BIO_FLAGS_BASE64_NO_NL);
-    BIO *bio = BIO_new_mem_buf(in, -1);
-    bio = BIO_push(b64, bio);
-
-    int len = BIO_read(bio, out, out_size);
+    BIO *bio = BIO_push(b64, source);
+    int len = BIO_read(bio, out, (int)out_size);
     BIO_free_all(bio);
     return len;
 }
@@ -102,12 +104,18 @@ int validate_jwt(const char *token,
     }
 
     size_t payload_len = (size_t)(dot2 - (dot1 + 1));
-    char *payload_b64 = strndup(dot1 + 1, payload_len);
+    /* Base64url padding can append up to two '=' characters. */
+    if (payload_len > SIZE_MAX - 5 || payload_len > 8192) {
+        jwt_free(jwt);
+        return 0;
+    }
+    char *payload_b64 = malloc(payload_len + 5);
     if (!payload_b64) {
         jwt_free(jwt);
         return 0;
     }
-
+    memcpy(payload_b64, dot1 + 1, payload_len);
+    payload_b64[payload_len] = '\0';
     b64url_to_b64(payload_b64);
 
     unsigned char decoded[4096];

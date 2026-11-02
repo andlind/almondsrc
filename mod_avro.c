@@ -170,26 +170,20 @@ void to_uppercase(char *str) {
 }
 
 char *load_file(const char *filename, size_t *len_out) {
-        FILE *fp = fopen(filename, "rb");
-        if (!fp) return NULL;
-
-        fseek(fp, 0, SEEK_END);
-        long len = ftell(fp);
-        rewind(fp);
-
-        char *buf = malloc(len + 1);
-        if (!buf) return NULL;
-
-        size_t read = fread(buf, 1, len, fp);
-        if (read != len) {
-                writeLog("Mod_avro load_file read longer than buffer.", 1, 0);
-                perror("Reading longer than buffer size [mod_avro->load_file]");
-        }
-        fclose(fp);
-
-        buf[len] = '\0';
-        if (len_out) *len_out = len;
-        return buf;
+    FILE *fp = fopen(filename, "rb");
+    if (!fp) return NULL;
+    if (fseek(fp, 0, SEEK_END) != 0) { fclose(fp); return NULL; }
+    long len = ftell(fp);
+    if (len < 0 || fseek(fp, 0, SEEK_SET) != 0) { fclose(fp); return NULL; }
+    char *buf = malloc((size_t)len + 1);
+    if (!buf) { fclose(fp); return NULL; }
+    size_t nr = fread(buf, 1, (size_t)len, fp);
+    int read_error = ferror(fp);
+    fclose(fp);
+    if (read_error) { free(buf); return NULL; }
+    buf[nr] = '\0';
+    if (len_out) *len_out = nr;
+    return buf;
 }
 
 static int serialize_and_send(char *dummy_topic, const GKafkaMessage *msg) {
@@ -207,6 +201,7 @@ static int serialize_and_send(char *dummy_topic, const GKafkaMessage *msg) {
 
     // --- SETUP SERDES (Schema Registry SSL) ---
     serdes_conf_t *sconf = serdes_conf_new(errstr, sizeof(errstr), "schema.registry.url", schemaRegistryUrl, NULL);
+    if (!sconf) return -1;
 
     // If your registry is HTTPS and requires the same certs as Kafka:
     if (kafkaCALocation) serdes_conf_set(sconf, "ssl.ca.location", kafkaCALocation, NULL, 0);
@@ -214,6 +209,7 @@ static int serialize_and_send(char *dummy_topic, const GKafkaMessage *msg) {
     if (kafka_SSLKey) serdes_conf_set(sconf, "ssl.key.location", kafka_SSLKey, NULL, 0);
 
     serdes_t *serdes = serdes_new(sconf, NULL, 0);
+    if (!serdes) return -1; /* sconf ownership belongs to libserdes */
     size_t schema_len;
     const char *filepath = (avro_declaration_file != NULL) 
                        ? avro_declaration_file 
@@ -225,7 +221,7 @@ static int serialize_and_send(char *dummy_topic, const GKafkaMessage *msg) {
         schema_buf = load_file(DEFAULT_AVRO_DECLARATION_FILE, &schema_len);*/
     char *schema_buf = load_file(filepath, &schema_len);
     if (!schema_buf) {
-        snprintf(info, INFO_STR_SIZE, "[mod_kafka] Failed to load Avro schema file: %s", avro_declaration_file);
+        snprintf(info, INFO_STR_SIZE, "[mod_avro] Failed to load Avro schema file: %s", filepath);
         writeLog(triminfo(info), 2, 0);
         serdes_destroy(serdes);
         return -1;
@@ -247,7 +243,17 @@ static int serialize_and_send(char *dummy_topic, const GKafkaMessage *msg) {
 
     avro_schema_t avro_schema = serdes_schema_avro(schema);
     avro_value_iface_t *iface = avro_generic_class_from_schema(avro_schema);
-    avro_generic_value_new(iface, &record);
+    if (!iface) {
+        serdes_schema_destroy(schema);
+        serdes_destroy(serdes);
+        return -1;
+    }
+    if (avro_generic_value_new(iface, &record) != 0) {
+        avro_value_iface_decref(iface);
+        serdes_schema_destroy(schema);
+        serdes_destroy(serdes);
+        return -1;
+    }
 
     // --- SET FIXED FIELDS ---
     // Top-level fields
@@ -354,12 +360,13 @@ static int serialize_and_send(char *dummy_topic, const GKafkaMessage *msg) {
     if (global_producer == NULL) {
         writeLog("[DEBUG] CRITICAL: global_producer is NULL in serialize_and_send! Check extern linkage.", 1, 0);
         // Cleanup and return early to prevent further issues
-        avro_value_iface_decref(iface);
         avro_value_decref(&record);
+        avro_value_iface_decref(iface);
         if (schema_buf) {
 		free(schema_buf);
 		schema_buf = NULL;
 	}
+        serdes_schema_destroy(schema);
         serdes_destroy(serdes);
         return -1;
     }
@@ -372,8 +379,18 @@ static int serialize_and_send(char *dummy_topic, const GKafkaMessage *msg) {
     } else {
         snprintf(debug_msg, sizeof(debug_msg), "[DEBUG] Serialization SUCCESS. Buffer size: %zu bytes. Topic: %s", length, topic);
         writeLog(debug_msg, 0, 0);
-        if (use_transactions) rd_kafka_begin_transaction(global_producer);
-
+        bool transaction_started = false;
+        if (use_transactions) {
+            rd_kafka_error_t *kerr = rd_kafka_begin_transaction(global_producer);
+            if (kerr) {
+                writeLog(rd_kafka_error_string(kerr), 1, 0);
+                rd_kafka_error_destroy(kerr);
+                err = RD_KAFKA_RESP_ERR__UNKNOWN;
+                goto serialized_cleanup;
+            }
+            transaction_started = true;
+        }
+        int retries_left = 5;
         retry:
 		if (kafka_key_type != NULL && kafka_index_key != NULL) {
                 	size_t index_len = strlen(kafka_index_key);
@@ -397,14 +414,20 @@ static int serialize_and_send(char *dummy_topic, const GKafkaMessage *msg) {
                 snprintf(debug_msg, sizeof(debug_msg), "[DEBUG] rd_kafka_producev FAILED: %s", rd_kafka_err2str(err));
                 writeLog(debug_msg, 1, 0);
         }
-        if (err == RD_KAFKA_RESP_ERR__QUEUE_FULL) {
+        if (err == RD_KAFKA_RESP_ERR__QUEUE_FULL && --retries_left > 0) {
             rd_kafka_poll(global_producer, 1000);
             goto retry;
         }
 
-        if (use_transactions) {
-                writeLog("[DEBUG] Committing Transaction", 0, 0);
+        if (transaction_started) {
+            rd_kafka_error_t *kerr = err ?
+                rd_kafka_abort_transaction(global_producer, timeout_ms) :
                 rd_kafka_commit_transaction(global_producer, timeout_ms);
+            if (kerr) {
+                writeLog(rd_kafka_error_string(kerr), 1, 0);
+                rd_kafka_error_destroy(kerr);
+                err = RD_KAFKA_RESP_ERR__UNKNOWN;
+            }
         }
         else {
                 //rd_kafka_poll(global_producer, 0);
@@ -414,14 +437,16 @@ static int serialize_and_send(char *dummy_topic, const GKafkaMessage *msg) {
         }
     }
 
+serialized_cleanup:
     // --- CLEANUP ---
-    avro_value_iface_decref(iface);
     avro_value_decref(&record);
+    avro_value_iface_decref(iface);
     if (buffer) free(buffer);
     if (schema_buf) {
 	free(schema_buf);
 	schema_buf = NULL;
     }
+    serdes_schema_destroy(schema);
     serdes_destroy(serdes);
     return (serr == SERDES_ERR_OK && !err) ? 0 : -1;
 }
@@ -817,17 +842,15 @@ void process_kafka_sasl_mechanisms(ConfVal value) {
 }
 
 void process_kafka_sasl_username(ConfVal value) {
-        if (!value.strval || strlen(value.strval) == 0) {
-                free_and_null(&avro_declaration_file);
-                writeLog("[mod_kafka] kafka.sasl.username is empty. Value is set to NULL.", 0, 1);
-                return;
-        }
-        char *dup = safe_strdup(value.strval, "scheduler.kafkaAvroDeclarationFile");
-        if (!dup) return;
-        free_and_null(&avro_declaration_file);
-        avro_declaration_file = dup;
-        snprintf(info, INFO_STR_SIZE, "[mod_kafka] scheduler.kafkaAvroDeclarationFile  is set to '%s'.", avro_declaration_file);
-        writeLog(triminfo(info), 0, 1);
+    if (!value.strval || !*value.strval) {
+        free_and_null(&kafka_sasl_username);
+        return;
+    }
+    char *dup = safe_strdup(value.strval, "kafka.sasl.username");
+    if (!dup) return;
+    free_and_null(&kafka_sasl_username);
+    kafka_sasl_username = dup;
+    writeLog("[mod_avro] kafka.sasl.username is set.", 0, 1);
 }
 
 void process_kafka_sasl_password(ConfVal value) {
@@ -1128,75 +1151,76 @@ int init_kafka_producer() {
         }
 
         rd_kafka_conf_t *conf = rd_kafka_conf_new();
+        if (!conf) return 1;
 
         if (rd_kafka_conf_set(conf, "bootstrap.servers", brokers, errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
                 writeLog(errstr, 1, 0);
-                return 1;
+                goto fail_conf;
         }
-        if (set_kafka_conf(conf, "bootstrap.servers", brokers)) return 1;
-        if (set_kafka_conf(conf, "client.id", kafka_client_id)) return 1;
+        if (set_kafka_conf(conf, "bootstrap.servers", brokers)) goto fail_conf;
+        if (set_kafka_conf(conf, "client.id", kafka_client_id)) goto fail_conf;
         snprintf(value_str, sizeof(value_str), "%d", metadata_request_timeout);
-        if (set_kafka_conf(conf, "metadata.max.age.ms", value_str)) return 1;
+        if (set_kafka_conf(conf, "metadata.max.age.ms", value_str)) goto fail_conf;
         snprintf(value_str, sizeof(value_str), "%d", linger_ms);
-        if (set_kafka_conf(conf, "linger.ms", value_str)) return 1;
+        if (set_kafka_conf(conf, "linger.ms", value_str)) goto fail_conf;
         snprintf(value_str, sizeof(value_str), "%d", queue_buffering_max_messages);
-        if (set_kafka_conf(conf, "queue.buffering.max.messages", value_str)) return 1;
-        if (set_kafka_conf(conf, "compression.codec", kafka_compression)) return 1;
+        if (set_kafka_conf(conf, "queue.buffering.max.messages", value_str)) goto fail_conf;
+        if (set_kafka_conf(conf, "compression.codec", kafka_compression)) goto fail_conf;
         snprintf(value_str, sizeof(value_str), "%d", message_max);
-        if (set_kafka_conf(conf, "message.max.bytes", value_str)) return 1;
+        if (set_kafka_conf(conf, "message.max.bytes", value_str)) goto fail_conf;
         snprintf(value_str, sizeof(value_str), "%d", message_copy_max);
-        if (set_kafka_conf(conf, "message.copy.max.bytes", value_str)) return 1;
+        if (set_kafka_conf(conf, "message.copy.max.bytes", value_str)) goto fail_conf;
         snprintf(value_str, sizeof(value_str), "%d", request_timeout);
-        if (set_kafka_conf(conf, "request.timeout.ms", value_str)) return 1;
+        if (set_kafka_conf(conf, "request.timeout.ms", value_str)) goto fail_conf;
         snprintf(value_str, sizeof(value_str), "%d", message_timeout_ms);
-        if (set_kafka_conf(conf, "delivery.timeout.ms", value_str)) return 1;
+        if (set_kafka_conf(conf, "delivery.timeout.ms", value_str)) goto fail_conf;
         snprintf(value_str, sizeof(value_str), "%d", retry_backoff);
-        if (set_kafka_conf(conf, "retry.backoff.ms", value_str)) return 1;
+        if (set_kafka_conf(conf, "retry.backoff.ms", value_str)) goto fail_conf;
         snprintf(value_str, sizeof(value_str), "%d", statistics_interval);
-        if (set_kafka_conf(conf, "statistics.interval.ms", value_str)) return 1;
+        if (set_kafka_conf(conf, "statistics.interval.ms", value_str)) goto fail_conf;
         const char *log_close_str = kafka_log_connection_close ? "true" : "false";
-        if (set_kafka_conf(conf, "log.connection.close", log_close_str)) return 1;
-        if (set_kafka_conf(conf, "partitioner", kafka_partitioner)) return 1;
+        if (set_kafka_conf(conf, "log.connection.close", log_close_str)) goto fail_conf;
+        if (set_kafka_conf(conf, "partitioner", kafka_partitioner)) goto fail_conf;
         if (enable_idempotence) { // and transactions!?
                 const char *enable_idempotence_str = enable_idempotence ? "true" : "false";
-                if (set_kafka_conf(conf, "enable.idempotence", enable_idempotence_str)) return 1;
+                if (set_kafka_conf(conf, "enable.idempotence", enable_idempotence_str)) goto fail_conf;
                 if (acks != -1) {
                         writeLog("[mod_kafka] Setting kafka.acks to 'all' since you enabled idempotency.", 1, 0);
                         snprintf(acks_str, sizeof(acks_str), "%s", "all");
                 }
-                if (set_kafka_conf(conf, "acks", acks_str)) return 1;
+                if (set_kafka_conf(conf, "acks", acks_str)) goto fail_conf;
                 if (retries > 0) {
                         snprintf(value_str, sizeof(value_str), "%d", retries);
-                        if (set_kafka_conf(conf, "retries", value_str)) return 1;
+                        if (set_kafka_conf(conf, "retries", value_str)) goto fail_conf;
                 }
                 else {
                         writeLog("[mod_kafka] Setting kafka.retries to 5 since you enabled idempotency.", 1, 0);
-                        if (set_kafka_conf(conf, "retries", "5")) return 1;
+                        if (set_kafka_conf(conf, "retries", "5")) goto fail_conf;
                 }
                 if (max_in_flight_requests <= 5) {
                         snprintf(value_str, sizeof(value_str), "%d", max_in_flight_requests);
-                        if (set_kafka_conf(conf, "max.in.flight.requests.per.connection", value_str)) return 1;
+                        if (set_kafka_conf(conf, "max.in.flight.requests.per.connection", value_str)) goto fail_conf;
                 }
                 else {
                         writeLog("[mod_kafka] Setting kafka.max.in.flight.requests.per.connection to 5 since idempotency is enabled.", 1, 0);
-                        if (set_kafka_conf(conf, "max.in.flight.requests.per.connection", "5")) return 1;
+                        if (set_kafka_conf(conf, "max.in.flight.requests.per.connection", "5")) goto fail_conf;
                 }
                 if (transactional_id != NULL) {
-                        if (set_kafka_conf(conf, "transactional.id", transactional_id)) return 1;
+                        if (set_kafka_conf(conf, "transactional.id", transactional_id)) goto fail_conf;
 			snprintf(value_str, sizeof(value_str), "%d", timeout_ms);
-                        if (set_kafka_conf(conf, "transaction.timeout.ms", value_str)) return 1;
+                        if (set_kafka_conf(conf, "transaction.timeout.ms", value_str)) goto fail_conf;
                         use_transactions = true;
                 }
         }
  	else {
-                if (set_kafka_conf(conf, "acks", acks_str)) return 1;
+                if (set_kafka_conf(conf, "acks", acks_str)) goto fail_conf;
                 snprintf(value_str, sizeof(value_str), "%d", retries);
-                if (set_kafka_conf(conf, "retries", value_str)) return 1;
+                if (set_kafka_conf(conf, "retries", value_str)) goto fail_conf;
                 snprintf(value_str, sizeof(value_str), "%d", max_in_flight_requests);
-                if (set_kafka_conf(conf, "max.in.flight.requests.per.connection", value_str)) return 1;
+                if (set_kafka_conf(conf, "max.in.flight.requests.per.connection", value_str)) goto fail_conf;
         }
         if (kafka_security_protocol != NULL) {
-                if (set_kafka_conf(conf, "security.protocol", kafka_security_protocol)) return 1;
+                if (set_kafka_conf(conf, "security.protocol", kafka_security_protocol)) goto fail_conf;
                 if (kafka_sasl_mechanisms != NULL) {
                         if ((strcmp(kafka_security_protocol, "SASL_PLAINTEXT") == 0) || (strcmp(kafka_security_protocol,  "SASL_SSL") == 0)) {
                                 writeLog("[mod_kafka] kafka.sasl.mechanisms requiere SASL_SSL or SASL_PLAINTEXT which is not set.", 1, 1);
@@ -1205,41 +1229,53 @@ int init_kafka_producer() {
                                 writeLog("[mod_kafka] Almond will not initiate kafka.sasl.mechanisms.", 0, 0);
                         }
                         else {
-                                if (set_kafka_conf(conf, "sasl.mechanisms", kafka_sasl_mechanisms)) return 1;
-                                if (set_kafka_conf(conf, "sasl.username", kafka_sasl_username)) return 1;
-                                if (set_kafka_conf(conf, "sasl.password", kafka_sasl_password)) return 1;
+                                if (set_kafka_conf(conf, "sasl.mechanisms", kafka_sasl_mechanisms)) goto fail_conf;
+                                if (set_kafka_conf(conf, "sasl.username", kafka_sasl_username)) goto fail_conf;
+                                if (set_kafka_conf(conf, "sasl.password", kafka_sasl_password)) goto fail_conf;
                         }
                 }
                 if (kafkaCALocation != NULL) {
-                        if (set_kafka_conf(conf, "ssl.ca.location", kafkaCALocation)) return 1;
+                        if (set_kafka_conf(conf, "ssl.ca.location", kafkaCALocation)) goto fail_conf;
                 }
         }
         if (kafkaSSLCertificate != NULL) {
-                if (set_kafka_conf(conf, "ssl.certificate.location", kafkaSSLCertificate)) return 1;
+                if (set_kafka_conf(conf, "ssl.certificate.location", kafkaSSLCertificate)) goto fail_conf;
                 if (kafka_SSLKey != NULL) {
-                        if (set_kafka_conf(conf, "ssl.key.location", kafka_SSLKey)) return 1;
+                        if (set_kafka_conf(conf, "ssl.key.location", kafka_SSLKey)) goto fail_conf;
                 }
         }
 	snprintf(value_str, sizeof(value_str), "%d", kafka_socket_timeout);
-        if (set_kafka_conf(conf, "socket.timeout.ms", value_str)) return 1;
+        if (set_kafka_conf(conf, "socket.timeout.ms", value_str)) goto fail_conf;
         /* Remove deprecated, use request.timeout.ms, delivery.timeout.ms and retries instead
         snprintf(value_str, sizeof(value_str), "%d", kafka_socket_blocking);
-        if (set_kafka_conf(conf, "socket.blocking.max.ms", value_str)) return 1; */
+        if (set_kafka_conf(conf, "socket.blocking.max.ms", value_str)) goto fail_conf; */
 
         rd_kafka_conf_set_dr_msg_cb(conf, dr_msg_cb);
 
         global_producer = rd_kafka_new(RD_KAFKA_PRODUCER, conf, errstr, sizeof(errstr));
+        conf = NULL;
         if (!global_producer) {
                 writeLog(errstr, 2, 0);
-                return 1;
+                goto fail_conf;
         }
         if (use_transactions) {
-                if (rd_kafka_init_transactions(global_producer, timeout_ms) != RD_KAFKA_RESP_ERR_NO_ERROR) {
-                        writeLog("[mod_kafka] Failed to initialize transactions", 2, 0);
-                        return 1;
-                }
+                rd_kafka_error_t *init_error = rd_kafka_init_transactions(global_producer, timeout_ms);
+        if (init_error) {
+            writeLog(rd_kafka_error_string(init_error), 2, 0);
+            rd_kafka_error_destroy(init_error);
+            goto fail_conf;
+        }
         }
         return 0;
+
+fail_conf:
+        /* rd_kafka_new consumes conf, even when it fails. */
+        if (conf) rd_kafka_conf_destroy(conf);
+        if (global_producer) {
+            rd_kafka_destroy(global_producer);
+            global_producer = NULL;
+        }
+        return 1;
 }
 
 int send_message_to_gkafka(const char *payload) {
@@ -1507,360 +1543,144 @@ int send_ssl_message_to_kafka(char *brokers, char *cacertificate, char *certific
         return 0;
 }
 
-int send_avro_message_to_kafka(char *brokers, char *topic, 
-		              const char *name, 
-			      const char *id,
-	       		      const char *tag,
-			      const char *lastChange,
-	                      const char *lastRun,
-	                      const char *dataName,
-	                      const char *nextRun,
-	                      const char *pluginName,
-	                      const char *pluginOutput,
-	                      const char *pluginStatus,
-	                      const char *pluginStatusChanged,
-	                      int pluginStatusCode) {
-        char errstr[512];
-	char info[812];
-        void *buffer = NULL;
-	size_t length = 0;
-	avro_value_t v, data;
+/* Shared legacy sender, used by the non-global producer entry points.
+   Do not pass borrowed data pointers to cleanup functions. */
+static int send_legacy_avro(char *bootstrap, const char *schema_registration_name,
+                            const char *ca, const char *cert,
+                            const char *keyfile, char *destination,
+                            const char *name, const char *id, const char *tag,
+                            const char *lastChange, const char *lastRun,
+                            const char *dataName, const char *nextRun,
+                            const char *pluginName, const char *pluginOutput,
+                            const char *pluginStatus, const char *pluginStatusChanged,
+                            int pluginStatusCode) {
+    char errstr[512] = {0};
+    int result = -1;
+    serdes_t *serdes = NULL;
+    serdes_schema_t *schema = NULL;
+    char *schema_buf = NULL;
+    void *buffer = NULL;
+    size_t schema_len = 0, length = 0;
+    rd_kafka_conf_t *conf = NULL;
+    rd_kafka_t *producer = NULL;
+    avro_value_iface_t *iface = NULL;
+    avro_value_t record, data, v;
+    int record_ready = 0;
 
-        rd_kafka_t *producer;        /* Producer instance handle */
-        rd_kafka_conf_t *conf; /* Temporary configuration object */
+    if (!schemaRegistryUrl || !bootstrap || !destination) return -1;
+    serdes_conf_t *sconf = serdes_conf_new(errstr, sizeof(errstr),
+                                          "schema.registry.url", schemaRegistryUrl, NULL);
+    if (!sconf) return -1;
+    serdes = serdes_new(sconf, NULL, 0);
+    if (!serdes) return -1; /* libserdes owns sconf */
 
-	if (schemaRegistryUrl == NULL) {
-		writeLog("No url to schema registry found in config.", 2, 0);
-		return -1;
-	}
-        else {
-		//printf("DEBUG: schemaRegistryUrl = %s\n", schemaRegistryUrl);
-	}
-	
-	serdes_conf_t *sconf = serdes_conf_new(errstr, sizeof(errstr), "schema.registry.url", schemaRegistryUrl, NULL);
-	serdes_t *serdes = serdes_new(sconf, NULL, 0);
-        size_t schema_len;
-        const char *filepath = (avro_declaration_file != NULL) 
-                       ? avro_declaration_file 
-                       : DEFAULT_AVRO_DECLARATION_FILE;
+    const char *filepath = avro_declaration_file ? avro_declaration_file : DEFAULT_AVRO_DECLARATION_FILE;
+    schema_buf = load_file(filepath, &schema_len);
+    if (!schema_buf) goto cleanup;
+    schema = serdes_schema_add(serdes, schema_registration_name, -1,
+                                                schema_buf, schema_len,
+                                                errstr, sizeof(errstr));
+    if (!schema) {
+        writeLog(errstr, 2, 0);
+        goto cleanup;
+    }
+    avro_schema_t avro_schema = serdes_schema_avro(schema);
+    iface = avro_generic_class_from_schema(avro_schema);
+    if (!iface || avro_generic_value_new(iface, &record) != 0) goto cleanup;
+    record_ready = 1;
 
-	char *schema_buf = load_file(filepath, &schema_len);
-       	//char *schema_buf = load_file("plugin_status.avsc", &schema_len);
+    avro_value_get_by_name(&record, "name", &v, NULL); avro_value_set_string(&v, name);
+    avro_value_get_by_name(&record, "id", &v, NULL); avro_value_set_string(&v, id);
+    avro_value_get_by_name(&record, "tag", &v, NULL); avro_value_set_string(&v, tag);
+    avro_value_get_by_name(&record, "data", &data, NULL);
+    avro_value_get_by_name(&data, "lastChange", &v, NULL); avro_value_set_string(&v, lastChange);
+    avro_value_get_by_name(&data, "lastRun", &v, NULL); avro_value_set_string(&v, lastRun);
+    avro_value_get_by_name(&data, "name", &v, NULL); avro_value_set_string(&v, dataName);
+    avro_value_get_by_name(&data, "nextRun", &v, NULL); avro_value_set_string(&v, nextRun);
+    avro_value_get_by_name(&data, "pluginName", &v, NULL); avro_value_set_string(&v, pluginName);
+    avro_value_get_by_name(&data, "pluginOutput", &v, NULL); avro_value_set_string(&v, pluginOutput);
+    avro_value_get_by_name(&data, "pluginStatus", &v, NULL); avro_value_set_string(&v, pluginStatus);
+    avro_value_get_by_name(&data, "pluginStatusChanged", &v, NULL); avro_value_set_string(&v, pluginStatusChanged);
+    avro_value_get_by_name(&data, "pluginStatusCode", &v, NULL); avro_value_set_int(&v, pluginStatusCode);
 
-	// Schema registration
-	serdes_schema_t *schema = serdes_schema_add(
-    		serdes,                    // serdes_t pointer
-    		schemaName,     	   // const char *name
-    		-1,                       // int id (auto-register)
-    		schema_buf,              // const void *definition
-    		schema_len,              // int definition_len
-    		errstr,                  // char *errstr
-    		sizeof(errstr)           // int errstr_size
-		);
+    if (serdes_schema_serialize_avro(schema, &record, &buffer, &length,
+                                     errstr, sizeof(errstr)) != SERDES_ERR_OK) {
+        writeLog(errstr, 2, 0);
+        goto cleanup;
+    }
+    conf = rd_kafka_conf_new();
+    if (!conf) goto cleanup;
+    if (rd_kafka_conf_set(conf, "bootstrap.servers", bootstrap, errstr,
+                          sizeof(errstr)) != RD_KAFKA_CONF_OK) goto cleanup;
+    if (ca || cert || keyfile) {
+        if (rd_kafka_conf_set(conf, "security.protocol", "SSL", errstr,
+                              sizeof(errstr)) != RD_KAFKA_CONF_OK) goto cleanup;
+        /* Preserve legacy SSL verification setting. Review separately before production. */
+        rd_kafka_conf_set(conf, "enable.ssl.certificate.verification", "false", errstr, sizeof(errstr));
+        if (ca && rd_kafka_conf_set(conf, "ssl.ca.location", ca, errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) goto cleanup;
+        if (cert && rd_kafka_conf_set(conf, "ssl.certificate.location", cert, errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) goto cleanup;
+        if (keyfile && rd_kafka_conf_set(conf, "ssl.key.location", keyfile, errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) goto cleanup;
+    }
+    rd_kafka_conf_set_dr_msg_cb(conf, dr_msg_cb);
+    producer = rd_kafka_new(RD_KAFKA_PRODUCER, conf, errstr, sizeof(errstr));
+    conf = NULL; /* rd_kafka_new consumes the configuration, success or failure */
+    if (!producer) goto cleanup;
+    if (rd_kafka_brokers_add(producer, bootstrap) == 0) goto cleanup;
 
-	// Get Avro schema and create interface
-        if (!schema) {
-                fprintf(stderr, "Failed to register schema: %s\n", errstr);
-		writeLog("Failed to register schema...", 2, 0);
-                return -1; // or handle error appropriately
+    rd_kafka_resp_err_t err = RD_KAFKA_RESP_ERR__UNKNOWN;
+    for (int attempt = 0; attempt < 5; ++attempt) {
+        if (kafka_key_type && kafka_index_key) {
+            err = rd_kafka_producev(producer,
+                    RD_KAFKA_V_TOPIC(destination), RD_KAFKA_V_PARTITION(RD_KAFKA_PARTITION_UA),
+                    RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY), RD_KAFKA_V_VALUE(buffer, length),
+                    RD_KAFKA_V_KEY(kafka_index_key, strlen(kafka_index_key)), RD_KAFKA_V_END);
+        } else {
+            err = rd_kafka_producev(producer, RD_KAFKA_V_TOPIC(destination),
+                    RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY), RD_KAFKA_V_VALUE(buffer, length),
+                    RD_KAFKA_V_END);
         }
-	avro_schema_t avro_schema = serdes_schema_avro(schema);
-	avro_value_iface_t *iface = avro_generic_class_from_schema(avro_schema);
-	avro_value_t record;
-	avro_generic_value_new(iface, &record);
+        if (err != RD_KAFKA_RESP_ERR__QUEUE_FULL) break;
+        rd_kafka_poll(producer, 1000);
+    }
+    if (err == RD_KAFKA_RESP_ERR_NO_ERROR) {
+        rd_kafka_poll(producer, 0);
+        result = rd_kafka_flush(producer, 10000) == RD_KAFKA_RESP_ERR_NO_ERROR ? 0 : -1;
+    } else {
+        writeLog(rd_kafka_err2str(err), 1, 0);
+    }
 
-	// Set record values
-	avro_value_get_by_name(&record, "name", &v, NULL);
-	avro_value_set_string(&v, name);
-	avro_value_get_by_name(&record, "id", &v, NULL);
-	avro_value_set_string(&v, id);
-	avro_value_get_by_name(&record, "tag", &v, NULL);
-	avro_value_set_string(&v, tag);
-
-	// Set nested data values
-	avro_value_get_by_name(&record, "data", &data, NULL);
-	avro_value_get_by_name(&data, "lastChange", &v, NULL);
-	avro_value_set_string(&v, lastChange);
-	avro_value_get_by_name(&data, "lastRun", &v, NULL);
-	avro_value_set_string(&v, lastRun);
-	avro_value_get_by_name(&data, "name", &v, NULL);
-	avro_value_set_string(&v, dataName);
-	avro_value_get_by_name(&data, "nextRun", &v, NULL);
-	avro_value_set_string(&v, nextRun);
-	avro_value_get_by_name(&data, "pluginName", &v, NULL);
-	avro_value_set_string(&v, pluginName);
-	avro_value_get_by_name(&data, "pluginOutput", &v, NULL);
-	avro_value_set_string(&v, pluginOutput);
-	avro_value_get_by_name(&data, "pluginStatus", &v, NULL);
-	avro_value_set_string(&v, pluginStatus);
-	avro_value_get_by_name(&data, "pluginStatusChanged", &v, NULL);
-	avro_value_set_string(&v, pluginStatusChanged);
-	avro_value_get_by_name(&data, "pluginStatusCode", &v, NULL);
-	avro_value_set_int(&v, pluginStatusCode);
-
-	// Serialize the record
-	serdes_err_t serr = serdes_schema_serialize_avro(
-    		schema,           // serdes_schema_t *schema
-    		&record,          // avro_value_t *value
-    		&buffer,          // void **buffer
-    		&length,          // size_t *length
-		errstr,
-		sizeof(errstr)
-	);
-
-	if (serr != SERDES_ERR_OK) {
-		fprintf(stderr, "serialize_avro failed: %s\n", serdes_err2str(serr));
-	}
-
-        conf = rd_kafka_conf_new();
-        if (rd_kafka_conf_set(conf, "bootstrap.servers", brokers, errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
-        	fprintf(stderr,"%s\n", errstr);
-		writeLog(errstr, 1, 0);
-        }
-
-        rd_kafka_conf_set_dr_msg_cb(conf, dr_msg_cb);
-        producer = rd_kafka_new(RD_KAFKA_PRODUCER, conf, errstr, sizeof(errstr));
-        if (!producer) {
-                fprintf(stderr, "Failed to create producer: %s\n", errstr);
-		snprintf(info, 810, "Failed to create producer: %s", errstr);
-		writeLog(triminfo(info), 2, 0);
-                return 1;
-        }
-
-        if (rd_kafka_brokers_add(producer, brokers) == 0) {
-                fprintf(stderr, "Failed to add brokers: %s\n", rd_kafka_err2str(rd_kafka_last_error()));
-		snprintf(info, 810, "Failed to add brokers: %s", rd_kafka_err2str(rd_kafka_last_error()));
-		writeLog(triminfo(info), 2, 0);
-                rd_kafka_destroy(producer);
-                return 1;
-        }
-
-        retry:
-		rd_kafka_resp_err_t err;
-		if (kafka_key_type != NULL && kafka_index_key != NULL) {
-                 	size_t index_len = strlen(kafka_index_key);
-                	err = rd_kafka_producev(producer,
-                         	RD_KAFKA_V_TOPIC(topic),
-                         	RD_KAFKA_V_PARTITION(RD_KAFKA_PARTITION_UA),
-                         	RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
-                         	RD_KAFKA_V_VALUE(buffer, length),
-                         	RD_KAFKA_V_KEY((void *)kafka_index_key, index_len),
-                         	RD_KAFKA_V_OPAQUE(NULL),
-                         	RD_KAFKA_V_END);
-         	}
-         	else {
-			 err  = rd_kafka_producev(producer,
-                                RD_KAFKA_V_TOPIC(topic),
-                                RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
-                                RD_KAFKA_V_VALUE(buffer,length),
-                                RD_KAFKA_V_OPAQUE(NULL),
-                                RD_KAFKA_V_END);
-         	}
-
-
-                if (err) {
-			snprintf(info, 810, "%% Failed to produce topic %s: %s", topic, rd_kafka_err2str(err));
-			writeLog(triminfo(info), 1, 0);
-                        if (err == RD_KAFKA_RESP_ERR__QUEUE_FULL) {
-                                rd_kafka_poll(producer, 1000);
-                                goto retry;
-                        }
-                }
-                else {
-			snprintf(info, 810, "%% Enqueued message (%zu bytes) "
-                                       "for topic %s", 
-				       length, topic);
-			writeLog(triminfo(info), 0, 0);
-                }
-                rd_kafka_poll(producer, 0);
-	writeLog("Flushing final Kafka messages...", 0, 0);
-        rd_kafka_flush(producer, 10 * 1000 /* wait for max 10 seconds */);
-        if (rd_kafka_outq_len(producer) > 0) {
-		snprintf(info, 810, "%% %d message(s) were not delivered", rd_kafka_outq_len(producer));
-		writeLog(triminfo(info), 1, 0);
-	}
-	/* Destroy the producer instance */
-        rd_kafka_destroy(producer);
-	/* Destroy serdes */
-	free(buffer);
-	serdes_destroy(serdes);
-        return 0;
+cleanup:
+    if (conf) rd_kafka_conf_destroy(conf);
+    if (producer) rd_kafka_destroy(producer);
+    if (record_ready) avro_value_decref(&record);
+    if (iface) avro_value_iface_decref(iface);
+    free(buffer);
+    free(schema_buf);
+    if (schema) serdes_schema_destroy(schema);
+    if (serdes) serdes_destroy(serdes);
+    return result;
 }
 
-int send_ssl_avro_message_to_kafka(char *brokers, char *cacertificate, char *certificate, char *key, char *topic,
-		              const char *name,
-                              const char *id,
-                              const char *tag,
-                              const char *lastChange,
-                              const char *lastRun,
-                              const char *dataName,
-                              const char *nextRun,
-                              const char *pluginName,
-                              const char *pluginOutput,
-                              const char *pluginStatus,
-                              const char *pluginStatusChanged,
-                              int pluginStatusCode) {
+int send_avro_message_to_kafka(char *brokers, char *topic, const char *name,
+        const char *id, const char *tag, const char *lastChange, const char *lastRun,
+        const char *dataName, const char *nextRun, const char *pluginName,
+        const char *pluginOutput, const char *pluginStatus,
+        const char *pluginStatusChanged, int pluginStatusCode) {
+    return send_legacy_avro(brokers, schemaName, NULL, NULL, NULL, topic, name, id, tag,
+                            lastChange, lastRun, dataName, nextRun, pluginName,
+                            pluginOutput, pluginStatus, pluginStatusChanged, pluginStatusCode);
+}
 
-	char errstr[512];
-        char info[812];
-        void *buffer = NULL;
-        size_t length = 0;
-        avro_value_t v, data;
-
-        rd_kafka_t *producer;        /* Producer instance handle */
-        rd_kafka_conf_t *conf; /* Temporary configuration object */
-
-        serdes_conf_t *sconf = serdes_conf_new(errstr, sizeof(errstr), "schema.registry.url", schemaRegistryUrl, NULL);
-        serdes_t *serdes = serdes_new(sconf, NULL, 0);
-        size_t schema_len;
-	const char *filepath = (avro_declaration_file != NULL) 
-                       ? avro_declaration_file 
-                       : DEFAULT_AVRO_DECLARATION_FILE;
-
-	char *schema_buf = load_file(filepath, &schema_len);
-        //char *schema_buf = load_file("plugin_status.avsc", &schema_len);
-
-	if (schemaRegistryUrl == NULL) {
-                writeLog("No url to schema registry found in config.", 2, 0);
-                return -1;
-        }
-        
-	serdes_schema_t *schema = serdes_schema_add(
-                serdes,                    // serdes_t pointer
-                "PluginStatusMessage",     // const char *name
-                -1,                       // int id (auto-register)
-                schema_buf,              // const void *definition
-                schema_len,              // int definition_len
-                errstr,                  // char *errstr
-                sizeof(errstr)           // int errstr_size
-        );
-
-        avro_schema_t avro_schema = serdes_schema_avro(schema);
-        avro_value_iface_t *iface = avro_generic_class_from_schema(avro_schema);
-        avro_value_t record;
-        avro_generic_value_new(iface, &record);
-
-        avro_value_get_by_name(&record, "name", &v, NULL);
-        avro_value_set_string(&v, name);
-        avro_value_get_by_name(&record, "id", &v, NULL);
-        avro_value_set_string(&v, id);
-        avro_value_get_by_name(&record, "tag", &v, NULL);
-        avro_value_set_string(&v, tag);
-        avro_value_get_by_name(&record, "data", &data, NULL);
-        avro_value_get_by_name(&data, "lastChange", &v, NULL);
-        avro_value_set_string(&v, lastChange);
-        avro_value_get_by_name(&data, "lastRun", &v, NULL);
-        avro_value_set_string(&v, lastRun);
-        avro_value_get_by_name(&data, "name", &v, NULL);
-        avro_value_set_string(&v, dataName);
-        avro_value_get_by_name(&data, "nextRun", &v, NULL);
-        avro_value_set_string(&v, nextRun);
-        avro_value_get_by_name(&data, "pluginName", &v, NULL);
-        avro_value_set_string(&v, pluginName);
-        avro_value_get_by_name(&data, "pluginOutput", &v, NULL);
-        avro_value_set_string(&v, pluginOutput);
-        avro_value_get_by_name(&data, "pluginStatus", &v, NULL);
-        avro_value_set_string(&v, pluginStatus);
-        avro_value_get_by_name(&data, "pluginStatusChanged", &v, NULL);
-        avro_value_set_string(&v, pluginStatusChanged);
-        avro_value_get_by_name(&data, "pluginStatusCode", &v, NULL);
-        avro_value_set_int(&v, pluginStatusCode);
-
-        serdes_err_t serr = serdes_schema_serialize_avro(
-                schema,           // serdes_schema_t *schema
-                &record,          // avro_value_t *value
-                &buffer,          // void **buffer
-                &length,          // size_t *length
-                errstr,
-                sizeof(errstr)
-        );
-
-        if (serr != SERDES_ERR_OK) {
-                fprintf(stderr, "serialize_avro failed: %s\n", serdes_err2str(serr));
-        }
-
-        conf = rd_kafka_conf_new();
-        if (rd_kafka_conf_set(conf, "bootstrap.servers", brokers, errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
-                fprintf(stderr,"%s\n", errstr);
-                writeLog(errstr, 1, 0);
-        }
-	rd_kafka_conf_set(conf, "enable.ssl.certificate.verification", "false", errstr, sizeof(errstr));
-	rd_kafka_conf_set(conf, "security.protocol", "SSL", errstr, sizeof(errstr));
-	if (rd_kafka_conf_set(conf, "ssl.ca.location", cacertificate, errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
-                fprintf(stderr,"%s\n", errstr);
-                writeLog(errstr, 1, 0);
-        }
-	if (rd_kafka_conf_set(conf, "ssl.certificate.location", certificate, errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
-                fprintf(stderr,"%s\n", errstr);
-                writeLog(errstr, 1, 0);
-        }
-	if (rd_kafka_conf_set(conf, "ssl.key.location", key, errstr, sizeof(errstr)) != RD_KAFKA_CONF_OK) {
-                fprintf(stderr,"%s\n", errstr);
-                writeLog(errstr, 1, 0);
-        }
-
-        rd_kafka_conf_set_dr_msg_cb(conf, dr_msg_cb);
-        producer = rd_kafka_new(RD_KAFKA_PRODUCER, conf, errstr, sizeof(errstr));
-        if (!producer) {
-                fprintf(stderr, "Failed to create producer: %s\n", errstr);
-                snprintf(info, 810, "Failed to create producer: %s", errstr);
-                writeLog(triminfo(info), 2, 0);
-                return 1;
-        }
-
-        if (rd_kafka_brokers_add(producer, brokers) == 0) {
-                fprintf(stderr, "Failed to add brokers: %s\n", rd_kafka_err2str(rd_kafka_last_error()));
-                snprintf(info, 810, "Failed to add brokers: %s", rd_kafka_err2str(rd_kafka_last_error()));
-                writeLog(triminfo(info), 2, 0);
-                rd_kafka_destroy(producer);
-                return 1;
-        }
-        retry:
-		rd_kafka_resp_err_t err;
-		if (kafka_key_type != NULL && kafka_index_key != NULL) {
-                	size_t index_len = strlen(kafka_index_key);
-			err  = rd_kafka_producev(producer,
-                        	RD_KAFKA_V_TOPIC(topic),
-                        	RD_KAFKA_V_PARTITION(RD_KAFKA_PARTITION_UA),
-                        	RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
-                        	RD_KAFKA_V_VALUE(buffer, length),
-                        	RD_KAFKA_V_KEY((void *)kafka_index_key, index_len),
-                        	RD_KAFKA_V_OPAQUE(NULL),
-                        	RD_KAFKA_V_END);
-        	}
-        	else {
-			err  = rd_kafka_producev(producer,
-                                RD_KAFKA_V_TOPIC(topic),
-                                RD_KAFKA_V_MSGFLAGS(RD_KAFKA_MSG_F_COPY),
-                                RD_KAFKA_V_VALUE(buffer,length),
-                                RD_KAFKA_V_OPAQUE(NULL),
-                                RD_KAFKA_V_END);
-		}
-                if (err) {
-                        snprintf(info, 810, "%% Failed to produce topic %s: %s", topic, rd_kafka_err2str(err));
-                        writeLog(triminfo(info), 1, 0);
-                        if (err == RD_KAFKA_RESP_ERR__QUEUE_FULL) {
-                                rd_kafka_poll(producer, 1000);
-                                goto retry;
-                        }
-                }
-                else {
-                        snprintf(info, 810, "%% Enqueued message (%zu bytes) "
-                                       "for topic %s",
-                                       length, topic);
-                        writeLog(triminfo(info), 0, 0);
-                }
-                rd_kafka_poll(producer, 0);
-        writeLog("Flushing final Kafka messages...", 0, 0);
-        rd_kafka_flush(producer, 10 * 1000);
-        if (rd_kafka_outq_len(producer) > 0) {
-                snprintf(info, 810, "%% %d message(s) were not delivered", rd_kafka_outq_len(producer));
-                writeLog(triminfo(info), 1, 0);
-        }
-        rd_kafka_destroy(producer);
-        free(buffer);
-        serdes_destroy(serdes);
-	return 0;
+int send_ssl_avro_message_to_kafka(char *brokers, char *cacertificate,
+        char *certificate, char *key, char *topic, const char *name,
+        const char *id, const char *tag, const char *lastChange, const char *lastRun,
+        const char *dataName, const char *nextRun, const char *pluginName,
+        const char *pluginOutput, const char *pluginStatus,
+        const char *pluginStatusChanged, int pluginStatusCode) {
+    return send_legacy_avro(brokers, "PluginStatusMessage", cacertificate, certificate, key, topic,
+                            name, id, tag, lastChange, lastRun, dataName, nextRun,
+                            pluginName, pluginOutput, pluginStatus,
+                            pluginStatusChanged, pluginStatusCode);
 }
 
 static void shutdown_kafka_producer() {
@@ -1891,4 +1711,8 @@ void free_kafka_memalloc() {
         free_and_null(&kafka_sasl_username);
         free_and_null(&kafka_sasl_password);
         free_and_null(&kafka_security_protocol);
+        free_and_null(&kafka_key_type);
+        free_and_null(&kafka_index_key);
+        free_and_null(&avro_declaration_file);
+        free_and_null(&configFile);
 }

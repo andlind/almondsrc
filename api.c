@@ -220,12 +220,16 @@ void apiMonitorHardItem(int plugin_id) {
     	if (socket_message == NULL) {
     		fprintf(stderr, "Failed to allocate memory for socket messages.\n");
         	writeLog("Failed to allocate memory [apiMonitorHardItem:socket message]", 2, 0);
+                free(message);
+                free(output->retString);
+                free(output);
         	return;
     	}
         else
                 memset(socket_message, '\0', (size_t)(apimessage_size + 1) * sizeof(char));
     	snprintf(socket_message, apimessage_size, "%s", message);
     	free(message);
+	free(output->retString);
 	free(output);
     	message = NULL;
 	output = NULL;
@@ -402,6 +406,9 @@ void apiMonitorItemHardValue(int id) {
         message = malloc((size_t)apimessage_size * sizeof(char)+1);
         if (message == NULL) {
                 writeLog("Failed to allocate memory for api message.", 1, 0);
+                free(output->retString);
+                free(output);
+                return;
         }
         else
                 message[0] = '\0';
@@ -536,6 +543,9 @@ void apiMonitorItemHardValue(int id) {
         if (socket_message == NULL) {
                 fprintf(stderr, "Failed to allocate memory.\n");
                 writeLog("Failed to allocate memory in [apiMonitorHardItem: socket_message]", 2, 0);
+                free(message);
+                free(output->retString);
+                free(output);
                 return;
         }
         else
@@ -544,6 +554,7 @@ void apiMonitorItemHardValue(int id) {
         snprintf(socket_message, apimessage_size, "%s", message);
  	free(message);
         free(customMonitorVals);
+	free(output->retString);
 	free(output);
         customMonitorVals = NULL;
         message = NULL;
@@ -571,12 +582,7 @@ void apiReadData(int plugin_id, int flags) {
 	}
 	else
        		message[0] = '\0';
-	pluginName = malloc((size_t)pluginitemname_size * sizeof(char)+1);
-	if (pluginName == NULL) {
-		fprintf(stderr, "Failed to allocate memory in apiReadData.\n");
-		writeLog("Failed to allocate memory [apiReadData:pluginName]", 2, 0);
-		return;
-	}
+
 	if (plugin_id < 0 && flags == 0) {
 		printf("This is an invalid check.\n");
 		is_error++;
@@ -604,6 +610,11 @@ void apiReadData(int plugin_id, int flags) {
 	// In new structure I need to increase id with 1
 	//plugin_id += 1;
 	pluginName = strdup(g_plugins[plugin_id]->name);
+	if (!pluginName) {
+		free(message);
+		writeLog("Failed to allocate plugin name.", 2, 0);
+		return;
+	}
         removeChar(pluginName, '[');
         removeChar(pluginName, ']');
 	if (flags == API_FLAGS_VERBOSE) {
@@ -773,17 +784,15 @@ void apiRunPlugin(int plugin_id, int flags) {
 	}
 	else
 		memset(message, '\0', (size_t)(apimessage_size+1) * sizeof(char));
-	pluginName = malloc((size_t)(pluginitemname_size + 1) * sizeof(char));
-	if (pluginName == NULL) {
-		fprintf(stderr, "Failed to allocate memory in apiRunPlugin.\n");
-                writeLog("Failed to allocate memory [apiRunPlugin: pluginName]", 2, 0);
-                return;
-        }
-	else
-		memset(pluginName, '\0', (size_t)(pluginitemname_size+1) * sizeof(char));
+
 	// In new structure increase id with one
 	//plugin_id++;
 	pluginName = strdup(g_plugins[plugin_id]->name);
+	if (!pluginName) {
+		free(message);
+		writeLog("Failed to allocate plugin name.", 2, 0);
+		return;
+	}
         removeChar(pluginName, '[');
         removeChar(pluginName, ']');
 	// Check if same plugin is running in thread, in which case wait...
@@ -832,6 +841,343 @@ void apiRunPlugin(int plugin_id, int flags) {
 }
 
 void apiRunAndRead(int plugin_id, int flags) {
+    char *pluginName = NULL;
+    char strNum[12];
+    char rCode[12];
+
+    struct json_object *root = NULL;
+    struct json_object *result = NULL;
+    struct json_object *history = NULL;
+
+    PluginItem *item = NULL;
+
+    /* 1. Validate plugin ID and flags */
+    if (plugin_id < 0 ||
+        plugin_id >= g_plugin_count ||
+        g_plugins == NULL ||
+        g_plugins[plugin_id] == NULL ||
+        flags < 0 ||
+        flags > 100) {
+
+        writeLog("[apiRunAndRead] Invalid plugin ID or flags.", 1, 0);
+
+        constructSocketMessage(
+            "almond",
+            "Invalid check - no such plugin or flag"
+        );
+        return;
+    }
+
+    item = g_plugins[plugin_id];
+
+    /* 2. Prepare plugin name and ID */
+    snprintf(strNum, sizeof(strNum), "%d", plugin_id);
+
+    pluginName = strdup(item->name ? item->name : "");
+
+    if (pluginName == NULL) {
+        writeLog("[apiRunAndRead] Failed to allocate pluginName.", 2, 0);
+        goto error;
+    }
+
+    removeChar(pluginName, '[');
+    removeChar(pluginName, ']');
+
+    /* 3. Execute plugin synchronously, exactly once */
+    writeLog("[apiRunAndRead] Before run_plugin()", 0, 0);
+
+    run_plugin(item);
+
+    writeLog("[apiRunAndRead] After run_plugin()", 0, 0);
+
+    /*
+     * run_plugin() waits for the plugin process to finish.
+     * The result is now available in item->output.
+     */
+
+    /* 4. Reschedule if time scheduler is enabled */
+    if (timeScheduler) {
+        writeLog("[apiRunAndRead] Before rescheduleChecks()", 0, 0);
+
+        rescheduleChecks();
+
+        writeLog("[apiRunAndRead] After rescheduleChecks()", 0, 0);
+    }
+
+    /* 5. Write plugin results to the update file */
+    writeLog("[apiRunAndRead] Before createUpdateFile()", 0, 0);
+
+    createUpdateFile(item, strNum);
+
+    writeLog("[apiRunAndRead] After createUpdateFile()", 0, 0);
+
+    /*
+     * 6. Notify the main loop AFTER the update file is written.
+     *
+     * The main loop will process update.cmd and read the
+     * corresponding .udf file.
+     */
+    writeLog("[apiRunAndRead] Before setApiCmdFile()", 0, 0);
+
+    setApiCmdFile("update", strNum);
+
+    writeLog("[apiRunAndRead] After setApiCmdFile()", 0, 0);
+
+    /*
+     * 7. Build the JSON response.
+     *
+     * We use json-c instead of strcat() so plugin output
+     * containing quotes, backslashes or newlines is escaped.
+     */
+
+    root = json_object_new_object();
+    result = json_object_new_object();
+
+    if (root == NULL || result == NULL) {
+        writeLog("[apiRunAndRead] Failed to allocate JSON objects.", 2, 0);
+
+        if (result != NULL)
+            json_object_put(result);
+
+        if (root != NULL)
+            json_object_put(root);
+
+        root = NULL;
+        result = NULL;
+
+        goto error;
+    }
+
+    json_object_object_add(
+        root,
+        "executePlugin",
+        json_object_new_string(pluginName)
+    );
+
+    json_object_object_add(root, "result", result);
+
+    /* root now owns result */
+
+    if (flags == API_FLAGS_VERBOSE) {
+
+        /* Plugin name */
+        json_object_object_add(
+            result,
+            "name",
+            json_object_new_string(pluginName)
+        );
+
+        /* Description */
+        json_object_object_add(
+            result,
+            "description",
+            json_object_new_string(
+                item->description ? item->description : ""
+            )
+        );
+
+        /* Plugin status */
+        json_object_object_add(
+            result,
+            "pluginStatus",
+            json_object_new_string(
+                plugin_status_name(item->output.retCode)
+            )
+        );
+
+        /* Plugin status code, retained as a string */
+        snprintf(rCode, sizeof(rCode), "%d", item->output.retCode);
+
+        json_object_object_add(
+            result,
+            "pluginStatusCode",
+            json_object_new_string(rCode)
+        );
+
+        /* Plugin output */
+        json_object_object_add(
+            result,
+            "pluginOutput",
+            json_object_new_string(
+                item->output.retString ? item->output.retString : ""
+            )
+        );
+
+        /* Existing status-changed field */
+        json_object_object_add(
+            result,
+            "pluginStatusChanged",
+            json_object_new_string(item->statusChanged)
+        );
+
+        /* Last status change */
+        json_object_object_add(
+            result,
+            "lastChange",
+            json_object_new_string(item->lastChangeTimestamp)
+        );
+
+        /*
+         * 8. Status metadata
+         *
+         * These are the same fields that your existing
+         * append_plugin_status_metadata() function produces.
+         */
+
+        json_object_object_add(
+            result,
+            "previousStatus",
+            json_object_new_string(
+                plugin_status_name(item->output.prevRetCode)
+            )
+        );
+
+        json_object_object_add(
+            result,
+            "statusChanged",
+            json_object_new_boolean(
+                item->statusChanged[0] == '1'
+            )
+        );
+
+        json_object_object_add(
+            result,
+            "statusChangedAt",
+            json_object_new_string(item->statusChangedAt)
+        );
+
+        json_object_object_add(
+            result,
+            "statusDuration",
+            json_object_new_int64(item->statusDuration)
+        );
+
+        /* Status history */
+        history = json_object_new_array();
+
+        if (history == NULL) {
+            writeLog("[apiRunAndRead] Failed to allocate history.", 2, 0);
+            goto error;
+        }
+
+        for (size_t i = 0;
+             i < item->historyCount && i < PLUGIN_HISTORY_SIZE;
+             i++) {
+
+            struct json_object *entry = json_object_new_object();
+
+            if (entry == NULL) {
+                json_object_put(history);
+                history = NULL;
+                goto error;
+            }
+
+            json_object_object_add(
+                entry,
+                "state",
+                json_object_new_string(
+                    plugin_status_name(item->history[i].statusCode)
+                )
+            );
+
+            json_object_object_add(
+                entry,
+                "timestamp",
+                json_object_new_string(item->history[i].timestamp)
+            );
+
+            json_object_array_add(history, entry);
+        }
+
+        json_object_object_add(result, "history", history);
+
+        /* result now owns history */
+        history = NULL;
+
+        /* Last execution */
+        json_object_object_add(
+            result,
+            "lastRun",
+            json_object_new_string(item->lastRunTimestamp)
+        );
+
+        /* Next scheduled execution */
+        json_object_object_add(
+            result,
+            "nextScheduledRun",
+            json_object_new_string(item->nextRunTimestamp)
+        );
+
+    } else {
+
+        /* Non-verbose response */
+        json_object_object_add(
+            result,
+            "returnString",
+            json_object_new_string(
+                item->output.retString ? item->output.retString : ""
+            )
+        );
+    }
+
+    /*
+     * 9. Serialize JSON and prepare the socket response.
+     *
+     * The allocation is based on the actual response length,
+     * rather than truncating a response at apimessage_size.
+     */
+    const char *json_text = json_object_to_json_string_ext(
+        root,
+        JSON_C_TO_STRING_PRETTY
+    );
+
+    if (json_text == NULL) {
+        writeLog("[apiRunAndRead] JSON serialization failed.", 2, 0);
+        goto error;
+    }
+
+    char *new_message = strdup(json_text);
+
+    if (new_message == NULL) {
+        writeLog("[apiRunAndRead] Failed to allocate socket response.", 2, 0);
+        goto error;
+    }
+
+    if (socket_message != NULL) {
+        free(socket_message);
+    }
+
+    socket_message = new_message;
+
+    writeLog("[apiRunAndRead] JSON response prepared.", 0, 0);
+
+    /* 10. Cleanup */
+    json_object_put(root);
+    free(pluginName);
+
+    return;
+
+error:
+    if (history != NULL)
+        json_object_put(history);
+
+    if (root != NULL)
+        json_object_put(root);
+
+    free(pluginName);
+
+    if (socket_message != NULL) {
+        free(socket_message);
+        socket_message = NULL;
+    }
+
+    constructSocketMessage(
+        "almond",
+        "Failed to execute or prepare plugin response"
+    );
+}
+
+void apiRunAndRead_dep(int plugin_id, int flags) {
 	char* pluginName = NULL;
 	char rCode[12];
 	char strNum[12];
@@ -846,14 +1192,10 @@ void apiRunAndRead(int plugin_id, int flags) {
 	else {
 		memset(message, '\0', (size_t)apimessage_size+1 * sizeof(char));
 	}
-	if (plugin_id == 0 && flags == 0) {
-                printf("This is an invalid check.\n");
-                is_error++;
-        }
-        if (plugin_id > decCount || flags > 100) {
-                printf("This is an invalid check.\n");
-                is_error++;
-        }
+	if (plugin_id < 0 || plugin_id >= g_plugin_count || g_plugins == NULL || g_plugins[plugin_id] == NULL || flags < 0 || flags > 100) {
+        	printf("This is an invalid check.\n");
+        	is_error++;
+	}
         if (is_error > 0) {
                 strcat(message, "{\n     \"almond\":\"Invalid check - no such plugin or flag\"\n}\n");
                 socket_message = malloc((size_t)strlen(message)+1);
@@ -884,13 +1226,27 @@ void apiRunAndRead(int plugin_id, int flags) {
         removeChar(pluginName, '[');
         removeChar(pluginName, ']');
         //runPlugin(plugin_id, 0);
-        PluginItem *item = g_plugins[plugin_id];
+        /*PluginItem *item = g_plugins[plugin_id];
         if (item) {
             run_plugin(item);
         }
 	if (timeScheduler)
 		rescheduleChecks();
-        createUpdateFile(g_plugins[plugin_id], strNum);
+        createUpdateFile(g_plugins[plugin_id], strNum);*/
+	PluginItem *item = g_plugins[plugin_id];
+	writeLog("[apiRunAndRead] Before run_plugin()", 0, 0);
+	if (item) {
+    		run_plugin(item);
+	}
+	writeLog("[apiRunAndRead] After run_plugin()", 0, 0);
+	if (timeScheduler) {
+    		writeLog("[apiRunAndRead] Before rescheduleChecks()", 0, 0);
+    		rescheduleChecks();
+    		writeLog("[apiRunAndRead] After rescheduleChecks()", 0, 0);
+	}
+	writeLog("[apiRunAndRead] Before createUpdateFile()", 0, 0);
+	createUpdateFile(g_plugins[plugin_id], strNum);
+	writeLog("[apiRunAndRead] After createUpdateFile()", 0, 0);
 	strcpy(message, "{\n     \"executePlugin\":\"");
         strcat(message, pluginName);
         strcat(message, "\",\n");
@@ -1478,27 +1834,8 @@ void apiShowStatus(bool showAsMetrics) {
 		constructSocketMessage("almond", "Error: Failed to create status respone");
 		return;
 	}
-	char *new_message = malloc(size);
-	if (new_message == NULL) {
-		free(response);
-		constructSocketMessage("almond", "Error: Failed to allocate status response");
-    		return;
-	}
-        socket_message = malloc(size);
-        if (socket_message == NULL) {
-                printf("Memory allocation failed.\n");
-                writeLog("Memory allocation failed [constructSocketMessage:socket_message]", 2, 0);
-		free(response);
-                return;
-        }
-	memcpy(new_message, response, size);
-	free(response);
-        /*else
-                memset(socket_message, '\0', size * sizeof(char));
-        snprintf(socket_message, (size_t)size, "%s\n", json_str);
-        memcpy(socket_message, response, size);
-	free(response);*/
-	socket_message = new_message;
+	/* The returned heap allocation becomes the socket sender's responsibility. */
+	socket_message = response;
 }
 
 void apiShowPluginStatus() {
@@ -1531,6 +1868,7 @@ void apiShowPluginStatus() {
         if (socket_message == NULL) {
                 printf("Memory allocation failed.\n");
                 writeLog("Memory allocation failed [constructSocketMessage:socket_message]", 2, 0);
+                json_object_put(jobj);
                 return;
         }
         else

@@ -2,7 +2,7 @@
 #define _XOPEN_SOURCE 700
 #define _DEFAULT_SOURCE
 #ifndef VERSION
-#define VERSION "26.2.1"
+#define VERSION "26.3.0"
 #endif
 #include "config.h"
 #include <stdio.h>
@@ -157,6 +157,7 @@ bool quick_start = false;
 bool local_api = false;
 bool use_push = false;
 bool use_metrics_push = false;
+bool use_file_push = false;
 bool external_scheduler = false;
 bool use_ssl = false;
 bool truncateLog = false;
@@ -325,6 +326,7 @@ ConfigEntry config_entries[] = {
     {"almond.saveInventory", process_save_inventory},
     {"almond.standalone", process_almond_standalone},
     {"almond.tryToHeal", process_almond_heal},
+    {"almond.useFilePush", process_file_push},
     {"almond.useMetricsPush", process_metrics_push},
     {"almond.usePush", process_almond_push},
     {"almond.useSSL", process_almond_api_tls},
@@ -444,11 +446,11 @@ char *load_file_to_string(const char *path) {
         FILE *f = fopen(path, "r");
         if (!f) return NULL;
 
-        fseek(f, 0, SEEK_END);
+        if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return NULL; }
         long size = ftell(f);
-        rewind(f);
+        if (size < 0 || fseek(f, 0, SEEK_SET) != 0) { fclose(f); return NULL; }
 
-        char *buf = malloc(size + 1);
+        char *buf = malloc((size_t)size + 1);
         if (!buf) { fclose(f); return NULL; }
 
         size_t bytes_read = fread(buf, 1, size, f);
@@ -459,10 +461,68 @@ char *load_file_to_string(const char *path) {
                         printf("EOF reached unexpectedly\n");
                 }
         }
-        buf[size] = '\0';
+        buf[bytes_read] = '\0';
 
         fclose(f);
         return buf;
+}
+
+int create_tar_archive(const char *tar_path,
+                       const char *storeDir,
+                       const char *metricsFileName)
+{
+        pid_t pid = fork();
+
+        if (pid < 0) {
+                perror("fork failed");
+                return -1;
+        }
+
+        if (pid == 0) {
+                /* Child process */
+
+                char *const args[] = {
+                        "tar",
+                        "-czf",
+                        (char *)tar_path,
+                        "-C",
+                        (char *)storeDir,
+                        "--exclude",
+                        (char *)metricsFileName,
+                        ".",
+                        NULL
+                };
+
+                execvp("tar", args);
+
+                /* Only reached if execvp fails */
+                perror("execvp tar failed");
+                _exit(127);
+        }
+
+        /* Parent process */
+        int status;
+
+        while (waitpid(pid, &status, 0) == -1) {
+                if (errno == EINTR)
+                        continue;
+
+                perror("waitpid failed");
+                return -1;
+        }
+
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
+                return 0;
+
+        if (WIFEXITED(status)) {
+                fprintf(stderr, "tar failed with exit code %d\n",
+                        WEXITSTATUS(status));
+        } else if (WIFSIGNALED(status)) {
+                fprintf(stderr, "tar terminated by signal %d\n",
+                        WTERMSIG(status));
+        }
+
+        return -1;
 }
 
 int check_plugin_exists(const char *pluginDir, const char *pluginCommand) {
@@ -704,6 +764,11 @@ int load_allowed_hosts(const char *filename) {
         	return -1;
     	}
 
+        for (int i = 0; i < hosts_allowed_count; ++i) {
+            free(hosts_allowed[i]);
+            hosts_allowed[i] = NULL;
+        }
+        hosts_allowed_count = 0;
     	char line[256];
     	while (fgets(line, sizeof(line), fp)) {
         	// Trim newline
@@ -711,8 +776,9 @@ int load_allowed_hosts(const char *filename) {
         	if (strlen(line) == 0) continue; // skip empty lines
 
         	if (hosts_allowed_count < MAX_HOSTS) {
-            		hosts_allowed[hosts_allowed_count] = strdup(line);
-            		hosts_allowed_count++;
+            		char *entry = strdup(line);
+                if (!entry) { fclose(fp); return -1; }
+                hosts_allowed[hosts_allowed_count++] = entry;
         	}
     	}
     	fclose(fp);
@@ -2343,7 +2409,7 @@ void startApiSocket() {
 		return;
         }
 	pthread_detach(thread_id);
-	pthread_setspecific(thread_id, "API Connection Listener");
+
 	printf("New thread accepting socket created.\n");
         snprintf(infostr, infostr_size, "Created new thread (%lu) listening for connections on port %d \n", thread_id, local_port);
         writeLog(trim(infostr), 0, 0);
@@ -3741,6 +3807,8 @@ int createSocket(int server_fd) {
     }
     memset(server_message, '\0', (size_t)socketservermessage_size + 1);
 
+    free(iam_public_key);
+    iam_public_key = NULL;
     if (iam_public_key_file == NULL)
         iam_public_key = NULL;
     else
@@ -3878,8 +3946,12 @@ int createSocket(int server_fd) {
 }
 
 void closeSocket() {
-        writeLog("Closing socket.", 0, 0);
-        shutdown(server_fd, SHUT_RDWR);
+        if (server_fd >= 0) {
+                writeLog("Closing socket.", 0, 0);
+                /* Do not close the descriptor here; the API listener
+                 * owns its close after accept() is interrupted. */
+                shutdown(server_fd, SHUT_RDWR);
+        }
 }
 
 void closejsonfile() {
@@ -3959,6 +4031,19 @@ void free_constants() {
 	safe_free_str(&push_url);
         safe_free_str(&iam_issuer);
         safe_free_str(&iam_public_key_file);
+        safe_free_str(&iam_public_key);
+        safe_free_str(&iam_aud);
+        safe_free_str(&almondCertificate);
+        safe_free_str(&almondKey);
+        for (int i = 0; i < iam_roles_count; ++i) free(iam_roles_accepted[i]);
+        free(iam_roles_accepted);
+        iam_roles_accepted = NULL;
+        iam_roles_count = 0;
+        for (int i = 0; i < hosts_allowed_count; ++i) {
+            free(hosts_allowed[i]);
+            hosts_allowed[i] = NULL;
+        }
+        hosts_allowed_count = 0;
 	//safe_free_str(&logmessage);
 	writeLog("All constants freed from memory.", 0, 0);
 }
@@ -4066,8 +4151,6 @@ void sig_exit_app() {
 		sleep(1);
 	}
 	writeLog("Almond says goodbye.", 0, 0);
-	shutdown_phase = 2;
-	closeLog();
         closejsonfile();
         //int try_count = 0;
         /*while (thread_counter > 0) {
@@ -4078,9 +4161,33 @@ void sig_exit_app() {
                 try_count++;
                 if (try_count >= max_try) break;
         }*/
-	for (int i = 0; i < thread_counter; ++i) {
-        	pthread_join(threadIds[i], NULL);
-    	}
+	/* Worker threads are detached; threadIds contains 0/1 status flags,
+	 * NOT pthread_t handles. Joining these values was invalid. Give
+	 * outstanding workers time to finish before freeing their state. */
+	unsigned int active_workers = 0;
+	for (int attempt = 0; attempt < 100; ++attempt) {
+		/* A worker may hold mtx while running a plugin. Never block
+		 * indefinitely while waiting for that mutex on shutdown. */
+		if (pthread_mutex_trylock(&mtx) == 0) {
+			active_workers = thread_counter;
+			pthread_mutex_unlock(&mtx);
+		} else {
+			active_workers = 1;
+		}
+		if (active_workers == 0)
+			break;
+		usleep(100000);
+	}
+	if (active_workers != 0) {
+		fprintf(stderr, "Shutdown: %u worker(s) still running; avoiding unsafe cleanup.\n",
+			active_workers);
+		/* Ending the process is safer than freeing data still used by
+		 * detached workers; the OS reclaims the remaining allocations. */
+		_Exit(EXIT_FAILURE);
+	}
+	/* Do not close the log while counted workers can still write to it. */
+	shutdown_phase = 2;
+	closeLog();
         free_structures(decCount);
 	if (scheduler) {
 		free(scheduler);
@@ -4141,11 +4248,8 @@ void sig_handler(int sig){
 			shutdown_reason = SR_SIGSTOP;
 			break;
     	}*/
-	if (server_fd >= 0) {
-		shutdown(server_fd, SHUT_RDWR);
-       		close(server_fd);
-        	server_fd = -1;
-	}
+	/* Only signal-safe state changes here. Closing the shared socket from
+	 * a signal handler can race with the API listener or shutdown. */
 }
 
 int fileExists(const char *checkFile) {
@@ -5397,214 +5501,98 @@ void collectJsonData(int decLen){
 }
 
 void collectMetrics(int decLen, int style) {
-        //char ch = '/';
-	char* pluginName = NULL;
-	char* serviceName = NULL;
-	FILE *mf = NULL;
-        clock_t t;
-	char *p = NULL;
-	int metricsValueLength = 0;
+    FILE *mf = NULL;
+    char *pluginName = NULL;
+    char *metrics = NULL;
+    clock_t t = clock();
 
-        t = clock();
-	pthread_mutex_lock(&update_mtx);
-        /*strncpy(storeName, storeDir, storedir_size);
-        strncat(storeName, &ch, 1);
-        strcat(storeName, metricsFileName);*/
-	snprintf(storeName, storename_size, "%s/%s", storeDir, metricsFileName); 
-        mf = fopen(storeName, "w");
-	if (mf == NULL) {
-		writeLog("Failed to open metrics file", 1, 0);
-		fprintf(stderr, "Failed to open metrics file\n");
-		return;
-	}
-        snprintf(infostr, infostr_size, "Collecting metrics to file: %s", storeName);
-        writeLog(trim(infostr), 0, 0);
-	for (int i = 0; i < decLen; i++) {
-		/*pluginName = (char *)malloc((size_t)pluginitemname_size * sizeof(char)+1);
-		memset(pluginName, '\0', pluginitemname_size+1 * sizeof(char));
-		if (pluginName == NULL) {
-			fprintf(stderr, "Memory allocation failed.\n");
-			writeLog("Memory allocation failed [collectMetrics:pluginName]", 2, 0);
-			return;
-		}*/
-		pluginName = strdup(g_plugins[i]->name);
-		if (!pluginName) {
-			fprintf(stderr, "Memory allocation failed.\n");
-                        writeLog("Memory allocation failed [collectMetrics:pluginName]", 2, 0);
-                        return;
-		}
-        	removeChar(pluginName, '[');
-        	removeChar(pluginName, ']');
-		for (p = pluginName; *p != '\0'; ++p) {
-			//if (*p == '/') *p = '_';
-			*p = tolower(*p);
-		}
-        	// Get metrics
-        	char *e;
-		char *raw = g_plugins[i]->output.retString;
-		char *trimmed_raw = raw ? trim(raw) : "";
-		if (raw == NULL || strchr(raw, '|') == NULL) {
-			snprintf(infostr, infostr_size, "Plugin %s does not provide metrics. Using plain output.",pluginName);
-        		writeLog(trim(infostr), 1, 0);
-		//if (strchr(outputs[i].retString, '|') == NULL) {
-		//	snprintf(infostr, infostr_size, "Plugin %s does not provide metrics. Using plain output.", pluginName);
-		//	writeLog(trim(infostr), 1, 0);
-			const char *prefix = trim(metricsOutputPrefix);
-			if (style == 0)
-                       		fprintf(mf, "%s_%s{hostname=\"%s\",%s_result=\"%s\"} %d\n", prefix, pluginName, hostName, pluginName, trimmed_raw, g_plugins[i]->output.retCode);
-			else { 
-				// Get service name	
-				/*serviceName = (char *)malloc((size_t)pluginitemdesc_size * sizeof(char) + 1);
-				if (serviceName == NULL) {
-					fprintf(stderr, "Failed to allocate memory.\n");
-					writeLog("Failed to allocate memory [collectMetrics:serviceName]", 2, 0);
-					return;
-				}
-				memset(serviceName, '\0', pluginitemdesc_size * sizeof(char) + 1);
-				strcpy(serviceName, g_plugins[i].description);*/
-				const char *service = trim(g_plugins[i]->description);
-				fprintf(mf, "%s_%s{hostname=\"%s\", service=\"%s\", value=\"%s\"} %d\n", prefix, pluginName, hostName, service, trimmed_raw, g_plugins[i]->output.retCode);
-				free(serviceName);
-				serviceName = NULL;
-			}
-		}
-                else {
-        	 	e = strchr(g_plugins[i]->output.retString, '|');
-        	    	int position = (int)(e - g_plugins[i]->output.retString);
-			int len = pluginoutput_size;
-			size_t srcSize = strlen(g_plugins[i]->output.retString) - position;
-			int sublen = (srcSize < len) ? srcSize : len;
-			char * metrics = malloc((size_t)sizeof(char) * sublen);
-			memset(metrics, 0, sizeof(char) * sublen);
-			if (sublen <= srcSize) {
-        			//memcpy(metrics,&outputs[i].retString[position+1],sublen);
-				memcpy(metrics, &g_plugins[i]->output.retString[position+1],sublen);
-			}
-			else {
-				writeLog("Invalid memcpy operation: size exceeds buffer limit.", 1, 0);
-				fprintf(stderr, "Size exceeds buffer [memcpy].\n");
-			}
-			if (style == 0)
-				fprintf(mf, "%s_%s{hostname=\"%s\", %s_result=\"%s\"} %d\n", trim(metricsOutputPrefix), pluginName, hostName, pluginName, trim(g_plugins[i]->output.retString), g_plugins[i]->output.retCode);
-			else {
-				serviceName = (char *)malloc((size_t)pluginitemdesc_size * sizeof(char) + 1);
-				if (serviceName == NULL) {
-					fprintf(stderr, "Memory allocation failed.\n");
-					writeLog("Failed to allocate memory [collectMetrics:serviceName]", 2, 0);
-					return;
-				}
-				memset(serviceName, '\0', pluginitemdesc_size * sizeof(char) + 1);
-				strcpy(serviceName, g_plugins[i]->description);
-				// We need to loop through metrics
-				char * token = strtok(metrics, " ");
-				while (token != NULL) {
-					char* metricsToken;
-					char* metricsName;
-					char* metricsValue;
-					metricsToken = malloc((size_t)strlen(token)+1);
-					if (metricsToken == NULL) {
-						writeLog("Failed to allocate memory [collectMetrics:metricsToken]", 2, 0);
-						return;
-					}
-					memset(metricsToken, '\0', (size_t)strlen(token)+1 * sizeof(char));
-					int do_cut = 0;
-					const char *haystring = ";";
-					char *c = token;
-					while (*c) {
-						if (strchr(haystring, *c)) {
-							do_cut++;
-						}
-						c++;
-					}
-					char *e = strchr(token, ';');
-                                        int index = (int)(e - token);
-					if (do_cut > 0) {
-						strcpy(metricsToken, token);
-						metricsToken[index] = '\0';
-					}
-					else {
-						strcpy(metricsToken, token);
-					}
-					char *f = strchr(metricsToken, '=');
-					index = (int)(f - metricsToken);
-					metricsName = malloc((size_t)strlen(metricsToken)+1);
-					if (metricsName == NULL) {
-						writeLog("Failed to allocate memory [collectMetrics:metricsName]", 2, 0);
-						return;
-					}
-					else
-						memset(metricsName, '\0', (size_t)strlen(metricsToken)+1);
-                                        strcpy(metricsName, metricsToken);
-					if (strlen(metricsName) < 5) {
-						return;
-					}
-					char *endOfMetricsName = f+1;
-					if (endOfMetricsName != NULL) {
-						char *nullTerminator = strchr(endOfMetricsName, '\0');
-						if (nullTerminator != NULL) {
-							metricsValueLength = strlen(endOfMetricsName);
-						}
-						else {
-							printf("Warn: endOfMetricsName is not null-terminated.\n");
-                                                        return;
-						}
-					}
-					else {
-						printf("Warn: can not set metric value length.\n");
-                                                return;
-                                        }
+    pthread_mutex_lock(&update_mtx);
+    snprintf(storeName, storename_size, "%s/%s", storeDir, metricsFileName);
+    mf = fopen(storeName, "w");
+    if (!mf) {
+        writeLog("Failed to open metrics file", 1, 0);
+        goto cleanup;
+    }
+    snprintf(infostr, infostr_size, "Collecting metrics to file: %s", storeName);
+    writeLog(trim(infostr), 0, 0);
 
-					metricsValue = malloc((size_t)(metricsValueLength+1) * sizeof(char));
-					if (metricsValue == NULL) {
-						writeLog("Failed to allocate memory [collectMetrics:metricsValue]", 2, 0);
-						return;
-					}
-					else
-						memset(metricsValue, '\0', (size_t)(metricsValueLength+1) * sizeof(char));
-					strncpy(metricsValue, metricsName + index +1, (size_t)metricsValueLength);
-					metricsName[index] = '\0';
-					char *pm;
-					for (pm = metricsName; *pm != '\0'; ++pm) 
-			                        *pm = tolower(*pm);
-					removeChar(metricsName, '/');
-					 char * cleanMetricsValue = malloc(metricsValueLength +1);
-                                        if (!cleanMetricsValue) {
-                                                writeLog("Failed to allocate memory [collectMetrics: cleanMetricsValue]", 2, 0);
-                                                return;
-                                        }
-                                        int count = 0;
-                                        for (int i = 0; i < metricsValueLength; ++i) {
-                                                if (isdigit(metricsValue[i]) || (metricsValue[i] == '.')) {
-                                                        cleanMetricsValue[count++] = metricsValue[i];
-                                                }
-                                        }
-                                        cleanMetricsValue[count] = '\0';
-					fprintf(mf, "%s_%s_%s{hostname=\"%s\", service=\"%s\", key=\"%s\"} %s\n", trim(metricsOutputPrefix), pluginName, metricsName, hostName, serviceName, metricsName, cleanMetricsValue);
-					free(metricsValue);
-					metricsValue = NULL;
-					free(metricsName);
-					metricsName = NULL;
-					free(metricsToken);
-					metricsToken = NULL;
-					free(cleanMetricsValue);
-					cleanMetricsValue = NULL;
-					token = strtok(NULL, " ");
-				}
-				free(serviceName);
-				serviceName = NULL;
-				free(metrics);
-				metrics = NULL;
-			}
-		}
-        	free(pluginName);
-		pluginName = NULL;
-	}
-	fclose(mf);
-	mf = NULL;
-        t = clock() -t;
-	pthread_mutex_unlock(&update_mtx);
-        snprintf(infostr, infostr_size, "Metrics collection took %.0f miliseconds to execute.", (double)t);
-        writeLog(trim(infostr), 0, 0);
+    for (int i = 0; i < decLen; ++i) {
+        if (!g_plugins || !g_plugins[i] || !g_plugins[i]->name) continue;
+        pluginName = strdup(g_plugins[i]->name);
+        if (!pluginName) {
+            writeLog("Memory allocation failed [collectMetrics:pluginName]", 2, 0);
+            goto cleanup;
+        }
+        removeChar(pluginName, '[');
+        removeChar(pluginName, ']');
+        for (char *q = pluginName; *q; ++q)
+            *q = (char)tolower((unsigned char)*q);
+
+        const char *raw = g_plugins[i]->output.retString;
+        const char *perf = raw ? strchr(raw, '|') : NULL;
+        const char *prefix = metricsOutputPrefix ? trim(metricsOutputPrefix) : "";
+        const char *hostname = hostName ? hostName : "";
+        const char *service = g_plugins[i]->description ? trim(g_plugins[i]->description) : "";
+        const char *output = raw ? trim(g_plugins[i]->output.retString) : "";
+        int rc = g_plugins[i]->output.retCode;
+
+        if (!perf || style == 0) {
+            if (!perf) {
+                snprintf(infostr, infostr_size,
+                         "Plugin %s does not provide metrics. Using plain output.", pluginName);
+                writeLog(trim(infostr), 1, 0);
+            }
+            if (style == 0)
+                fprintf(mf, "%s_%s{hostname=\"%s\",%s_result=\"%s\"} %d\n",
+                        prefix, pluginName, hostname, pluginName, output, rc);
+            else
+                fprintf(mf, "%s_%s{hostname=\"%s\", service=\"%s\", value=\"%s\"} %d\n",
+                        prefix, pluginName, hostname, service, output, rc);
+        } else {
+            /* Work on a terminated copy; never subtract from unchecked strchr results. */
+            metrics = strdup(perf + 1);
+            if (!metrics) {
+                writeLog("Memory allocation failed [collectMetrics:metrics]", 2, 0);
+                goto cleanup;
+            }
+            char *saveptr = NULL;
+            for (char *token = strtok_r(metrics, " \t", &saveptr);
+                 token != NULL;
+                 token = strtok_r(NULL, " \t", &saveptr)) {
+                char *semicolon = strchr(token, ';');
+                if (semicolon) *semicolon = '\0';
+                char *equal = strchr(token, '=');
+                if (!equal || equal == token || equal[1] == '\0') continue;
+                *equal = '\0';
+                char *metric_name = token;
+                char *metric_value = equal + 1;
+                for (char *q = metric_name; *q; ++q)
+                    *q = (char)tolower((unsigned char)*q);
+                removeChar(metric_name, '/');
+
+                /* Preserve the original numeric conversion, including valid negative
+                   values; do not retain or leak per-token scratch buffers. */
+                char *end = NULL;
+                double numeric = strtod(metric_value, &end);
+                if (end == metric_value) continue;
+                fprintf(mf, "%s_%s_%s{hostname=\"%s\", service=\"%s\", key=\"%s\"} %g\n",
+                        prefix, pluginName, metric_name, hostname, service, metric_name, numeric);
+            }
+            free(metrics);
+            metrics = NULL;
+        }
+        free(pluginName);
+        pluginName = NULL;
+    }
+
+cleanup:
+    free(metrics);
+    free(pluginName);
+    if (mf) fclose(mf);
+    pthread_mutex_unlock(&update_mtx);
+    t = clock() - t;
+    snprintf(infostr, infostr_size, "Metrics collection took %.0f miliseconds to execute.", (double)t);
+    writeLog(trim(infostr), 0, 0);
 }
 
 void timeTune(int seconds) {
@@ -6836,6 +6824,8 @@ int initTimeScheduler(bool reinit) {
 }
 
 void initScheduler(int numOfP, int msSleep, bool reinit) {
+	if (is_stopping)
+		return;
 	char currTime[TIME_BUF_LEN];
 	time_t nextTime;
 	float sleepTime = msSleep/1000;
@@ -6853,9 +6843,13 @@ void initScheduler(int numOfP, int msSleep, bool reinit) {
 			initTimeScheduler(true);
 		}
 	}
+	if (is_stopping)
+		return;
 	flushLog();
 	for (int i = 0; i < numOfP; i++)
 	{
+		if (is_stopping)
+			return;
 		if (g_plugins[i]->active == 1)
 		{
 			snprintf(infostr, infostr_size, "%s is active. Id %d\n", g_plugins[i]->name, g_plugins[i]->id);
@@ -6867,6 +6861,8 @@ void initScheduler(int numOfP, int msSleep, bool reinit) {
         		if (item) {
             			run_plugin(item);
         		}
+			if (is_stopping)
+				return;
 			//runPlugin(i, 0);
 			size_t dest_size = 20;
 			time_t t = time(NULL);
@@ -6911,6 +6907,8 @@ void initScheduler(int numOfP, int msSleep, bool reinit) {
 		}
 		flushLog();
 	}
+	if (is_stopping)
+		return;
 	if (!standalone) {
 		switch (output_type) {
 			case JSON_OUTPUT:
@@ -6936,6 +6934,8 @@ void initScheduler(int numOfP, int msSleep, bool reinit) {
 	}	
         tnextGardener = time(0) + gardenerInterval;	
 	tnextClearDataCache = time(0) + clearDataCacheInterval;
+	if (is_stopping)
+		return;
 	if (local_api && !reinit) {
 		if (use_ssl)
 			 SSL_library_init();
@@ -7014,12 +7014,14 @@ void runPluginThreads(int loopVal){
 		}
 		return;
 	}*/
+	if (is_stopping)
+		return;
 	if (timeScheduler) {
                 time_t t = time(NULL);
                 int currentId = -1;
                 time_t currentTimestamp = 0;
 
-                while (scheduler[0].timestamp <= t) {
+                while (!is_stopping && scheduler[0].timestamp <= t) {
                         struct Scheduler do_run = scheduler[0];
 
 					if (do_run.id < 0 || do_run.id >= decCount || !g_plugins[do_run.id]) {
@@ -7049,7 +7051,7 @@ void runPluginThreads(int loopVal){
                 return;
         }
 
-        for (i = 0; i < loopVal; i++) {
+        for (i = 0; i < loopVal && !is_stopping; i++) {
            long j = i;
 	   if (g_plugins[i]->active == 1) {
 		if (t > g_plugins[i]->nextRun)
@@ -7084,7 +7086,7 @@ void executeGardener() {
 		return;
         }
 	//pthread_setname_np(thread_id, "Gardener worker");
-	pthread_setspecific(thread_id, "Gardener worker");
+
 	snprintf(infostr, infostr_size, "Created new thread (%lu) truncating metrics logs (gardener) \n", thread_id);
         writeLog(trim(infostr), 0, 0);
 	pthread_mutex_lock(&mtx);
@@ -7103,7 +7105,7 @@ void clearDataCache() {
         }
         else {
 		//pthread_setname_np(thread_id, "DataClearCache");
-		pthread_setspecific(thread_id, "DataClearCache");
+
                 snprintf(infostr, infostr_size, "Created new thread (%lu) clearing old data files (clearDataCache) \n", thread_id);
                 writeLog(trim(infostr), 0, 0);
 		pthread_mutex_lock(&mtx);
@@ -7268,11 +7270,121 @@ int post_metrics_file_stream(const char *url, const char *filepath) {
         return rc;
 }
 
+
+int post_file_stream(const char *url, const char *filepath) {
+        CURL *c = NULL;
+        struct curl_slist *hdrs = NULL;
+        FILE *f = NULL;
+        struct stat st;
+        struct resp_buf rb = { .data = NULL, .len = 0 };
+        int rc = -1;
+        char hostname_header[hostname_size + sizeof("X-Hostname: ")];
+
+        snprintf(hostname_header, sizeof(hostname_header), "X-Hostname: %s", hostName);
+        f = fopen(filepath, "rb");
+        if (!f) {
+                snprintf(infostr, infostr_size,
+                         "[push_file] Cannot open file '%s'.", filepath);
+                writeLog(infostr, 1, 0);
+                fprintf(stderr, "ERROR: cannot open file '%s'\n", filepath);
+                return -1;
+        }
+
+        if (fstat(fileno(f), &st) != 0 || !S_ISREG(st.st_mode)) {
+                snprintf(infostr, infostr_size,
+                         "[push_file] Invalid file or fstat failed for '%s'.",
+                         filepath);
+                writeLog(infostr, 1, 0);
+                fclose(f);
+                return -1;
+        }
+
+        if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
+                fclose(f);
+                return -1;
+        }
+
+        c = curl_easy_init();
+        if (!c) {
+                curl_global_cleanup();
+                fclose(f);
+                return -1;
+        }
+
+        hdrs = curl_slist_append(NULL, "Content-Type: application/gzip");
+        if (!hdrs)
+                goto cleanup;
+        struct curl_slist *new_hdrs = curl_slist_append(hdrs, hostname_header);
+        if (!new_hdrs)
+                goto cleanup;
+        
+        hdrs = new_hdrs;
+
+        if (!hdrs) {
+                writeLog("[push_file] Failed to create HTTP headers.", 1, 0);
+                goto cleanup;
+        }
+
+        curl_easy_setopt(c, CURLOPT_HTTPHEADER, hdrs);
+        curl_easy_setopt(c, CURLOPT_URL, url);
+        curl_easy_setopt(c, CURLOPT_POST, 1L);
+
+        /* Stream file directly from disk */
+        curl_easy_setopt(c, CURLOPT_READFUNCTION, file_read_cb);
+        curl_easy_setopt(c, CURLOPT_READDATA, f);
+        curl_easy_setopt(c, CURLOPT_POSTFIELDSIZE_LARGE,
+                         (curl_off_t)st.st_size);
+
+        /* Capture HTTP response */
+        curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, write_cb);
+        curl_easy_setopt(c, CURLOPT_WRITEDATA, &rb);
+
+        /* Debug and timeout */
+        curl_easy_setopt(c, CURLOPT_VERBOSE, 1L);
+        curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT, 10L);
+        curl_easy_setopt(c, CURLOPT_TIMEOUT, 300L);
+
+        CURLcode res = curl_easy_perform(c);
+
+        if (res != CURLE_OK) {
+                snprintf(infostr, infostr_size,
+                         "[push_file] curl_easy_perform failed: %s.",
+                         curl_easy_strerror(res));
+                writeLog(infostr, 1, 0);
+                fprintf(stderr, "curl_easy_perform failed: %s\n",
+                        curl_easy_strerror(res));
+        } else {
+                long http_code = 0;
+                curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &http_code);
+
+                snprintf(infostr, infostr_size,
+                         "[push_file] HTTP status: '%ld'.", http_code);
+                writeLog(infostr, 1, 0);
+
+                fprintf(stderr, "HTTP status: %ld\n", http_code);
+
+                if (rb.len && rb.data)
+                        fprintf(stderr, "Response body: %s\n", rb.data);
+
+                rc = (http_code >= 200 && http_code < 300) ? 0 : -1;
+        }
+
+cleanup:
+        free(rb.data);
+        curl_slist_free_all(hdrs);
+        curl_easy_cleanup(c);
+        curl_global_cleanup();
+        fclose(f);
+
+        return rc;
+}
+
 void scheduleChecks(){
 	float sleepTime = schedulerSleep/1000;
-	int i = 1;
 	int repeate_write = 0;
 
+	if (is_stopping)
+		return;
 	logInfo("Almond started succesfully. Ready to schedule checks.", 0, 0);
 	if (timeScheduler) {
 		writeLog("Start time based scheduler...", 0, 0);
@@ -7283,9 +7395,8 @@ void scheduleChecks(){
 		writeLog(trim(infostr), 0, 0);
 	}
 	flushLog();
-	// Timer is an eternal loop :P
-	while (i > 0) {
-		if (is_stopping != 0) i--;
+	/* Do not begin another scheduler cycle after SIGINT/SIGTERM. */
+	while (!is_stopping) {
 		if (!timeScheduler)
 			writeLog("Check for command files.", 0, 0);
 		else {
@@ -7294,10 +7405,13 @@ void scheduleChecks(){
 				repeate_write++;
 			}
 		}
+		if (is_stopping) break;
 		checkApiCmds();
+		if (is_stopping) break;
 		if (!external_scheduler) {
 			runPluginThreads(decCount);
 		}
+		if (is_stopping) break;
 		if (!timeScheduler) {
 			snprintf(infostr, infostr_size, "Sleeping for %.3f seconds.\n", sleepTime);
                 	writeLog(trim(infostr), 0, 0);
@@ -7309,6 +7423,7 @@ void scheduleChecks(){
 			//writeLog("VERBOSE: Scheduler sorted. Sleeping for a second.", 0, 0);
 			sleep(1);
 		}
+		if (is_stopping) break;
 		if (!timeScheduler || tspr > 0) {
 			tspr = 0;
 			repeate_write = 0;
@@ -7362,7 +7477,7 @@ void scheduleChecks(){
 				sleep(5);
 			}
 		}
-	 	if (use_push || use_metrics_push) {
+	 	if (use_push || use_metrics_push || use_file_push) {
                         push_interval_cnt++;
                         int sleep_push_interval = push_interval;
                         if (!timeScheduler)
@@ -7415,6 +7530,43 @@ void scheduleChecks(){
                                                 }
                                                 flushLog();
                                         }
+					if (use_file_push) {
+                                                snprintf(infostr, infostr_size, "Pushing store dir files to url '%s'.", url);
+                                                writeLog(trim(infostr), 0, 0);
+
+                                                char tar_path[filename_size];
+                                                // Create archive path outside the storeDir to prevent recursion issues
+                                                int written = snprintf(tar_path, filename_size, "%s/store_files.tar.gz", dataDir);
+
+                                                if (written < 0 || (size_t)written >= filename_size) {
+                                                        writeLog("Tar archive path is too long or invalid.", 2, 0);
+                                                } else {
+                                                        //char cmd[filename_size * 2 + 128];
+
+                                                        // System call using GNU tar exclude flag
+                                                        // -C changes to storeDir so paths inside the archive remain relative
+                                                        //snprintf(cmd, sizeof(cmd),"tar -czf \"%s\" -C \"%s\" --exclude=\"%s\" .", tar_path, storeDir, metricsFileName);
+
+                                                        //int res = system(cmd);
+							int res = create_tar_archive(tar_path, storeDir, metricsFileName);
+                                                        if (res != 0) {
+                                                                writeLog("Failed to create tar archive for store dir.", 2, 0);
+                                                        } else {
+                                                                // Post the generated tar archive
+                                                                if (post_file_stream(url, tar_path) == 0) { // Adjust function name if needed
+                                                                        writeLog("Store files archive pushed successfully.", 0, 0);
+                                                                } else {
+                                                                        writeLog("Failed to push store files archive.", 2, 0);
+                                                                }
+
+                                                                // Clean up: delete the temporary archive file after push
+                                                                if (remove(tar_path) != 0) {
+                                                                        writeLog("Failed to delete temporary tar file.", 1, 0);
+                                                                }
+                                                        }
+                                                }
+                                                flushLog();
+					}
                                 }
                                 push_interval_cnt = 0;
                         }
@@ -7484,7 +7636,7 @@ void initialLogging() {
         printf("Starting almond version %s.\n", VERSION);
         initConstants();
         writeLog("Almond constants initialized.", 0, 1);
-        writeLog("Starting almond (26.2.1)...", 0, 1);
+        writeLog("Starting almond (26.3.0)...", 0, 1);
 }
 
 int closeFileHandler() {
@@ -7743,7 +7895,8 @@ static int init_system(void) {
                 json_object_put(inventory_obj);
 		flushLog();
         }
-        initScheduler(decCount, initSleep, false);
+        if (!is_stopping)
+                initScheduler(decCount, initSleep, false);
         return 0;
 }
 
@@ -7773,7 +7926,6 @@ static void shutdown_system(void) {
                 threadIds = NULL;
         }
 
-        flushLog();
 }
 
 int main(int argc, char* argv[]) {

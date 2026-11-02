@@ -71,52 +71,47 @@ void cleanupLogger(void) {
 }
 
 void writeLog(const char *message, LogLevel level, int startup) {
-	/*if (is_stopping) {
-		return;
-	}*/
-	if (!message) return;
-	if (shutdown_phase >= 2) return;
-        if (is_stopping && !is_file_open)
+    if (!message || shutdown_phase >= 2)
         return;
-	if (!logmessage) {
-                fprintf(stderr, "Logging buffer is not allocated.\n");
-                return;
-        }
-        char timeStamp[TIMESTAMP_SIZE];
-        makeTimestamp(timeStamp, sizeof(timeStamp));
-        int bytesWritten = snprintf(logmessage, logmessage_size, "%s | %s%s",
-                                timeStamp, levelString(level), message);
-        if (bytesWritten < 0 || bytesWritten >= logmessage_size) {
-                fprintf(stderr, "Log message truncated or encoding error occurred.\n");
-                return;
-        }
-	if (startup < 1) {
-                pthread_mutex_lock(&log_mutex);
-                // Wait until the file is open.
-		int attempts = 0;
-                while (!is_file_open && attempts < 3) {
-			struct timespec ts;
-			clock_gettime(CLOCK_REALTIME, &ts);
-			ts.tv_sec += 2;
-                        //pthread_cond_wait(&file_opened, &log_mutex);
-			pthread_cond_timedwait(&file_opened, &log_mutex, &ts);
-			attempts++;
-                }
-		if (!is_file_open) {
-    			fprintf(stderr, "Log file still not open after timeout - skipping log.\n");
-    			pthread_mutex_unlock(&log_mutex);
-    			return;
-		}
-                fprintf(fptr, "%s\n", logmessage);
-                pthread_mutex_unlock(&log_mutex);
-        }
-        else {
-                fprintf(fptr, "%s\n", logmessage);
-        }
 
-        if (dockerLog) {
-                printf("%s\n", logmessage);
+    char timeStamp[TIMESTAMP_SIZE];
+    makeTimestamp(timeStamp, sizeof(timeStamp));
+
+    /* Both the formatting buffer and FILE* are shared among threads.
+     * Protect the entire operation, including startup log messages. */
+    pthread_mutex_lock(&log_mutex);
+    if (shutdown_phase >= 2 || !logmessage) {
+        pthread_mutex_unlock(&log_mutex);
+        return;
+    }
+
+    int bytesWritten = snprintf(logmessage, logmessage_size, "%s | %s%s",
+                                timeStamp, levelString(level), message);
+    if (bytesWritten < 0 || (size_t)bytesWritten >= logmessage_size) {
+        pthread_mutex_unlock(&log_mutex);
+        fprintf(stderr, "Log message truncated or encoding error occurred.\n");
+        return;
+    }
+
+    if (startup < 1) {
+        int attempts = 0;
+        while (!is_file_open && !is_stopping && attempts < 3) {
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            ts.tv_sec += 2;
+            pthread_cond_timedwait(&file_opened, &log_mutex, &ts);
+            ++attempts;
         }
+    }
+
+    if (fptr != NULL) {
+        fprintf(fptr, "%s\n", logmessage);
+        if (dockerLog)
+            printf("%s\n", logmessage);
+    } else if (!is_stopping) {
+        fprintf(stderr, "Log file is not open; skipping message.\n");
+    }
+    pthread_mutex_unlock(&log_mutex);
 }
 
 void flushLog() {

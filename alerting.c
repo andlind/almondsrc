@@ -590,8 +590,8 @@ int alert_send_ilert(const char *api_key, const char *webhook_url, const AlertDe
         if (buffer_append(&auth_header, "Authorization: Bearer ") == 0 &&
             buffer_append(&auth_header, api_key) == 0) {
             headers = curl_slist_append(headers, auth_header.data);
-            free(auth_header.data);
         }
+        free(auth_header.data);
     }
 
     curl_easy_setopt(curl, CURLOPT_URL, webhook_url);

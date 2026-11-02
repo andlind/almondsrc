@@ -6,6 +6,7 @@ import qrcode
 import socket
 import stat
 import logging
+from api.login_handler import handle_local_login, create_session
 from werkzeug.security import check_password_hash
 from cryptography.fernet import Fernet
 from flask import Blueprint, render_template_string, request, redirect, url_for, session, send_file
@@ -243,10 +244,15 @@ def verify_2fa():
         if user_secret:
             totp = pyotp.TOTP(user_secret)
             if totp.verify(token):
-                session['authenticated'] = True
-                session['login'] = 'true'
-                session['user'] = username
+                #session['authenticated'] = True
+                #session['login'] = 'true'
+                #session['user'] = username
                 #return f"Welcome, {username}! You are fully logged in."
+                roles = session.get('pending_roles')
+                user_session = handle_local_login(username, roles)
+                create_session(user_session)
+                session.pop('pending_roles', None)
+                session['authenticated'] = True
                 logging.info("Auth2fa logged in user '" + username + "'.")
                 return redirect('/almond/admin')                
             else:

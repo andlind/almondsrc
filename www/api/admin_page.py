@@ -13,6 +13,7 @@ import ssl
 import platform
 import psutil
 import secrets
+import http.client
 from urllib.parse import quote
 # If you use KeycloakROPC uncomment below
 import api.auth_config as auth_config
@@ -21,8 +22,8 @@ from flask import Blueprint
 from flask import current_app
 from flask_httpauth import HTTPBasicAuth
 from flask import render_template, session, request, make_response, redirect
+from flask import jsonify
 from markupsafe import Markup
-import matplotlib.pyplot as plt
 from werkzeug.security import check_password_hash, generate_password_hash
 from collections import deque
 from venv import logger
@@ -53,13 +54,11 @@ from api.login_handler import (
 
 admin_page = Blueprint('admin_page', __name__, template_folder='templates')
 
-graph_written = 0
 plugins = []
 conf = []
 api_conf = []
 scheduler_conf = []
 extra_conf = []
-graph_names = {}
 api_available_conf = ['api.activeMods', 'api.adminUser', 'api.adminPassword', 'api.authProvider', 'api.authType', 'api.bindPort', 'api.dataDir','api.enableAliases', 'api.enableFile', 'api.enableGUI','api.enableLoginRedirect', 'api.enableMods', 'api.enableOauth','api.enableOtelExporter', 'api.enableOtelFileWatcher', 'api.enablePeriodicOtelExport', 'api.enableProxyCleaner','api.enableScraper', 'api.enableSSL','api.isContainer', 'api.isMetricsProxy', 'api.isProxy', 'api.localMetrics','api.metricsDir', 'api.multiMetrics', 'api.multiServer', 'api.otelExportInterval', 'api.otlpEndpoint', 'api.persistant2fa', 'api.proxyCleanerSeconds', 'api.showDashboard', 'api.sslCertificate', 'api.sslKey', 'api.startPage', 'api.stateType', 'api.useGUI', 'api.useProxyAlerting', 'api.userFile', 'api.useSSL', 'api.wsgi', 'data.jsonFile', 'data.metricsFile', 'scheduler.storeDir', 'scheduler.configFile', 'scheduler.dataDir', 'plugins.directory', 'plugins.declaration']
 
 scheduler_available_conf = ['almond.api', 'almond.enableCollector', 'almond.enableIamAud', 'almond.enforeIAMRoles', 'almond.iamAud', 'almond.iamIssuer', 'almond.iamPublicKey', 'almond.iamRolesAccepted', 'almond.inventoryFileName', 'almond.port', 'almond.pushInterval', 'almond.pushPort', 'almond.pushUrl', 'almond.saveInventory', 'almond.standalone', 'almond.tryToHeal', 'almond.useMetricsPush', 'almond.usePush', 'almond.useSSL', 'almond.certificate', 'almond.key', 'collector.getPluginMetadata', 'collector.getPluginMetrics', 'collector.getServerData', 'collector.isVerbose', 'data.jsonFile', 'data.saveOnExit', 'data.metricsFile', 'data.metricsOutputPrefix', 'plugins.directory', 'plugins.declaration', 'scheduler.allowAllHosts', 'scheduler.useTLS', 'scheduler.certificate', 'scheduler.key','scheduler.confDir', 'scheduler.kafkaConfigFile', 'scheduler.logDir', 'scheduler.logToStdout', 'scheduler.logPluginOutput', 'scheduler.runGardenerAtStart','scheduler.storeResults', 'scheduler.format', 'scheduler.initSleepMs', 'scheduler.sleepMs', 'scheduler.kafkaAvro', 'scheduler.schemaName', 'scheduler.schemaRegistryUrl', 'scheduler.useExternal','scheduler.truncateLog', 'scheduler.truncateLogInterval', 'scheduler.tuneTimer', 'scheduler.tunerCycle', 'scheduler.tuneMaster', 'scheduler.dataDir', 'scheduler.storeDir', 'scheduler.hostName', 'scheduler.enableGardener', 'scheduler.gardenerScript', 'scheduler.gardenerRunInterval', 'scheduler.quickStart', 'scheduler.metricsOutputPrefix', 'scheduler.enableClearDataCache', 'scheduler.enableKafkaExport', 'scheduler.enableKafkaTag', 'scheduler.enableKafkaId', 'scheduler.kafkaStartId', 'scheduler.kafkaBrokers', 'scheduler.kafkaTopic', 'scheduler.kafkaTag', 'scheduler.enableKafkaSSL', 'scheduler.kafkaCACertificate', 'scheduler.kafkaProducerCertificate', 'scheduler.kafkaSSLKey', 'scheduler.useKafkaConfigFile','scheduler.clearDataCacheInterval', 'scheduler.dataCacheTimeFrame', 'scheduler.type', 'gardener.CleanUpTime']
@@ -67,7 +66,7 @@ scheduler_available_conf = ['almond.api', 'almond.enableCollector', 'almond.enab
 users = {}
 hasToken=False
 usertoken = "None"
-current_version = '26.2.1'
+current_version = '26.3.0'
 
 auth_provider_name = "local"
 auth_init = False
@@ -264,6 +263,35 @@ def load_api_conf():
             inherited_names.add(name)
     extra_conf = inherited_conf
 
+def get_session_user():
+    user = session.get('user')
+
+    if isinstance(user, dict):
+        return user
+
+    if isinstance(user, str):
+        return {
+            'username': user,
+            'roles': [],
+            'provider': 'local'
+        }
+
+    return {
+        'username': 'unknown',
+        'roles': [],
+        'provider': 'local'
+    }
+
+
+def get_session_user_roles():
+    user = get_session_user()
+    roles = user.get('roles', [])
+
+    if isinstance(roles, str):
+        roles = [r.strip() for r in roles.split(',') if r.strip()]
+
+    return ','.join(roles)
+
 def set_new_password(username, password, roles=None):
     global admin_user_file
 
@@ -275,9 +303,11 @@ def set_new_password(username, password, roles=None):
     else:
         roles = ["admin"]  # default
 
-    user = session.get('user', 'Unknown user')
-    logger.info(session['user'] + " trying to set new password for user '" + username + "'.")
-
+    #user = session.get('user', 'Unknown user')
+    user = get_session_user()
+    current_username = user.get('username', 'unknown')
+    #logger.info(session['user'] + " trying to set new password for user '" + username + "'.")
+    logger.info(f"{current_username} trying to set new password for user '{username}'.")
     # Validate input upfront
     if len(username) < 4 or len(password) < 6:
         info = "Error updating credentials"
@@ -298,11 +328,11 @@ def set_new_password(username, password, roles=None):
 
     # Debug: log the old password hash if it exists
     old_hash = user_data.get(username)
-    logger.debug("OLD HASH for user '{}': {}".format(username, old_hash))
+    #logger.debug("OLD HASH for user '{}': {}".format(username, old_hash))
 
     # Generate new hash and update the user entry
     new_hash = generate_password_hash(password)
-    logger.debug("NEW HASH for user '{}': {}".format(username, new_hash))
+    #logger.debug("NEW HASH for user '{}': {}".format(username, new_hash))
     user_data[username] = {
         "password": new_hash,
         "roles": roles
@@ -588,9 +618,13 @@ def read_conf():
 
     jasonFile = data_dir + '/' + json_file
     if (len(admin_user) > 0) and (len(admin_password) > 4):
-        session['user'] = admin_user
-        set_new_password(admin_user, admin_password)
-        delete_user_entries()
+        #session['user'] = admin_user
+        logger.info("Resetting credentials for configured admin user.")
+        result = set_new_password(admin_user, admin_password)
+        if result == "Credentials updated.":
+            delete_user_entries()
+        else:
+            logger.error("Failed to reset configured admin credentials.")
 
 def list_available_plugins():
     global plugins_directory
@@ -603,6 +637,155 @@ def list_available_plugins():
         plugin_list.remove('utils.pm')
     plugin_list.sort()
     return plugin_list
+
+def parse_metrics_file(file_name):
+    # Determine actual file path
+    if file_name == metrics_file_name or file_name == 'Current metrics':
+        actual_file_path = f"{store_dir}/{metrics_file_name}"
+    else:
+        target_host = request.args.get('host')
+        if target_host:
+            hostname = target_host.split('.')[0]
+        else:
+            this_data = load_status_data()
+            hostname = this_data['host']['name'].split('.')[0]
+        
+        exact_file_name = file_name if file_name.startswith(f"{hostname}_") else f"{hostname}_{file_name}"
+        actual_file_path = f"{store_dir}/{exact_file_name}"
+
+    if not os.path.exists(actual_file_path):
+        return None, f"Error: Could not find log file {actual_file_path}", 404
+
+    try:
+        with open(actual_file_path, 'r') as f:
+            return_list = f.readlines()
+        if not actual_file_path.endswith(metrics_file_name):
+            return_list.reverse()
+    except Exception as e:
+        return None, f"Error opening file: {str(e)}", 500
+
+    is_monitor = (
+        file_name == metrics_file_name or 
+        file_name == 'Current metrics' or 
+        actual_file_path.endswith(metrics_file_name)
+    )
+
+    parsed_logs = []
+
+    # --- MODE 1: CURRENT METRICS (PROMETHEUS FORMAT - NO CHARTS) ---
+    if is_monitor:
+        # Matches both 'metric{labels} val' AND 'metric val'
+        promo_pattern = re.compile(r"^([a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{(.*?)\})?\s+(.*)$")
+        
+        for line in return_list:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            
+            match = promo_pattern.search(line)
+            if match:
+                parsed_logs.append({
+                    'metric': match.group(1),
+                    'labels': match.group(2) or '',
+                    'value': match.group(3)
+                })
+            else:
+                parsed_logs.append({'raw': line})
+
+        return {
+            'is_monitor': True,
+            'logs': parsed_logs,
+            'chart_labels': [],
+            'charts_data': []
+        }, None, 200
+
+    # --- MODE 2: HISTORICAL LOGS (NAGIOS FORMAT - WITH CHARTS) ---
+    timestamps = []
+    history = []
+    num_pattern = re.compile(r"([-+]?\d*\.\d+|\d+)")
+    status_codes = {'OK': 0, 'WARNING': 1, 'CRITICAL': 2, 'UNKNOWN': 3}
+
+    for line in return_list:
+        line = line.replace('\n', '').strip()
+        if not line:
+            continue
+
+        parts = line.split('|')
+        main_part = parts[0].strip()
+        perf_part = parts[1].strip() if len(parts) > 1 else ""
+
+        try:
+            main_split = [x.strip() for x in main_part.split(',', 2)]
+            if len(main_split) >= 3:
+                date_str, plugin, message = main_split[0], main_split[1], main_split[2]
+            else:
+                date_str, plugin, message = main_split[0], "Unknown", main_part
+
+            known_statuses = ['OK', 'WARNING', 'CRITICAL', 'UNKNOWN']
+            status = "UNKNOWN"
+            clean_message = message.replace(':', ' ').replace('-', ' ').replace('.', ' ').replace(',', ' ')
+            for word in clean_message.split():
+                if word.upper() in known_statuses:
+                    status = word.upper()
+                    break
+        except Exception:
+            continue
+
+        current_metrics = {}
+        if perf_part:
+            metrics = perf_part.split()
+            for metric_str in metrics:
+                if '=' in metric_str:
+                    label, val_data = metric_str.split('=', 1)
+                    label = label.replace("'", "").replace('"', "")
+                    raw_val = val_data.split(';')[0]
+                    match = num_pattern.search(raw_val)
+                    if match:
+                        current_metrics[label] = float(match.group(1))
+
+        if not current_metrics:
+            current_metrics['return_code'] = status_codes.get(status, 3)
+
+        parsed_logs.append({
+            'date': date_str,
+            'plugin': plugin,
+            'status': status,
+            'message': message,
+            'perf': perf_part
+        })
+
+        if current_metrics:
+            date_parts = date_str.split(' ')
+            time_label = date_parts[3] if len(date_parts) > 3 else date_str
+            timestamps.append(time_label)
+            history.append(current_metrics)
+
+    timestamps.reverse()
+    history.reverse()
+
+    all_metric_names = set()
+    for h in history:
+        all_metric_names.update(h.keys())
+
+    colors = ['#007bff', '#28a745', '#dc3545', '#ffc107', '#17a2b8', '#6610f2', '#e83e8c', '#fd7e14']
+    charts_data = []
+
+    for idx, metric_name in enumerate(sorted(all_metric_names)):
+        data = [h.get(metric_name, None) for h in history]
+        safe_id = re.sub(r'\W+', '_', metric_name)
+        charts_data.append({
+            'id': f"chart_{safe_id}",
+            'title': metric_name,
+            'data': data,
+            'color': colors[idx % len(colors)]
+        })
+
+    return {
+        'is_monitor': False,
+        'logs': parsed_logs,
+        'chart_labels': timestamps,
+        'charts_data': charts_data
+    }, None, 200
 
 def get_status(this_data):
     global jasonFile
@@ -837,89 +1020,89 @@ def get_logs(dir):
     logfiles = next(walk(dir), (None, None, []))[2]
     return logfiles
 
-def set_graph_names():
-    global plugins, graph_names
+#def set_graph_names():
+#    global plugins, graph_names
+#
+#    graph_names = {}
+#    load_plugins()
+#    for plugin in plugins:
+#        this_name = ''
+#        this_val = ''
+#        try:
+#           end_pos = plugin.index(']')
+#        except ValueError:
+#            end_pos = -1
+#        if end_pos > 0:
+#            this_val = plugin[1:end_pos].strip()
+#            if not 'service_name' in this_val:
+#                pos = plugin.find(';')
+#                this_name = plugin[end_pos+1:pos].strip()
+#                graph_names[this_name] = this_val
 
-    graph_names = {}
-    load_plugins()
-    for plugin in plugins:
-        this_name = ''
-        this_val = ''
-        try:
-           end_pos = plugin.index(']')
-        except ValueError:
-            end_pos = -1
-        if end_pos > 0:
-            this_val = plugin[1:end_pos].strip()
-            if not 'service_name' in this_val:
-                pos = plugin.find(';')
-                this_name = plugin[end_pos+1:pos].strip()
-                graph_names[this_name] = this_val
-
-def get_graph_data(name):
-    global graph_names
-
-    # enabled?
-    # where?
-    uptime_percentage = 0.0
-    count = 0
-    oks = 0
-    set_graph_names()
-    data_name = graph_names[name];
-    filename = '/opt/almond/data/metrics/' + data_name;
-    if os.path.isfile(filename):
-        graph_file = open(filename, 'r')
-        d_dates = []
-        d_lines = []
-        for line in graph_file:
-            count += 1
-            if 'OK' in line:
-                oks += 1
-            l_data = line.split("|")
-            d_data = {}
-            if (len(l_data) > 1):
-                d_key = ''
-                d_value = ''
-                l_date = l_data[0].split(",")[0]
-                d_dates.append(l_date)
-                l_stats = l_data[1]
-                data_lines = l_stats.split("=")
-                if not data_lines[0].isnumeric():
-                    d_key = data_lines[0]
-                    d_val = data_lines[1].split(";")[0]
-                    d_float = re.findall(r'\d+\.\d+', d_val)
-                    try:
-                        d_data[d_key] = d_float[0]
-                    except IndexError:
-                        d_int = re.sub('[^0-9]','', d_val)
-                        if not d_int.isnumeric():
-                            d_int = "0"
-                        d_data[d_key] = d_int
-                    d_lines.append(d_data)
-            else:
-                # Does not have metrics
-                l_date = l_data[0].split(",")[0]
-                try:
-                    l_output = l_data[0].split(",")[2]
-                except IndexError as error:
-                    logger.error("List index of of range: %s", error)
-                    l_output = "UNKOWN: Howru internal error"
-                l_output = l_output.lower().strip()
-                if ('ok') in l_output:
-                    ret_val = 0
-                elif ('warning') in l_output:
-                    ret_val = 1
-                elif ('critical') in l_output:
-                    ret_val = 2
-                else:
-                    ret_val = -1
-                d_dates.append(l_date)
-                d_data['returnValue'] = ret_val
-                d_lines.append(d_data)
-    else:
-        print ("Not found")
-    uptime_percentage = round(oks/count * 100, 2)
-    return d_dates, d_lines, uptime_percentage
+#def get_graph_data(name):
+#    global graph_names
+#
+#    # enabled?
+#    # where?
+#    uptime_percentage = 0.0
+#    count = 0
+#    oks = 0
+#    set_graph_names()
+#    data_name = graph_names[name];
+#    filename = '/opt/almond/data/metrics/' + data_name;
+#    if os.path.isfile(filename):
+#        graph_file = open(filename, 'r')
+#        d_dates = []
+#        d_lines = []
+#        for line in graph_file:
+#            count += 1
+#            if 'OK' in line:
+#                oks += 1
+#            l_data = line.split("|")
+#            d_data = {}
+#            if (len(l_data) > 1):
+#                d_key = ''
+#                d_value = ''
+#                l_date = l_data[0].split(",")[0]
+#                d_dates.append(l_date)
+#                l_stats = l_data[1]
+#                data_lines = l_stats.split("=")
+#                if not data_lines[0].isnumeric():
+#                    d_key = data_lines[0]
+#                    d_val = data_lines[1].split(";")[0]
+#                    d_float = re.findall(r'\d+\.\d+', d_val)
+#                    try:
+#                        d_data[d_key] = d_float[0]
+#                    except IndexError:
+#                        d_int = re.sub('[^0-9]','', d_val)
+#                        if not d_int.isnumeric():
+#                            d_int = "0"
+#                        d_data[d_key] = d_int
+#                    d_lines.append(d_data)
+#            else:
+#                # Does not have metrics
+#                l_date = l_data[0].split(",")[0]
+#                try:
+#                    l_output = l_data[0].split(",")[2]
+#                except IndexError as error:
+#                    logger.error("List index of of range: %s", error)
+#                    l_output = "UNKOWN: Howru internal error"
+#                l_output = l_output.lower().strip()
+#                if ('ok') in l_output:
+#                    ret_val = 0
+#                elif ('warning') in l_output:
+#                    ret_val = 1
+#                elif ('critical') in l_output:
+#                    ret_val = 2
+#                else:
+#                    ret_val = -1
+#                d_dates.append(l_date)
+#                d_data['returnValue'] = ret_val
+#                d_lines.append(d_data)
+#    else:
+#        print ("Not found")
+#    uptime_percentage = round(oks/count * 100, 2)
+#    return d_dates, d_lines, uptime_percentage
 
 def restart_api():
     p = subprocess.Popen(['/opt/almond/www/api/rs.sh'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -1014,169 +1197,371 @@ def beautify_json(text):
     return Markup(result)
 
 @admin_page.route('/almond/admin/metrics/<file_name>')
-def view_metrics(file_name, return_list=None, user_image=None):
-    actual_file_path = None
-    
-    if return_list is None:
-        if file_name == metrics_file_name or file_name == 'Current metrics':
-             actual_file_path = f"{store_dir}/{metrics_file_name}"
-        else:
-             # Grab the hostname exactly like your old route did
-             this_data = load_status_data()
-             hostname = this_data['host']['name'].split('.')[0]
-             
-             if file_name.startswith(f"{hostname}_"):
-                 exact_file_name = file_name
-             else:
-                 exact_file_name = f"{hostname}_{file_name}"
-                 
-             actual_file_path = f"{store_dir}/{exact_file_name}"
-
-        # Now just open the file directly!
-        if not os.path.exists(actual_file_path):
-            return f"Error: Could not find log file {actual_file_path}", 404
-
-        try:
-            with open(actual_file_path, 'r') as f:
-                return_list = f.readlines()
-            
-            if not actual_file_path.endswith(metrics_file_name):
-                return_list.reverse()
-        except Exception as e:
-            return f"Error opening file: {str(e)}", 500
-
-    if user_image is None:
-        user_image = '/static/almond_small.png'
-    # Check if this is the current metrics file
-    is_monitor = (actual_file_path or file_name).endswith(metrics_file_name)
-    parsed_logs = []
-    
-    # --- HANDLING FOR CURRENT METRICS (PROMETHEUS FORMAT) ---
-    if is_monitor:
-        # Regex to capture: metric_name{labels} value
-        promo_pattern = re.compile(r"^(.*?)\{(.*?)\}\s+(.*)$")
-        
-        for line in return_list:
-            line = line.strip()
-            if not line:
-                continue
-                
-            match = promo_pattern.search(line)
-            if match:
-                parsed_logs.append({
-                    'metric': match.group(1),
-                    'labels': match.group(2),
-                    'value': match.group(3)
-                })
-            else:
-                # Fallback if line doesn't match expected pattern
-                parsed_logs.append({'raw': line})
-                
-        return render_template(
-            'metrics_an.html',
-            file=file_name,
-            user_image=user_image,
-            is_monitor=True, # Pass flag to frontend
-            logs=parsed_logs
-        )
-        
-    # --- HANDLING FOR HISTORICAL LOGS (NAGIOS FORMAT) ---
-    timestamps = []
-    history = [] 
-    num_pattern = re.compile(r"([-+]?\d*\.\d+|\d+)")
-    status_codes = {'OK': 0, 'WARNING': 1, 'CRITICAL': 2, 'UNKNOWN': 3}
-
-    for line in return_list:
-        line = line.replace('\n', '').strip()
-        if not line:
-            continue
-            
-        parts = line.split('|')
-        main_part = parts[0].strip()
-        perf_part = parts[1].strip() if len(parts) > 1 else ""
-        
-        try:
-            main_split = [x.strip() for x in main_part.split(',', 2)]
-            if len(main_split) >= 3:
-                date_str, plugin, message = main_split[0], main_split[1], main_split[2]
-            else:
-                date_str, plugin, message = main_split[0], "Unknown", main_part
-            #status = message.split(' ')[0]
-            known_statuses = ['OK', 'WARNING', 'CRITICAL', 'UNKNOWN']
-            status = "UNKNOWN" # Default fallback
-            clean_message = message.replace(':', ' ').replace('-', ' ').replace('.', ' ').replace(',', ' ')
-            for word in clean_message.split():
-                if word.upper() in known_statuses:
-                    status = word.upper()
-                    break
-        except Exception:
-            continue
-            
-        current_metrics = {}
-        if perf_part:
-            metrics = perf_part.split()
-            for metric_str in metrics:
-                if '=' in metric_str:
-                    label, val_data = metric_str.split('=', 1)
-                    label = label.replace("'", "").replace('"', "") 
-                    raw_val = val_data.split(';')[0]
-                    match = num_pattern.search(raw_val)
-                    if match:
-                        current_metrics[label] = float(match.group(1))
-
-        if not current_metrics:
-            current_metrics['return_code'] = status_codes.get(status, 3)
-
-        parsed_logs.append({
-            'date': date_str,
-            'plugin': plugin,
-            'status': status,
-            'message': message,
-            'perf': perf_part
-        })
-        
-        if current_metrics:
-            date_parts = date_str.split(' ')
-            time_label = date_parts[3] if len(date_parts) > 3 else date_str
-            timestamps.append(time_label)
-            history.append(current_metrics)
-
-    timestamps.reverse()
-    history.reverse()
-
-    all_metric_names = set()
-    for h in history:
-        all_metric_names.update(h.keys())
-        
-    colors = ['#007bff', '#28a745', '#dc3545', '#ffc107', '#17a2b8', '#6610f2', '#e83e8c', '#fd7e14']
-    charts_data = []
-    
-    # Build a separate chart config for each metric
-    for idx, metric_name in enumerate(sorted(all_metric_names)):
-        data = []
-        for h in history:
-            data.append(h.get(metric_name, None))
-            
-        # Create a safe HTML ID for the canvas element (no spaces or special chars)
-        safe_id = re.sub(r'\W+', '_', metric_name)
-            
-        charts_data.append({
-            'id': f"chart_{safe_id}",
-            'title': metric_name,
-            'data': data,
-            'color': colors[idx % len(colors)]
-        })
+def view_metrics(file_name, user_image=None):
+    # Determine basic vars for the skeleton
+    target_host = request.args.get('host')
+    user_image = '/static/howru.png' if target_host else '/static/almond_small.png'
+    #is_monitor = file_name.endswith(metrics_file_name)
+    is_monitor = (
+        file_name == metrics_file_name or 
+        file_name == 'Current metrics' or 
+        file_name.endswith(metrics_file_name)
+    )
 
     return render_template(
-        'metrics_an.html', 
+        'metrics_an.html',
         file=file_name,
         user_image=user_image,
-        is_monitor=False,
-        logs=parsed_logs,
-        chart_labels=json.dumps(timestamps),
-        charts_data=charts_data,                     # For the Jinja HTML loop
-        charts_data_json=json.dumps(charts_data)     # For the JavaScript loop
+        is_monitor=is_monitor
     )
+
+#@admin_page.route('/almond/admin/metrics_old/<file_name>')
+#def view_metrics_full(file_name, return_list=None, user_image=None):
+#    actual_file_path = None
+#
+#    if return_list is None:
+#        if file_name == metrics_file_name or file_name == 'Current metrics':
+#             actual_file_path = f"{store_dir}/{metrics_file_name}"
+#        else:
+#             target_host = request.args.get('host')
+#             if target_host:
+#                 hostname = target_host.split('.')[0]
+#             else:
+#                 this_data = load_status_data()
+#                 hostname = this_data['host']['name'].split('.')[0]
+#             if file_name.startswith(f"{hostname}_"):
+#                 exact_file_name = file_name
+#             else:
+#                 exact_file_name = f"{hostname}_{file_name}"
+#
+#             actual_file_path = f"{store_dir}/{exact_file_name}"
+#
+#        # Now just open the file directly!
+#        if not os.path.exists(actual_file_path):
+#            return f"Error: Could not find log file {actual_file_path}", 404
+#
+#        try:
+#            with open(actual_file_path, 'r') as f:
+#                return_list = f.readlines()
+#            
+#            if not actual_file_path.endswith(metrics_file_name):
+#                return_list.reverse()
+#        except Exception as e:
+#            return f"Error opening file: {str(e)}", 500
+#
+#    if user_image is None:
+#        if target_host:
+#            user_image = '/static/howru.png'
+#        else:
+#            user_image = '/static/almond_small.png'
+#    else:
+#        user_image = '/static/almond_small.png'
+#
+#    # Check if this is the current metrics file
+#    is_monitor = (actual_file_path or file_name).endswith(metrics_file_name)
+#    parsed_logs = []
+#    
+#    # --- HANDLING FOR CURRENT METRICS (PROMETHEUS FORMAT) ---
+#    if is_monitor:
+#        # Regex to capture: metric_name{labels} value
+#        promo_pattern = re.compile(r"^(.*?)\{(.*?)\}\s+(.*)$")
+#        
+#        for line in return_list:
+#            line = line.strip()
+#            if not line:
+#                continue
+#                
+#            match = promo_pattern.search(line)
+#            if match:
+#                parsed_logs.append({
+#                    'metric': match.group(1),
+#                    'labels': match.group(2),
+#                    'value': match.group(3)
+#                })
+#            else:
+#                # Fallback if line doesn't match expected pattern
+#                parsed_logs.append({'raw': line})
+#                
+#        return render_template(
+#            'metrics_an.html',
+#            file=file_name,
+#            user_image=user_image,
+#            is_monitor=True, # Pass flag to frontend
+#            logs=parsed_logs
+#        )
+#        
+#    # --- HANDLING FOR HISTORICAL LOGS (NAGIOS FORMAT) ---
+#    timestamps = []
+#    history = [] 
+#    num_pattern = re.compile(r"([-+]?\d*\.\d+|\d+)")
+#    status_codes = {'OK': 0, 'WARNING': 1, 'CRITICAL': 2, 'UNKNOWN': 3}
+#
+#    for line in return_list:
+#        line = line.replace('\n', '').strip()
+#        if not line:
+#            continue
+#            
+#        parts = line.split('|')
+#        main_part = parts[0].strip()
+#        perf_part = parts[1].strip() if len(parts) > 1 else ""
+#        
+#        try:
+#            main_split = [x.strip() for x in main_part.split(',', 2)]
+#            if len(main_split) >= 3:
+#                date_str, plugin, message = main_split[0], main_split[1], main_split[2]
+#            else:
+#                date_str, plugin, message = main_split[0], "Unknown", main_part
+#            #status = message.split(' ')[0]
+#            known_statuses = ['OK', 'WARNING', 'CRITICAL', 'UNKNOWN']
+#            status = "UNKNOWN" # Default fallback
+#            clean_message = message.replace(':', ' ').replace('-', ' ').replace('.', ' ').replace(',', ' ')
+#            for word in clean_message.split():
+#                if word.upper() in known_statuses:
+#                    status = word.upper()
+#                    break
+#        except Exception:
+#            continue
+#            
+#        current_metrics = {}
+#        if perf_part:
+#            metrics = perf_part.split()
+#            for metric_str in metrics:
+#                if '=' in metric_str:
+#                    label, val_data = metric_str.split('=', 1)
+#                    label = label.replace("'", "").replace('"', "") 
+#                    raw_val = val_data.split(';')[0]
+#                    match = num_pattern.search(raw_val)
+#                    if match:
+#                        current_metrics[label] = float(match.group(1))
+#
+#        if not current_metrics:
+#            current_metrics['return_code'] = status_codes.get(status, 3)
+#
+#        parsed_logs.append({
+#            'date': date_str,
+#            'plugin': plugin,
+#            'status': status,
+#            'message': message,
+#            'perf': perf_part
+#        })
+#        
+#        if current_metrics:
+#            date_parts = date_str.split(' ')
+#            time_label = date_parts[3] if len(date_parts) > 3 else date_str
+#            timestamps.append(time_label)
+#            history.append(current_metrics)
+#
+#    timestamps.reverse()
+#    history.reverse()
+#
+#    all_metric_names = set()
+#    for h in history:
+#        all_metric_names.update(h.keys())
+#        
+#    colors = ['#007bff', '#28a745', '#dc3545', '#ffc107', '#17a2b8', '#6610f2', '#e83e8c', '#fd7e14']
+#    charts_data = []
+#    
+#    # Build a separate chart config for each metric
+#    for idx, metric_name in enumerate(sorted(all_metric_names)):
+#        data = []
+#        for h in history:
+#            data.append(h.get(metric_name, None))
+#            
+#        # Create a safe HTML ID for the canvas element (no spaces or special chars)
+#        safe_id = re.sub(r'\W+', '_', metric_name)
+#            
+#        charts_data.append({
+#            'id': f"chart_{safe_id}",
+#            'title': metric_name,
+#            'data': data,
+#            'color': colors[idx % len(colors)]
+#        })
+#
+#    return render_template(
+#        'metrics_an.html', 
+#        file=file_name,
+#        user_image=user_image,
+#        is_monitor=False,
+#        logs=parsed_logs,
+#        chart_labels=json.dumps(timestamps),
+#        charts_data=charts_data,                     # For the Jinja HTML loop
+#        charts_data_json=json.dumps(charts_data)     # For the JavaScript loop
+#    )
+
+@admin_page.route('/almond/admin/metrics/get/<file_name>')
+def get_metrics_api(file_name):
+    data, err_msg, status_code = parse_metrics_file(file_name)
+    if err_msg:
+        return jsonify({'error': err_msg}), status_code
+    return jsonify(data)
+
+#@admin_page.route('/almond/admin/metrics/get_old/<file_name>')
+#def get_api_metrics(file_name, return_list=None, user_image=None):
+#    actual_file_path = None
+#
+#    if return_list is None:
+#        if file_name == metrics_file_name or file_name == 'Current metrics':
+#             actual_file_path = f"{store_dir}/{metrics_file_name}"
+#        else:
+#             target_host = request.args.get('host')
+#             if target_host:
+#                 hostname = target_host.split('.')[0]
+#             else:
+#                 this_data = load_status_data()
+#                 hostname = this_data['host']['name'].split('.')[0]
+#             if file_name.startswith(f"{hostname}_"):
+#                 exact_file_name = file_name
+#             else:
+#                 exact_file_name = f"{hostname}_{file_name}"
+#
+#             actual_file_path = f"{store_dir}/{exact_file_name}"
+#
+#        # Now just open the file directly!
+#        if not os.path.exists(actual_file_path):
+#            return f"Error: Could not find log file {actual_file_path}", 404
+#
+#        try:
+#            with open(actual_file_path, 'r') as f:
+#                return_list = f.readlines()
+#
+#            if not actual_file_path.endswith(metrics_file_name):
+#                return_list.reverse()
+#        except Exception as e:
+#            return f"Error opening file: {str(e)}", 500
+#
+#    if user_image is None:
+#        if target_host:
+#            user_image = '/static/howru.png'
+#        else:
+#            user_image = '/static/almond_small.png'
+#    else:
+#        user_image = '/static/almond_small.png'
+#
+#    # Check if this is the current metrics file
+#    is_monitor = (actual_file_path or file_name).endswith(metrics_file_name)
+#    parsed_logs = []
+#
+#    # --- HANDLING FOR CURRENT METRICS (PROMETHEUS FORMAT) ---
+#    if is_monitor:
+#        # Regex to capture: metric_name{labels} value
+#        promo_pattern = re.compile(r"^(.*?)\{(.*?)\}\s+(.*)$")
+#
+#        for line in return_list:
+#            line = line.strip()
+#            if not line:
+#                continue
+#
+#            match = promo_pattern.search(line)
+#            if match:
+#                parsed_logs.append({
+#                    'metric': match.group(1),
+#                    'labels': match.group(2),
+#                    'value': match.group(3)
+#                })
+#            else:
+#                # Fallback if line doesn't match expected pattern
+#                parsed_logs.append({'raw': line})
+#
+#        return render_template(
+#            'metrics_an.html',
+#            file=file_name,
+#            user_image=user_image,
+#            is_monitor=True, # Pass flag to frontend
+#            logs=parsed_logs
+#        )
+#
+#    # --- HANDLING FOR HISTORICAL LOGS (NAGIOS FORMAT) ---
+#    timestamps = []
+#    history = [] 
+#    num_pattern = re.compile(r"([-+]?\d*\.\d+|\d+)")
+#    status_codes = {'OK': 0, 'WARNING': 1, 'CRITICAL': 2, 'UNKNOWN': 3}
+#
+#    for line in return_list:
+#        line = line.replace('\n', '').strip()
+#        if not line:
+#            continue
+#
+#        parts = line.split('|')
+#        main_part = parts[0].strip()
+#        perf_part = parts[1].strip() if len(parts) > 1 else ""
+#
+#        try:
+#            main_split = [x.strip() for x in main_part.split(',', 2)]
+#            if len(main_split) >= 3:
+#                date_str, plugin, message = main_split[0], main_split[1], main_split[2]
+#            else:
+#                date_str, plugin, message = main_split[0], "Unknown", main_part
+#            #status = message.split(' ')[0]
+#            known_statuses = ['OK', 'WARNING', 'CRITICAL', 'UNKNOWN']
+#            status = "UNKNOWN" # Default fallback
+#            clean_message = message.replace(':', ' ').replace('-', ' ').replace('.', ' ').replace(',', ' ')
+#            for word in clean_message.split():
+#                if word.upper() in known_statuses:
+#                    status = word.upper()
+#                    break
+#        except Exception:
+#            continue
+#
+#        current_metrics = {}
+#        if perf_part:
+#            metrics = perf_part.split()
+#            for metric_str in metrics:
+#                if '=' in metric_str:
+#                    label, val_data = metric_str.split('=', 1)
+#                    label = label.replace("'", "").replace('"', "")
+#                    raw_val = val_data.split(';')[0]
+#                    match = num_pattern.search(raw_val)
+#                    if match:
+#                        current_metrics[label] = float(match.group(1))
+#
+#        if not current_metrics:
+#            current_metrics['return_code'] = status_codes.get(status, 3)
+#
+#        parsed_logs.append({
+#            'date': date_str,
+#            'plugin': plugin,
+#            'status': status,
+#            'message': message,
+#            'perf': perf_part
+#        })
+#
+#        if current_metrics:
+#            date_parts = date_str.split(' ')
+#            time_label = date_parts[3] if len(date_parts) > 3 else date_str
+#            timestamps.append(time_label)
+#            history.append(current_metrics)
+#
+#    timestamps.reverse()
+#    history.reverse()
+#
+#    all_metric_names = set()
+#    for h in history:
+#        all_metric_names.update(h.keys())
+#
+#    colors = ['#007bff', '#28a745', '#dc3545', '#ffc107', '#17a2b8', '#6610f2', '#e83e8c', '#fd7e14']
+#    charts_data = []
+#    # Build a separate chart config for each metric
+#    for idx, metric_name in enumerate(sorted(all_metric_names)):
+#        data = []
+#        for h in history:
+#            data.append(h.get(metric_name, None))
+#
+#        # Create a safe HTML ID for the canvas element (no spaces or special chars)
+#        safe_id = re.sub(r'\W+', '_', metric_name)
+#
+#        charts_data.append({
+#            'id': f"chart_{safe_id}",
+#            'title': metric_name,
+#            'data': data,
+#            'color': colors[idx % len(colors)]
+#        })
+#
+#    return jsonify({
+#        'is_monitor': is_monitor,
+#        'logs': parsed_logs,
+#        'chart_labels': timestamps,
+#        'charts_data': charts_data
+#    })
 
 @admin_page.route('/almond/admin', methods=['GET', 'POST'])
 #@auth.login_required
@@ -1199,7 +1584,6 @@ def index():
     global metrics_file_name
     global current_version
     global plugins_directory
-    global graph_written
     global hasToken
     global usertoken
     global is_container
@@ -1243,7 +1627,8 @@ def index():
         return make_response("Invalid userfile", 404, headers);
 
     if ('action_type' in request.form):
-        if 'login' in session:
+        #if 'login' in session:
+        if session.get('login') == 'true' and isinstance(session.get('user'), dict):
             if enable_login_redirect and enable_oauth:
                 tokens = session.get("tokens")
                 if tokens:
@@ -1317,7 +1702,8 @@ def index():
                 return 403, "No data file"
             status = get_infostr(info_data)
             env_status = get_sys_info()
-            current_user_roles = ','.join(session.get('user', {}).get('roles', []))
+            #current_user_roles = ','.join(session.get('user', {}).get('roles', []))
+            current_user_roles = get_session_user_roles()
             logger.info("Rendering admin.html")
             return render_template('admin.html', info = info, sys_info=env_status,version=current_version, username=username, passwd=password, roles=current_user_roles, logo_image=image_file, avatar=almond_avatar, logo=logo_img, almond_state=almond_state, howru_state=howru_state, status=status)
         if action_type == 'plugins':
@@ -1379,7 +1765,8 @@ def index():
             status = get_infostr(info_data)
             env_status = get_sys_info()
             logger.info("Rendering template admin.html")
-            current_user_roles = ','.join(session.get('user', {}).get('roles', []))
+            #current_user_roles = ','.join(session.get('user', {}).get('roles', []))
+            current_user_roles = get_session_user_roles()
             return render_template('admin.html', version=current_version, info=info, sys_info=env_status, roles=current_user_roles, logo_image=image_file, avatar=almond_avatar, logo=logo_img, almond_state=almond_state, howru_state=howru_state, status=status)
         if action_type == 'restart_scheduler':
             logger.info("Received action type 'restart scheduler'")
@@ -1635,7 +2022,7 @@ def index():
                 #logger.info("Rendering template show_metrics_a.html")
                 #return render_template("show_metrics_a.html", file=metric_selection, user_image=image_file, avatar=almond_avatar,  b_lines=return_list)
                 logger.info("Rendering template metrics_an.html")
-                return view_metrics(file_name, return_list, user_image=image_file)
+                return view_metrics(file_name, user_image=image_file)
             else:
                 logger.info("Rendering template show_metrics.html")
                 return render_template("show_metrics.html", user_image=image_file, avatar=almond_avatar)
@@ -1770,93 +2157,258 @@ def index():
                 action_str += "\"inventory\", \"name\":\"" + name + "\"}"
             else:
                 print ("Action id error")
-            if (almond_api):
-                #print(f"Almond API active: {almond_api}")
+            if almond_api:
+                logger.info("Almond API enabled, preparing request.")
+
                 read_conf()
+
                 if is_container:
-                    container_ip = socket.gethostbyname(socket.gethostname())
-                clientSocket = None
-                try:
-                    clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    clientSocket.settimeout(30)
-                except socket.error as e:
-                    print ("Error creating socket: %s" % e)
-                    retVal = "{\"connection_error\" : \"Error creating socket \"}"
-                    return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
-                try:
-                    if is_container:
-                        clientSocket.connect((container_ip, almond_port))
-                    else:
-                        clientSocket.connect(("127.0.0.1",almond_port))
-                except socket.gaierror as e:
-                    print ("Address-related error connecting to server: %s" % e)
-                    retVal = "{\"connection_error\" : \"Address-related error connecting to server.\"}"
-                    return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
-                except socket.error as e:
-                    print ("Connection error: %s" % e)
-                    if e.errno == errno.ENETUNREACH:
-                        print("Network unreachable - Check Docker network configuration")
-                    retVal = "{\"connection_error\" : \"Socket connection error.\"}"
-                    return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
-                if (session_token): 
-                    payload = ""
-                    header = (
-                        "POST /endpoint HTTP/1.1\r\n"
-                        f"Authorization: Bearer {session_token}\r\n"
-                        "Content-Type: application/json\r\n"
-                        f"Content-Length: {len(action_str)}\r\n"
-                        "\r\n" # The crucial empty line
-                    )
-                    payload = header + action_str
+                    almond_host = socket.gethostbyname(socket.gethostname())
                 else:
-                    payload = action_str
-                #print("DEBUG PAYLOAD")
-                #print(payload)
+                    almond_host = "127.0.0.1"
+
+                connection = None
+
                 try:
-                    clientSocket.sendall(payload.encode())
-                except socket.error as e:
-                    print ("Error sending data: %s" % e)
-                    retVal = "{\"connection_error\" : \"Error sending data.\"}"
-                    return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
-                chunks = []
-                clientSocket.settimeout(5.0)
-                try:
-                    while True:
-                        chunk = clientSocket.recv(4096)
-                        if not chunk:
-                            break
-                        chunks.append(chunk)
-                        combined_data = b"".join(chunks).decode('utf-8', errors='ignore')
-                        try:
-                            json.loads(combined_data)
-                            break
-                        except json.JSONDecodeError:
-                            continue
-                    retVal = b"".join(chunks).decode('utf-8')
-                except socket.timeout:
-                    print("Socket timeout waiting for complete JSON response")
-                    retVal = "{\"connection_error\" : \"Timeout receiving complete data.\"}"
-                    return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
-                except socket.error as e:
-                    print ("Error receiving data: %s" % e)
-                    retVal = "{\"connection_error\" : \"Error receiving data.\"}"
-                    return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
-                if not len(retVal):
-                    print ("No retVal len\n")
-                    retVal = "{\"connection_error\" : \"Empty return on socket.\"}"
-                    return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
-                #print(retVal.decode())
+                    # Encode JSON request
+                    request_body = action_str.encode("utf-8")
+
+                    # Build HTTP headers
+                    request_headers = [
+                        "POST /endpoint HTTP/1.1",
+                        f"Host: {almond_host}:{almond_port}",
+                        "Content-Type: application/json",
+                        f"Content-Length: {len(request_body)}",
+                        "Connection: close"
+                    ]
+
+                    # Add OAuth authorization if available
+                    if session_token:
+                        request_headers.append(
+                            f"Authorization: Bearer {session_token}"
+                        )
+
+                    # Combine headers and JSON into one buffer
+                    request_data = (
+                        "\r\n".join(request_headers) + "\r\n\r\n"
+                    ).encode("utf-8") + request_body
+
+                    logger.info(
+                        "Connecting to Almond API at %s:%s",
+                        almond_host,
+                        almond_port
+                    )
+
+                    # Open TCP connection
+                    connection = socket.create_connection(
+                        (almond_host, almond_port),
+                        timeout=30
+                    )
+
+                    connection.settimeout(30)
+
+                    # Send the complete request
+                    connection.sendall(request_data)
+
+                    logger.info(
+                        "Sent %d bytes to Almond API",
+                        len(request_data)
+                    )
+
+                    # Parse the HTTP response correctly
+                    response = http.client.HTTPResponse(connection)
+                    response.begin()
+
+                    logger.info(
+                        "Almond API HTTP status: %d",
+                        response.status
+                    )
+
+                    # Read complete HTTP response body
+                    response_data = response.read()
+                    logger.info(
+                        "Almond API received %d bytes, Content-Length: %s",
+                        len(response_data),
+                        response.getheader("Content-Length")
+                    )
+
+                    retVal = response_data.decode("utf-8")
+
+                    if response.status < 200 or response.status >= 300:
+                        logger.error(
+                            "Almond API returned HTTP status %d",
+                            response.status
+                        )
+
+                        return render_template(
+                            "actionapi.html",
+                            user_image=image_file,
+                            data=retVal,
+                            errors=1,
+                            avatar=almond_avatar
+                        )
+
+                    json_data = json.loads(retVal)
+
+                    formatted_data = json.dumps(
+                        json_data,
+                        indent=2,
+                        ensure_ascii=False
+                    )
+
+                    logger.info(
+                        "Almond API response received successfully."
+                    )
+
+                    return render_template(
+                        "actionapi.html",
+                        user_image=image_file,
+                        data=formatted_data,
+                        errors=0,
+                        avatar=almond_avatar
+                    )
+
+                except (OSError, http.client.HTTPException) as e:
+                    logger.exception(
+                        "Almond API connection error: %s",
+                        e
+                    )
+
+                    retVal = json.dumps({
+                        "connection_error": str(e)
+                    })
+
+                    return render_template(
+                        "actionapi.html",
+                        user_image=image_file,
+                        data=retVal,
+                        errors=1,
+                        avatar=almond_avatar
+                    )
+
+                except (UnicodeDecodeError, json.JSONDecodeError) as e:
+                    logger.exception(
+                        "Invalid Almond API response: %s",
+                        e
+                    )
+
+                    retVal = json.dumps({
+                        "connection_error": "Invalid JSON response from Almond."
+                    })
+
+                    return render_template(
+                        "actionapi.html",
+                        user_image=image_file,
+                        data=retVal,
+                        errors=1,
+                        avatar=almond_avatar
+                    )
+
+                finally:
+                    if connection is not None:
+                        connection.close()
+
             else:
-                print(f"Account active: {almond_api}")
-                print ("Almond api is not enabled or has a different authorization provider than what was provided.")
-                retVal = "{\"almond_message\":\"Almond API is not enabled or has different authorization provider.\"}"
-                return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
-            data = retVal.strip() if isinstance(retVal, str) else retVal.decode("utf-8").strip()
-            pos = data.find('Content-Length:')
-            text = data[pos+16:]
-            newline = text.find("\n")
-            newtext = text[newline+1:].strip()
-            return render_template('actionapi.html', user_image=image_file, data=newtext, errors=0, avatar=almond_avatar)
+                logger.warning("Almond API is not enabled.")
+
+                retVal = json.dumps({
+                    "almond_message": "Almond API is not enabled."
+                })
+
+                return render_template(
+                    "actionapi.html",
+                    user_image=image_file,
+                    data=retVal,
+                    errors=1,
+                    avatar=almond_avatar
+                )
+            #if (almond_api):
+            #    #print(f"Almond API active: {almond_api}")
+            #    read_conf()
+            #    if is_container:
+            #        container_ip = socket.gethostbyname(socket.gethostname())
+            #    clientSocket = None
+            #    try:
+            #        clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            #        clientSocket.settimeout(30)
+            #    except socket.error as e:
+            #        print ("Error creating socket: %s" % e)
+            #        retVal = "{\"connection_error\" : \"Error creating socket \"}"
+            #        return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
+            #    try:
+            #        if is_container:
+            #            clientSocket.connect((container_ip, almond_port))
+            #        else:
+            #            clientSocket.connect(("127.0.0.1",almond_port))
+            #    except socket.gaierror as e:
+            #        print ("Address-related error connecting to server: %s" % e)
+            #        retVal = "{\"connection_error\" : \"Address-related error connecting to server.\"}"
+            #        return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
+            #    except socket.error as e:
+            #        print ("Connection error: %s" % e)
+            #        if e.errno == errno.ENETUNREACH:
+            #            print("Network unreachable - Check Docker network configuration")
+            #        retVal = "{\"connection_error\" : \"Socket connection error.\"}"
+            #        return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
+            #    if (session_token): 
+            #        payload = ""
+            #        header = (
+            #            "POST /endpoint HTTP/1.1\r\n"
+            #            f"Authorization: Bearer {session_token}\r\n"
+            #            "Content-Type: application/json\r\n"
+            #            f"Content-Length: {len(action_str)}\r\n"
+            #            "\r\n" # The crucial empty line
+            #        )
+            #        payload = header + action_str
+            #    else:
+            #        payload = action_str
+            #    #print("DEBUG PAYLOAD")
+            #    #print(payload)
+            #    try:
+            #        clientSocket.sendall(payload.encode())
+            #    except socket.error as e:
+            #        print ("Error sending data: %s" % e)
+            #        retVal = "{\"connection_error\" : \"Error sending data.\"}"
+            #        return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
+            #    chunks = []
+            #    clientSocket.settimeout(5.0)
+            #    try:
+            #        while True:
+            #            chunk = clientSocket.recv(4096)
+            #            if not chunk:
+            #                break
+            #            chunks.append(chunk)
+            #            combined_data = b"".join(chunks).decode('utf-8', errors='ignore')
+            #            try:
+            #                json.loads(combined_data)
+            #                break
+            #            except json.JSONDecodeError:
+            #                continue
+            #        retVal = b"".join(chunks).decode('utf-8')
+            #    except socket.timeout:
+            #        print("Socket timeout waiting for complete JSON response")
+            #        retVal = "{\"connection_error\" : \"Timeout receiving complete data.\"}"
+            #        return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
+            #    except socket.error as e:
+            #        print ("Error receiving data: %s" % e)
+            #        retVal = "{\"connection_error\" : \"Error receiving data.\"}"
+            #        return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
+            #    if not len(retVal):
+            #        print ("No retVal len\n")
+            #        retVal = "{\"connection_error\" : \"Empty return on socket.\"}"
+            #        return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
+            #    #print(retVal.decode())
+            #else:
+            #    print(f"Account active: {almond_api}")
+            #    print ("Almond api is not enabled or has a different authorization provider than what was provided.")
+            #    retVal = "{\"almond_message\":\"Almond API is not enabled or has different authorization provider.\"}"
+            #    return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
+            #data = retVal.strip() if isinstance(retVal, str) else retVal.decode("utf-8").strip()
+            #pos = data.find('Content-Length:')
+            #text = data[pos+16:]
+            #newline = text.find("\n")
+            #newtext = text[newline+1:].strip()
+            #return render_template('actionapi.html', user_image=image_file, data=newtext, errors=0, avatar=almond_avatar)
 
     if not ('page' in request.args):
         logger.info("Checking session page")
@@ -1887,7 +2439,8 @@ def index():
                 is_container = False
             env_status = get_sys_info()
             logger.info("Rendering template admin.html")
-            current_user_roles = ','.join(session.get('user', {}).get('roles', []))
+            #current_user_roles = ','.join(session.get('user', {}).get('roles', []))
+            current_user_roles = get_session_user_roles()
             return render_template('admin.html', version=current_version, sys_info = env_status, logo_image=image_file, username=username, password=password, roles=current_user_roles, avatar=almond_avatar, logo=logo_img, almond_state=almond_state, howru_state=howru_state, status=info)
             #return render_template('status_admin.html', version=current_version, user_image=image_file, server=hostname, monitoring=monitoring, avatar=almond_avatar, info=info)
         else:
@@ -1989,7 +2542,6 @@ def index():
         logger.info("Rendering template howruconf_a.html")
         return render_template('howruconf_a.html', item_names=item_names, item_values=item_values, add_names=add_names, add_values=add_values, conf = api_conf, aconf=available_conf, user_image=image_file, avatar=almond_avatar, info=info)
     elif page == 'status':
-        set_graph_names()
         this_data = load_status_data()
         image_name = '/static/almond_small.png'
         hostname = this_data['host']['name']
@@ -2077,7 +2629,8 @@ def index():
         token = usertoken
         usertoken = "None"
 
-        provider = session.get('user', {}).get('provider', 'local')
+        #provider = session.get('user', {}).get('provider', 'local')
+        provider = get_session_user().get('provider', 'local')
         user_roles = get_user_roles()
         load_executable_roles()
         can_execute_action = user_has_executable_role(user_roles)
@@ -2135,77 +2688,80 @@ def index():
             info = ""
         logger.info("Rendering template metrics_a.html")
         return render_template('metrics_a.html', user_image=image_file, avatar=almond_avatar, metrics_list=metrics_list, info=info)
-    elif page == 'graph':
-        logger.info("Rendering new graph")
-        key_list = []
-        key_vals = []
-        graph_name = request.args.get("name")
-        plot_dates, plot_data, uptime = get_graph_data(graph_name)
-        for data in plot_data:
-            for key, value in data.items():
-                key_list.append(key)
-                key_vals.append(float(value))
-        while (len(key_vals) > 40):
-            div_num = len(key_vals) / 40;
-            if (div_num <= 2):
-                del key_vals[::2]
-                del plot_dates[::2]
-            else:
-                #aggregate on div_num
-                key_len = len(key_vals) -1
-                agg_keys = []
-                agg_dates = []
-                while (key_len > 0):
-                    x = key_len - int(div_num)
-                    agg_part = key_vals[x:key_len]
-                    date_part = plot_dates[x:key_len]
-                    date_middle_index = int((len(date_part) -1)/2)
-                    if (date_middle_index > 0):
-                        strip_date = date_part[date_middle_index][4:]
-                        strip_date = strip_date[:len(strip_date)-8]
-                        agg_dates.append(strip_date)
-                        agg_sum = sum(agg_part) / len(agg_part)
-                        agg_keys.append(round(agg_sum, 3))
-                    key_len = x
-                agg_keys.reverse()
-                agg_dates.reverse()
-                key_vals = agg_keys
-                plot_dates = agg_dates
-        cur_dir = os.getcwd()
-        if not cur_dir == '/opt/almond/www/api':
-            os.chdir('/opt/almond/www/api')
-        while graph_written < 2:
-            plt.plot(plot_dates, key_vals, color="white")
-            plt.rcParams['axes.facecolor'] = '#491c0f'
-            plt.gcf().autofmt_xdate()
-            plt.title(graph_name)
-            plt.xlabel('Timestamp')
-            plt.ylabel(key_list[0])
-            plt.xticks(fontsize=6, rotation=90, ha='right')
-            graph_file_name = graph_name
-            graph_file_name.replace(" ", "")
-            graph_file_name.replace("/", "_")
-            save_name = 'static/charts/' + graph_file_name + '.png'
-            save_name = 'static/charts/graph.png'
-            plt.savefig(save_name)
-            plt.clf()
-            graph_written += 1
-        save_name = '/' + save_name
-        cur_dir = os.getcwd()
-        if not (os.getcwd() == cur_dir):
-            os.chdir(cur_dir)
-        graph_written = 1
-        logger.info("Rendering graph.html")
-        return render_template("graph.html", user_image = image_file, name="Trend chart", url=save_name, uptime=str(uptime))
+    #elif page == 'graph':
+    #    logger.info("Rendering new graph")
+    #    key_list = []
+    #    key_vals = []
+    #    graph_name = request.args.get("name")
+    #    plot_dates, plot_data, uptime = get_graph_data(graph_name)
+    #    for data in plot_data:
+    #        for key, value in data.items():
+    #            key_list.append(key)
+    #            key_vals.append(float(value))
+    #    while (len(key_vals) > 40):
+    #        div_num = len(key_vals) / 40;
+    #        if (div_num <= 2):
+    #            del key_vals[::2]
+    #            del plot_dates[::2]
+    #        else:
+    #            #aggregate on div_num
+    #            key_len = len(key_vals) -1
+    #            agg_keys = []
+    #            agg_dates = []
+    #            while (key_len > 0):
+    #                x = key_len - int(div_num)
+    #                agg_part = key_vals[x:key_len]
+    #                date_part = plot_dates[x:key_len]
+    #                date_middle_index = int((len(date_part) -1)/2)
+    #                if (date_middle_index > 0):
+    #                    strip_date = date_part[date_middle_index][4:]
+    #                    strip_date = strip_date[:len(strip_date)-8]
+    #                    agg_dates.append(strip_date)
+    #                    agg_sum = sum(agg_part) / len(agg_part)
+    #                    agg_keys.append(round(agg_sum, 3))
+    #                key_len = x
+    #            agg_keys.reverse()
+    #            agg_dates.reverse()
+    #            key_vals = agg_keys
+    #            plot_dates = agg_dates
+    #    cur_dir = os.getcwd()
+    #    if not cur_dir == '/opt/almond/www/api':
+    #        os.chdir('/opt/almond/www/api')
+    #    #while graph_written < 2:
+    #        #plt.plot(plot_dates, key_vals, color="white")
+    #        #plt.rcParams['axes.facecolor'] = '#491c0f'
+    #        #plt.gcf().autofmt_xdate()
+    #        #plt.title(graph_name)
+    #        #plt.xlabel('Timestamp')
+    #        #plt.ylabel(key_list[0])
+    #        #plt.xticks(fontsize=6, rotation=90, ha='right')
+    #        #graph_file_name = graph_name
+    #        #graph_file_name.replace(" ", "")
+    #        #graph_file_name.replace("/", "_")
+    #        #save_name = 'static/charts/' + graph_file_name + '.png'
+    #        #save_name = 'static/charts/graph.png'
+    #        #plt.savefig(save_name)
+    #        #plt.clf()
+    #        #graph_written += 1
+    #    save_name = '/' + save_name
+    #    cur_dir = os.getcwd()
+    #    if not (os.getcwd() == cur_dir):
+    #        os.chdir(cur_dir)
+    #    #graph_written = 1
+    #    logger.info("Rendering graph.html")
+    #    return render_template("graph.html", user_image = image_file, name="Trend chart", url=save_name, uptime=str(uptime))
     elif page == 'logout':
         #print ("ALMOND LOGOUT ROUTE")
         almond_img = '/static/almond.png'
         a_auth_type = current_app.config['AUTH_TYPE']
-        user = session.get('user')
-        if isinstance(user, dict):
-            username = user.get('username', 'unknown')
-        else:
-            username = user or 'unknown'
+        #user = session.get('user')
+        user = get_session_user()
+        username = user.get('username', 'unknown')
+        provider = user.get('provider', 'local')
+        #if isinstance(user, dict):
+        #    username = user.get('username', 'unknown')
+        #else:
+        #    username = user or 'unknown'
         logger.info(f"User {username} logged out.")
         if user.get("provider") != "local":
             from .howru import logout as main_logout

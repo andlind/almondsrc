@@ -2,7 +2,7 @@
 #define _XOPEN_SOURCE 700
 #define _DEFAULT_SOURCE
 #ifndef VERSION
-#define VERSION "26.2.1"
+#define VERSION "26.3.0"
 #endif
 #include "config.h"
 #include <stdio.h>
@@ -176,6 +176,7 @@ bool quick_start = false;
 bool local_api = false;
 bool use_push = false;
 bool use_metrics_push = false;
+bool use_file_push = false;
 bool external_scheduler = false;
 bool useKafkaConfigFile = false;
 bool use_ssl = false;
@@ -270,6 +271,13 @@ struct json_object *plugin_labels = NULL;
 volatile sig_atomic_t is_stopping = 0;
 volatile sig_atomic_t shutdown_reason = SR_NORMAL;
 static volatile sig_atomic_t already_exiting = 0;
+/* A shutdown request during startup must not tear down partially initialized state. */
+static volatile sig_atomic_t shutdown_requested = 0;
+static volatile sig_atomic_t initialization_complete = 0;
+/* SIGINT/SIGTERM are handled synchronously by a dedicated sigwait thread.
+ * Both signals are blocked before init_system creates any worker threads. */
+static pthread_t shutdown_signal_waiter;
+static volatile sig_atomic_t shutdown_signal_waiter_received = 0;
 //pthread_mutex_t file_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pid_t plugin_pid_set[MAX_PLUGINS];
 static pthread_mutex_t plugin_set_mtx = PTHREAD_MUTEX_INITIALIZER;
@@ -372,6 +380,7 @@ ConfigEntry config_entries[] = {
     {"almond.tryToHeal", process_almond_heal},
     {"almond.useMetricsPush", process_metrics_push},
     {"almond.usePush", process_almond_push},
+    {"almond.useFilePush", process_file_push},
     {"almond.useSSL", process_almond_api_tls},
     {"collector.getPluginMetrics", process_collector_metrics},
     {"collector.getPluginMetadata", process_collector_metadata},
@@ -518,6 +527,60 @@ char *load_file_to_string(const char *path) {
 
     	fclose(f);
     	return buf;
+}
+
+int create_tar_archive(const char *tar_path,
+                       const char *storeDir,
+                       const char *metricsFileName)
+{
+        pid_t pid = fork();
+
+        if (pid < 0) {
+                perror("fork failed");
+                return -1;
+        }
+
+        if (pid == 0) {
+                char *const args[] = {
+                        "tar",
+                        "-czf",
+                        (char *)tar_path,
+                        "-C",
+                        (char *)storeDir,
+                        "--exclude",
+                        (char *)metricsFileName,
+                        ".",
+                        NULL
+                };
+
+                execvp("tar", args);
+
+                perror("execvp tar failed");
+                _exit(127);
+        }
+
+        int status;
+
+        while (waitpid(pid, &status, 0) == -1) {
+                if (errno == EINTR)
+                        continue;
+
+                perror("waitpid failed");
+                return -1;
+        }
+
+        if (WIFEXITED(status) && WEXITSTATUS(status) == 0)
+                return 0;
+
+        if (WIFEXITED(status)) {
+                fprintf(stderr, "tar failed with exit code %d\n",
+                        WEXITSTATUS(status));
+        } else if (WIFSIGNALED(status)) {
+                fprintf(stderr, "tar terminated by signal %d\n",
+                        WTERMSIG(status));
+        }
+
+        return -1;
 }
 
 int check_plugin_exists(const char *pluginDir, const char *pluginCommand) {
@@ -1425,6 +1488,115 @@ int post_metrics_file_stream(const char *url, const char *filepath) {
         curl_easy_cleanup(c);
         curl_global_cleanup();
         fclose(f);
+        return rc;
+}
+
+
+int post_file_stream(const char *url, const char *filepath) {
+        CURL *c = NULL;
+        struct curl_slist *hdrs = NULL;
+        FILE *f = NULL;
+        struct stat st;
+        struct resp_buf rb = { .data = NULL, .len = 0 };
+        int rc = -1;
+	char hostname_header[hostname_size + sizeof("X-Hostname: ")];
+
+	snprintf(hostname_header, sizeof(hostname_header), "X-Hostname: %s", hostName);
+        f = fopen(filepath, "rb");
+        if (!f) {
+                snprintf(infostr, infostr_size,
+                         "[push_file] Cannot open file '%s'.", filepath);
+                writeLog(infostr, 1, 0);
+                fprintf(stderr, "ERROR: cannot open file '%s'\n", filepath);
+                return -1;
+        }
+
+        if (fstat(fileno(f), &st) != 0 || !S_ISREG(st.st_mode)) {
+                snprintf(infostr, infostr_size,
+                         "[push_file] Invalid file or fstat failed for '%s'.",
+                         filepath);
+                writeLog(infostr, 1, 0);
+                fclose(f);
+                return -1;
+        }
+
+        if (curl_global_init(CURL_GLOBAL_DEFAULT) != CURLE_OK) {
+                fclose(f);
+                return -1;
+        }
+
+        c = curl_easy_init();
+        if (!c) {
+                curl_global_cleanup();
+                fclose(f);
+                return -1;
+        }
+
+        hdrs = curl_slist_append(NULL, "Content-Type: application/gzip");
+	if (!hdrs)
+		goto cleanup;
+	struct curl_slist *new_hdrs = curl_slist_append(hdrs, hostname_header);
+	if (!new_hdrs)
+		goto cleanup;
+	
+	hdrs = new_hdrs;
+
+        if (!hdrs) {
+                writeLog("[push_file] Failed to create HTTP headers.", 1, 0);
+                goto cleanup;
+        }
+
+        curl_easy_setopt(c, CURLOPT_HTTPHEADER, hdrs);
+        curl_easy_setopt(c, CURLOPT_URL, url);
+        curl_easy_setopt(c, CURLOPT_POST, 1L);
+
+        /* Stream file directly from disk */
+        curl_easy_setopt(c, CURLOPT_READFUNCTION, file_read_cb);
+        curl_easy_setopt(c, CURLOPT_READDATA, f);
+        curl_easy_setopt(c, CURLOPT_POSTFIELDSIZE_LARGE,
+                         (curl_off_t)st.st_size);
+
+        /* Capture HTTP response */
+        curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, write_cb);
+        curl_easy_setopt(c, CURLOPT_WRITEDATA, &rb);
+
+        /* Debug and timeout */
+        curl_easy_setopt(c, CURLOPT_VERBOSE, 1L);
+        curl_easy_setopt(c, CURLOPT_CONNECTTIMEOUT, 10L);
+        curl_easy_setopt(c, CURLOPT_TIMEOUT, 300L);
+
+        CURLcode res = curl_easy_perform(c);
+
+        if (res != CURLE_OK) {
+                snprintf(infostr, infostr_size,
+                         "[push_file] curl_easy_perform failed: %s.",
+                         curl_easy_strerror(res));
+                writeLog(infostr, 1, 0);
+                fprintf(stderr, "curl_easy_perform failed: %s\n",
+                        curl_easy_strerror(res));
+        } else {
+                long http_code = 0;
+                curl_easy_getinfo(c, CURLINFO_RESPONSE_CODE, &http_code);
+
+                snprintf(infostr, infostr_size,
+                         "[push_file] HTTP status: '%ld'.", http_code);
+                writeLog(infostr, 1, 0);
+
+                fprintf(stderr, "HTTP status: %ld\n", http_code);
+
+                if (rb.len && rb.data)
+                        fprintf(stderr, "Response body: %s\n", rb.data);
+
+                rc = (http_code >= 200 && http_code < 300) ? 0 : -1;
+        }
+
+cleanup:
+        free(rb.data);
+        curl_slist_free_all(hdrs);
+        curl_easy_cleanup(c);
+        curl_global_cleanup();
+        fclose(f);
+
         return rc;
 }
 
@@ -2441,6 +2613,7 @@ int getConstants() {
 			writeLog(trim(infostr), 1, 1);
 		}
 	}
+        fclose(file);
         return 0;
 }
 
@@ -2549,7 +2722,7 @@ void startApiSocket() {
 		return;
         }
 	pthread_detach(thread_id);
-	pthread_setspecific(thread_id, "API Connection Listener");
+
 	printf("New thread accepting socket created.\n");
         snprintf(infostr, infostr_size, "Created new thread (%lu) listening for connections on port %d \n", thread_id, local_port);
         writeLog(trim(infostr), 0, 0);
@@ -2687,9 +2860,11 @@ int toggleQuickStart(int on) {
 void send_socket_message(int socket, SSL* ssl,  int id, int aflags) {
         //char header[100] = "HTTP/1.1 200 OK\nContent-Type:application/txt\nContent-Length: ";
 	const char *fmt = 
-		"HTTP/1.1 200 OK\n"
-  		"Content-Type:application/txt\n"
-  		"Content-Length: %zu\n\n";
+		"HTTP/1.1 200 OK\r\n"
+  		"Content-Type:application/json\r\n"
+  		"Content-Length: %zu\r\n"
+		"Connection: close\r\n"
+		"\r\n";
 	char * send_message = NULL;
 	size_t content_length = 0;
 	size_t total = 0;
@@ -3319,12 +3494,12 @@ void parseClientMessage(char str[], int arr[], bool jwt_valid) {
                 else {
 			id = atoi(sid);
 		}
-		if (id < 0) {
+		if (id < 0 || id > g_plugin_count) {
 			api_action = API_ERROR;
 		}
 		else {
 			if ((strcmp(trim(sval), "true") == 0) || (strcmp(trim(sval), "false") == 0)) {
-				setMaintenanceStatus(id, trim(sval));
+				setMaintenanceStatus(id - 1, trim(sval));
         			api_action = API_SET_MAINTENANCE_STATUS;
 			}
 			else {
@@ -3970,8 +4145,12 @@ int createSocket(int server_fd) {
 }
 
 void closeSocket() {
-        writeLog("Closing socket.", 0, 0);
-        shutdown(server_fd, SHUT_RDWR);
+        if (server_fd >= 0) {
+                writeLog("Closing socket.", 0, 0);
+                /* Do not close the descriptor here; the API listener
+                 * owns its close after accept() is interrupted. */
+                shutdown(server_fd, SHUT_RDWR);
+        }
 }
 
 void closejsonfile() {
@@ -4197,8 +4376,6 @@ void sig_exit_app() {
 		sleep(1);
 	}
 	writeLog("Almond says goodbye.", 0, 0);
-	shutdown_phase = 2;
-	closeLog();
         closejsonfile();
         //int try_count = 0;
         /*while (thread_counter > 0) {
@@ -4209,9 +4386,33 @@ void sig_exit_app() {
                 try_count++;
                 if (try_count >= max_try) break;
         }*/
-	for (int i = 0; i < thread_counter; ++i) {
-        	pthread_join(threadIds[i], NULL);
-    	}
+	/* Worker threads are detached; threadIds contains 0/1 status flags,
+	 * NOT pthread_t handles. Joining these values was invalid. Give
+	 * outstanding workers time to finish before freeing their state. */
+	unsigned int active_workers = 0;
+	for (int attempt = 0; attempt < 100; ++attempt) {
+		/* A worker may hold mtx while running a plugin. Never block
+		 * indefinitely while waiting for that mutex on shutdown. */
+		if (pthread_mutex_trylock(&mtx) == 0) {
+			active_workers = thread_counter;
+			pthread_mutex_unlock(&mtx);
+		} else {
+			active_workers = 1;
+		}
+		if (active_workers == 0)
+			break;
+		usleep(100000);
+	}
+	if (active_workers != 0) {
+		fprintf(stderr, "Shutdown: %u worker(s) still running; avoiding unsafe cleanup.\n",
+			active_workers);
+		/* Ending the process is safer than freeing data still used by
+		 * detached workers; the OS reclaims the remaining allocations. */
+		_Exit(EXIT_FAILURE);
+	}
+	/* Do not close the log while counted workers can still write to it. */
+	shutdown_phase = 2;
+	closeLog();
         free_structures(decCount);
 	if (scheduler) {
 		free(scheduler);
@@ -4222,6 +4423,12 @@ void sig_exit_app() {
 	}	
         free_kafka_vars();
 	free_iam_roles();
+	if (plugin_labels) {
+		json_object_put(plugin_labels);
+		plugin_labels = NULL;
+	}
+	free(iam_public_key);
+	iam_public_key = NULL;
         free_constants();
         //free(threadIds);
         freemem();
@@ -4256,12 +4463,17 @@ void install_signals(void) {
 }
 
 void sig_handler(int sig){
-	if (already_exiting) return;
-	is_stopping = 1;
-	already_exiting = 1;
+	/* This is normally invoked by the synchronous signal-waiter thread,
+	 * not asynchronously by the kernel. Keep it free of I/O nonetheless. */
+	if (__atomic_exchange_n(&already_exiting, 1, __ATOMIC_ACQ_REL))
+		return;
 	shutdown_reason = (sig == SIGINT ? SR_SIGINT
         	: sig == SIGTERM ? SR_SIGTERM
                 : SR_NORMAL);
+	__atomic_store_n(&shutdown_requested, 1, __ATOMIC_RELEASE);
+	/* Initialization must complete even when a signal arrives early. */
+	if (__atomic_load_n(&initialization_complete, __ATOMIC_ACQUIRE))
+		is_stopping = 1;
     	/*switch (sigl) {
         	case SIGINT:
 			shutdown_reason = SR_SIGINT;
@@ -4276,11 +4488,38 @@ void sig_handler(int sig){
 			shutdown_reason = SR_SIGSTOP;
 			break;
     	}*/
-	if (server_fd >= 0) {
-		shutdown(server_fd, SHUT_RDWR);
-       		close(server_fd);
-        	server_fd = -1;
+	/* Only signal-safe state changes here. Closing the shared socket from
+	 * a signal handler can race with the API listener or shutdown. */
+}
+
+/* This thread starts before init_system(), after SIGINT/SIGTERM have been
+ * blocked in main. All subsequently created threads inherit that mask.
+ * sigwait() consumes the terminal signal without interrupting initialization. */
+static void *wait_for_shutdown_signal(void *unused) {
+	(void)unused;
+	sigset_t signals;
+	sigemptyset(&signals);
+	sigaddset(&signals, SIGINT);
+	sigaddset(&signals, SIGTERM);
+	int received = 0;
+	int rc = sigwait(&signals, &received);
+	if (rc != 0) {
+		fprintf(stderr, "Almond: sigwait failed: %s\n", strerror(rc));
+		return NULL;
 	}
+
+	/* Remember whether this signal arrived before initialization completed.
+	 * This also lets main join the waiter before freeing process state. */
+	int during_initialization =
+		!__atomic_load_n(&initialization_complete, __ATOMIC_ACQUIRE);
+	__atomic_store_n(&shutdown_signal_waiter_received, 1, __ATOMIC_RELEASE);
+	sig_handler(received);
+	if (during_initialization) {
+		static const char notice[] =
+			"\nSignal caught. Waiting for initialization to finish before shutting down.\n";
+		(void)write(STDERR_FILENO, notice, sizeof(notice) - 1);
+	}
+	return NULL;
 }
 
 int fileExists(const char *checkFile) {
@@ -5133,14 +5372,17 @@ int truncateLogs() {
 	strncat(compressed_name, getCurrentTimestamp(), 20);
 	strncat(compressed_name, ".tar.gz", 8);
 	if (compress_log(logfile, compressed_name) == -1) {
+		free(compressed_name);
 		return -1;
 	}
 	if (truncate(logfile, 0) == -1) {
 		fprintf(stderr, "Failed to truncate log: %s\n", strerror(errno));
 		writeLog("Truncation of log file failed.", 1, 1); 
 		unlink(compressed_name);
+		free(compressed_name);
 		return -1;
 	}
+	free(compressed_name);
 	return 0;
 }
 
@@ -5904,6 +6146,7 @@ void collectJsonData(int decLen){
 	}
     }
     json_object_object_add(root, "host", host_obj);
+    json_object_object_add(root, "monitoring", monitoring_array);
 
     // Monitoring array
     for (int i = 0; i < decLen; i++) {
@@ -5913,7 +6156,8 @@ void collectJsonData(int decLen){
         if (pluginName == NULL) {
             fprintf(stderr, "Memory allocation failed.\n");
             writeLog("Failed to allocate memory [collectJsonData:pluginName]", 2, 0);
-            // Cleanup
+            // Cleanup: plugin_obj not attached yet; monitoring_array belongs to root.
+            json_object_put(plugin_obj);
             json_object_put(root); // This frees all nested objects
             fclose(tf);
             unlink(tmpname);
@@ -5963,8 +6207,6 @@ void collectJsonData(int decLen){
 	}
         json_object_array_add(monitoring_array, plugin_obj);
     }
-
-    json_object_object_add(root, "monitoring", monitoring_array);
 
     // Write JSON to temp file
     bool json_ok = true;
@@ -6026,6 +6268,7 @@ void collectMetrics(int decLen, int style) {
 	if (mf == NULL) {
 		writeLog("Failed to open metrics file", 1, 0);
 		fprintf(stderr, "Failed to open metrics file\n");
+		pthread_mutex_unlock(&update_mtx);
 		return;
 	}
         snprintf(infostr, infostr_size, "Collecting metrics to file: %s", storeName);
@@ -6067,15 +6310,13 @@ void collectMetrics(int decLen, int style) {
 			int len = pluginoutput_size;
 			size_t srcSize = strlen(g_plugins[i]->output.retString) - position;
 			int sublen = (srcSize < len) ? srcSize : len;
-			char * metrics = malloc((size_t)sizeof(char) * sublen);
-			memset(metrics, 0, sizeof(char) * sublen);
-			if (sublen <= srcSize) {
-        			//memcpy(metrics,&outputs[i].retString[position+1],sublen);
-				memcpy(metrics, &g_plugins[i]->output.retString[position+1],sublen);
-			}
-			else {
-				writeLog("Invalid memcpy operation: size exceeds buffer limit.", 1, 0);
-				fprintf(stderr, "Size exceeds buffer [memcpy].\n");
+			char *metrics = strndup(e + 1, (size_t)sublen);
+			if (!metrics) {
+				writeLog("Failed to allocate metrics string.", 2, 0);
+				free(pluginName);
+				fclose(mf);
+				pthread_mutex_unlock(&update_mtx);
+				return;
 			}
 			if (style == 0)
 				fprintf(mf, "%s_%s{hostname=\"%s\", %s_result=\"%s\"} %d\n", trim(metricsOutputPrefix), pluginName, hostName, pluginName, trim(g_plugins[i]->output.retString), g_plugins[i]->output.retCode);
@@ -6185,9 +6426,9 @@ void collectMetrics(int decLen, int style) {
 				}
 				free(serviceName);
 				serviceName = NULL;
-				free(metrics);
-				metrics = NULL;
 			}
+			free(metrics);
+			metrics = NULL;
 		}
         	free(pluginName);
 		pluginName = NULL;
@@ -6296,16 +6537,13 @@ void writeToKafkaTopic(int storeIndex, int update) {
 	if (len >= dest_size) {
 		writeLog("Possible truncation of timestamp in function 'writeToKafkaTopic'.", 1, 0);
 	}
-	pluginName = malloc((size_t)pluginitemname_size+1 * sizeof(char));
-        if (pluginName == NULL) {
-        	fprintf(stderr, "Memory allocation failed.\n");
-        	writeLog("Failed to allocate memory [runPlugin:enableKafkaExport:pluginName]", 2, 0);
-        	return;
+	pluginName = strdup(update == 0 ? g_plugins[storeIndex]->name
+	                                : update_g_plugins[storeIndex].name);
+	if (!pluginName) {
+		json_object_put(j_data);
+		writeLog("Failed to allocate Kafka plugin name.", 2, 0);
+		return;
 	}
-       	if (update == 0)
-       		pluginName = strdup(g_plugins[storeIndex]->name);
-	else
-       		pluginName = strdup(update_g_plugins[storeIndex].name);
         removeChar(pluginName, '[');
         removeChar(pluginName, ']');
         switch(g_plugins[storeIndex]->output.retCode) {
@@ -6459,6 +6697,9 @@ void writeToKafkaTopic(int storeIndex, int update) {
                             .metrics = parse_perfdata(g_plugins[storeIndex]->output.retString)
                         };
 			send_avro_message_to_gkafka(kafka_brokers, kafka_topic, &msg);
+			/* Requires synchronous consumption of msg; verify in mod_avro.c. */
+			if (msg.metrics) json_object_put(msg.metrics);
+			free(kafka_id);
 		}
 		else {
 			send_message_to_gkafka(payload);
@@ -6498,6 +6739,9 @@ void writeToKafkaTopic(int storeIndex, int update) {
 			};
 			//send_avro_message_to_kafka(kafka_brokers, kafka_topic, hostName, kafka_id, kafka_tag, g_plugins[storeIndex]->lastChangeTimestamp, currTime, pluginName, g_plugins[storeIndex]->nextRunTimestamp, g_plugins[storeIndex]->description, g_plugins[storeIndex]->output.retString, pluginStatus, g_plugins[storeIndex]->statusChanged, g_plugins[storeIndex]->output.retCode);
 			send_avro_message_to_gkafka(kafka_brokers, kafka_topic, &msg);
+			/* Requires synchronous consumption of msg; verify in mod_avro.c. */
+			if (msg.metrics) json_object_put(msg.metrics);
+			free(kafka_id);
 		}
 	}
         else {
@@ -6510,6 +6754,7 @@ void writeToKafkaTopic(int storeIndex, int update) {
                 	char* kafka_id = malloc((size_t)length + 1);
                 	snprintf(kafka_id, (size_t)length+1, "%d", nKafkaId);
         		send_ssl_avro_message_to_kafka(kafka_brokers, kafkaCACertificate, kafkaProducerCertificate, kafkaSSLKey, kafka_topic, hostName, kafka_id, kafka_tag, g_plugins[storeIndex]->lastChangeTimestamp, currTime, pluginName, g_plugins[storeIndex]->nextRunTimestamp, g_plugins[storeIndex]->description, g_plugins[storeIndex]->output.retString, pluginStatus, g_plugins[storeIndex]->statusChanged, g_plugins[storeIndex]->output.retCode);
+			free(kafka_id);
 		}
 	}
 	free(pluginName);
@@ -7483,6 +7728,8 @@ int initTimeScheduler(bool reinit) {
 }
 
 void initScheduler(int numOfP, int msSleep, bool reinit) {
+	if (is_stopping)
+		return;
 	char currTime[TIME_BUF_LEN];
 	time_t nextTime;
 	float sleepTime = msSleep/1000;
@@ -7500,9 +7747,13 @@ void initScheduler(int numOfP, int msSleep, bool reinit) {
                         initTimeScheduler(true);
                 }
 	}
+	if (is_stopping)
+		return;
 	flushLog();
 	for (int i = 0; i < numOfP; i++)
 	{
+		if (is_stopping)
+			return;
 		if (g_plugins[i]->active == 1)
 		{
 			snprintf(infostr, infostr_size, "%s is active. Id %d\n", g_plugins[i]->name, g_plugins[i]->id);
@@ -7515,6 +7766,8 @@ void initScheduler(int numOfP, int msSleep, bool reinit) {
         		if (item) {
             			run_plugin(item);
         		}
+			if (is_stopping)
+				return;
 			//runPlugin(i, 0);
 			size_t dest_size = 20;
 			time_t t = time(NULL);
@@ -7559,6 +7812,8 @@ void initScheduler(int numOfP, int msSleep, bool reinit) {
 		}
 		flushLog();
 	}
+	if (is_stopping)
+		return;
 	if (!standalone) {
 		switch (output_type) {
 			case JSON_OUTPUT:
@@ -7584,6 +7839,8 @@ void initScheduler(int numOfP, int msSleep, bool reinit) {
 	}	
         tnextGardener = time(0) + gardenerInterval;	
 	tnextClearDataCache = time(0) + clearDataCacheInterval;
+	if (is_stopping)
+		return;
 	if (local_api && !reinit) {
 		if (use_ssl)
 			 SSL_library_init();
@@ -7663,12 +7920,14 @@ void runPluginThreads(int loopVal){
 		}
 		return;
 	}*/
+	if (is_stopping)
+		return;
 	if (timeScheduler) {
                 time_t t = time(NULL);
                 int currentId = -1;
                 time_t currentTimestamp = 0;
 
-                while (scheduler[0].timestamp <= t) {
+                while (!is_stopping && scheduler[0].timestamp <= t) {
                         struct Scheduler do_run = scheduler[0];
 
 					if (do_run.id < 0 || do_run.id >= decCount || !g_plugins[do_run.id]) {
@@ -7698,7 +7957,7 @@ void runPluginThreads(int loopVal){
                 return;
         }
 
-        for (i = 0; i < loopVal; i++) {
+        for (i = 0; i < loopVal && !is_stopping; i++) {
            long j = i;
 	   if (g_plugins[i]->active == 1) {
 		if (t > g_plugins[i]->nextRun)
@@ -7734,7 +7993,7 @@ void executeGardener() {
 		return;
         }
 	//pthread_setname_np(thread_id, "Gardener worker");
-	pthread_setspecific(thread_id, "Gardener worker");
+
 	snprintf(infostr, infostr_size, "Created new thread (%lu) truncating metrics logs (gardener) \n", thread_id);
         writeLog(trim(infostr), 0, 0);
 	pthread_mutex_lock(&mtx);
@@ -7753,7 +8012,7 @@ void clearDataCache() {
         }
         else {
 		//pthread_setname_np(thread_id, "DataClearCache");
-		pthread_setspecific(thread_id, "DataClearCache");
+
                 snprintf(infostr, infostr_size, "Created new thread (%lu) clearing old data files (clearDataCache) \n", thread_id);
                 writeLog(trim(infostr), 0, 0);
 		pthread_mutex_lock(&mtx);
@@ -7781,9 +8040,10 @@ void apiReloadConfigSoft() {
 
 void scheduleChecks(){
 	float sleepTime = schedulerSleep/1000;
-	int i = 1;
 	int repeate_write = 0;
 
+	if (is_stopping)
+		return;
 	logInfo("Almond started succesfully. Ready to schedule checks.", 0, 0);
 	if (timeScheduler) {
 		writeLog("Start time based scheduler...", 0, 0);
@@ -7794,9 +8054,8 @@ void scheduleChecks(){
 		writeLog(trim(infostr), 0, 0);
 	}
 	flushLog();
-	// Timer is an eternal loop :P
-	while (i > 0) {
-		if (is_stopping != 0) i--;
+	/* Do not begin another scheduler cycle after SIGINT/SIGTERM. */
+	while (!is_stopping) {
 		if (!timeScheduler)
 			writeLog("Check for command files.", 0, 0);
 		else {
@@ -7805,10 +8064,13 @@ void scheduleChecks(){
 				repeate_write++;
 			}
 		}
+		if (is_stopping) break;
 		checkApiCmds();
+		if (is_stopping) break;
 		if (!external_scheduler) {
 			runPluginThreads(decCount);
 		}
+		if (is_stopping) break;
 		if (!timeScheduler) {
 			snprintf(infostr, infostr_size, "Sleeping for %.3f seconds.\n", sleepTime);
                 	writeLog(trim(infostr), 0, 0);
@@ -7820,6 +8082,7 @@ void scheduleChecks(){
 			//writeLog("VERBOSE: Scheduler sorted. Sleeping for a second.", 0, 0);
 			sleep(1);
 		}
+		if (is_stopping) break;
 		if (!timeScheduler || tspr > 0) {
 			tspr = 0;
 			repeate_write = 0;
@@ -7873,7 +8136,7 @@ void scheduleChecks(){
 				sleep(5);
 			}
 		}
-		if (use_push || use_metrics_push) {
+		if (use_push || use_metrics_push || use_file_push) {
 			push_interval_cnt++;
 			int sleep_push_interval = push_interval;
 			if (!timeScheduler)
@@ -7925,6 +8188,43 @@ void scheduleChecks(){
 							writeLog("Failed to push metrics.", 2, 0);
 						}
 						flushLog(); 
+					}
+					if (use_file_push) {
+						snprintf(infostr, infostr_size, "Pushing store dir files to url '%s'.", url);
+    						writeLog(trim(infostr), 0, 0);
+
+    						char tar_path[filename_size];
+    						// Create archive path outside the storeDir to prevent recursion issues
+    						int written = snprintf(tar_path, filename_size, "%s/store_files.tar.gz", dataDir);
+    
+    						if (written < 0 || (size_t)written >= filename_size) {
+        						writeLog("Tar archive path is too long or invalid.", 2, 0);
+    						} else {
+        						//char cmd[filename_size * 2 + 128];
+
+        						// System call using GNU tar exclude flag
+        						// -C changes to storeDir so paths inside the archive remain relative
+        						//snprintf(cmd, sizeof(cmd),"tar -czf \"%s\" -C \"%s\" --exclude=\"%s\" .", tar_path, storeDir, metricsFileName);
+
+        						//int res = system(cmd);
+							int res = create_tar_archive(tar_path, storeDir, metricsFileName);
+        						if (res != 0) {
+            							writeLog("Failed to create tar archive for store dir.", 2, 0);
+        						} else {
+            							// Post the generated tar archive
+            							if (post_file_stream(url, tar_path) == 0) { // Adjust function name if needed
+                							writeLog("Store files archive pushed successfully.", 0, 0);
+            							} else {
+                							writeLog("Failed to push store files archive.", 2, 0);
+            							}
+
+            							// Clean up: delete the temporary archive file after push
+            							if (remove(tar_path) != 0) {
+                							writeLog("Failed to delete temporary tar file.", 1, 0);
+            							}
+        						}
+						}
+						flushLog();
 					}
 				}
 				push_interval_cnt = 0;
@@ -7995,7 +8295,7 @@ void initialLogging() {
         printf("Starting almond version %s.\n", VERSION);
         initConstants();
         writeLog("Almond constants initialized.", 0, 1);
-        writeLog("Starting almond (26.2.1)...", 0, 1);
+        writeLog("Starting almond (26.3.0)...", 0, 1);
 }
 
 int closeFileHandler() {
@@ -8279,7 +8579,8 @@ static int init_system(void) {
 		json_object_put(inventory_obj);
 		flushLog();
     	}
-        initScheduler(decCount, initSleep, false);
+        if (!is_stopping)
+                initScheduler(decCount, initSleep, false);
         return 0;
 }
 
@@ -8308,7 +8609,6 @@ static void shutdown_system(void) {
         	threadIds = NULL;
     	}
 
-    	flushLog();
 }
 
 int main(int argc, char* argv[]) {
@@ -8318,12 +8618,46 @@ int main(int argc, char* argv[]) {
 		#define HAS_BIRTHTIME 0
 	#endif
 
-        int rc = init_system();
+	/* Do this before init_system() starts Kafka, API or plugin threads.
+	 * sigwait() (in a dedicated thread) is the sole receiver of SIGINT/SIGTERM,
+	 * so even Ctrl+C during startup cannot interrupt initScheduler(). */
+	sigset_t termination_signals;
+	sigemptyset(&termination_signals);
+	sigaddset(&termination_signals, SIGINT);
+	sigaddset(&termination_signals, SIGTERM);
+	int signal_rc = pthread_sigmask(SIG_BLOCK, &termination_signals, NULL);
+	if (signal_rc != 0) {
+		fprintf(stderr, "Cannot block shutdown signals: %s\n", strerror(signal_rc));
+		return EXIT_FAILURE;
+	}
+	signal_rc = pthread_create(&shutdown_signal_waiter, NULL,
+				   wait_for_shutdown_signal, NULL);
+	if (signal_rc != 0) {
+		fprintf(stderr, "Cannot start shutdown signal waiter: %s\n", strerror(signal_rc));
+		return EXIT_FAILURE;
+	}
+
+	int rc = init_system();
 	if (rc != 0) {
+		/* Startup failed. Do not enter the normal shutdown path with
+		 * incompletely initialized resources. Process exit stops the waiter. */
 		return rc;
-    	}
-	
+	}
+
+	/* Flag publication and signal recording use atomic operations, closing
+	 * the handoff race if SIGINT arrives at exactly this point. */
+	__atomic_store_n(&initialization_complete, 1, __ATOMIC_RELEASE);
+	if (__atomic_load_n(&shutdown_requested, __ATOMIC_ACQUIRE)) {
+		write(STDERR_FILENO,
+		      "Initialization complete; processing pending shutdown.\n",
+		      sizeof("Initialization complete; processing pending shutdown.\n") - 1);
+		is_stopping = 1;
+	}
 	run_check_loop();
+	/* If the waiter consumed a signal, it has no further work and must
+	 * finish before shutdown frees shared state. */
+	if (__atomic_load_n(&shutdown_signal_waiter_received, __ATOMIC_ACQUIRE))
+		pthread_join(shutdown_signal_waiter, NULL);
 	shutdown_system();
 
    	return 0;

@@ -631,12 +631,14 @@ static double round2(double x) {
 
 struct json_object* parse_perfdata(const char *plugin_output)
 {
+    if (!plugin_output) return NULL;
     const char *sep = strchr(plugin_output, '|');
     if (!sep) return NULL;
 
     sep++; // move past '|'
 
     char *data = strdup(sep);
+    if (!data) return NULL;
 
     // Replace commas with spaces
     for (char *p = data; *p; p++) {
@@ -644,13 +646,19 @@ struct json_object* parse_perfdata(const char *plugin_output)
     }
 
     struct json_object *metrics = json_object_new_object();
+    if (!metrics) {
+        free(data);
+        return NULL;
+    }
 
-    char *token = strtok(data, " ");
+    /* Reentrant: used from plugin execution threads. */
+    char *saveptr = NULL;
+    char *token = strtok_r(data, " ", &saveptr);
     while (token) {
 
         char *eq = strchr(token, '=');
         if (!eq) {
-            token = strtok(NULL, " ");
+            token = strtok_r(NULL, " ", &saveptr);
             continue;
         }
 
@@ -698,6 +706,11 @@ struct json_object* parse_perfdata(const char *plugin_output)
 
         // Build metric object
         struct json_object *obj = json_object_new_object();
+        if (!obj) {
+            json_object_put(metrics);
+            free(data);
+            return NULL;
+        }
 
         char buf[32];
 	snprintf(buf, sizeof(buf), "%.2f", round2(atof(value)));
@@ -729,7 +742,7 @@ struct json_object* parse_perfdata(const char *plugin_output)
 
         json_object_object_add(metrics, name, obj);
 
-        token = strtok(NULL, " ");
+        token = strtok_r(NULL, " ", &saveptr);
     }
 
     free(data);

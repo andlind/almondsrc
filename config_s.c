@@ -32,26 +32,30 @@ void process_almond_api(ConfVal value) {
 }
 
 void process_almond_certificate(ConfVal value) {
-	almondCertificate = malloc((size_t)strlen(value.strval)+1);
-	if (almondCertificate == NULL) {
+	char *new_almondCertificate = malloc((size_t)strlen(value.strval)+1);
+	if (new_almondCertificate == NULL) {
 		fprintf(stderr, "Failed to allocate memory [almondCertificate].\n");
 		writeLog("Failed to allocate memory [almondCertificate]", 2, 1);
 		config_memalloc_fails++;
 		return;
 	}
+	free(almondCertificate);
+	almondCertificate = new_almondCertificate;
 	strncpy(almondCertificate, value.strval, strlen(value.strval));
 	almondCertificate[strlen(value.strval)] = '\0';
 	writeLog("Almond certificate provided if TLS for API is enabled.", 0, 1);
 }
 
 void process_almond_key(ConfVal value) {
-	almondKey = malloc((size_t)strlen(value.strval)+1);
-	if (almondKey == NULL) {
+	char *new_almondKey = malloc((size_t)strlen(value.strval)+1);
+	if (new_almondKey == NULL) {
 		fprintf(stderr, "Failed to allocate memory [almondSSLKey].\n");
 		writeLog("Failed to allocate memory [almondSSLKey]", 2, 1);
 		config_memalloc_fails++;
 		return;
 	}
+	free(almondKey);
+	almondKey = new_almondKey;
 	strncpy(almondKey, value.strval, strlen(value.strval));
 	almondKey[strlen(value.strval)] = '\0';
 	writeLog("Almond certificate key provided to be used by API to run with  SSL encryption.", 0, 1);
@@ -125,18 +129,27 @@ void process_metrics_push(ConfVal value) {
         }
 }
 
+void process_file_push(ConfVal value) {
+        if ((strcmp(value.strval, "true") == 0) || (value.intval >= 1)) {
+                writeLog("Almond file push enabled.", 0, 1);
+                use_file_push = true;
+        }
+}
+
 void process_push_url(ConfVal value) {
         size_t this_len = strlen(value.strval) + 1;
-        push_url = malloc(this_len);
-        if (push_url == NULL) {
+        char *new_push_url = malloc(this_len);
+        if (new_push_url == NULL) {
                 fprintf(stderr, "Failed to allocate memory for push url.\n");
                 writeLog("Failed to allocate memory [push_url]", 2, 1);
                 if (use_push)
                         use_push = false;
                 return;
         }
-        else
-                memset(push_url, '\0', (size_t)(strlen(value.strval)+1) * sizeof(char));
+
+	free(push_url);
+	push_url = new_push_url;
+        memset(push_url, '\0', (size_t)(strlen(value.strval)+1) * sizeof(char));
         snprintf(push_url, this_len, "%s", value.strval);
         snprintf(infostr, infostr_size, "Almond push url is set to '%s'", push_url);
         writeLog(trim(infostr), 0, 1);

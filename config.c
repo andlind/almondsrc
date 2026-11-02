@@ -33,28 +33,36 @@ void process_almond_api(ConfVal value) {
 }
 
 void process_almond_certificate(ConfVal value) {
-	almondCertificate = malloc((size_t)strlen(value.strval)+1);
-	if (almondCertificate == NULL) {
+	size_t len = strlen(value.strval);
+	char *new_almondCertificate = malloc(len+1);
+	if (new_almondCertificate == NULL) {
 		fprintf(stderr, "Failed to allocate memory [almondCertificate].\n");
 		writeLog("Failed to allocate memory [almondCertificate]", 2, 1);
 		config_memalloc_fails++;
 		return;
 	}
-	strncpy(almondCertificate, value.strval, strlen(value.strval));
-	almondCertificate[strlen(value.strval)] = '\0';
+	memcpy(new_almondCertificate, value.strval, len+1);
+	free(almondCertificate);
+	almondCertificate = new_almondCertificate;
+	//strncpy(almondCertificate, value.strval, strlen(value.strval));
+	//almondCertificate[strlen(value.strval)] = '\0';
 	writeLog("Almond certificate provided if TLS for API is enabled.", 0, 1);
 }
 
 void process_almond_key(ConfVal value) {
-	almondKey = malloc((size_t)strlen(value.strval)+1);
-	if (almondKey == NULL) {
+	size_t len = strlen(value.strval);
+	char *new_almondKey = malloc(len+1);
+	if (new_almondKey == NULL) {
 		fprintf(stderr, "Failed to allocate memory [almondSSLKey].\n");
 		writeLog("Failed to allocate memory [almondSSLKey]", 2, 1);
 		config_memalloc_fails++;
 		return;
 	}
-	strncpy(almondKey, value.strval, strlen(value.strval));
-	almondKey[strlen(value.strval)] = '\0';
+	memcpy(new_almondKey, value.strval, len+1);
+	free(almondKey);
+	almondKey = new_almondKey;
+	//strncpy(almondKey, value.strval, strlen(value.strval));
+	//almondKey[strlen(value.strval)] = '\0';
 	writeLog("Almond certificate key provided to be used by API to run with  SSL encryption.", 0, 1);
 }
 
@@ -166,59 +174,61 @@ void process_iam_aud(ConfVal value) {
 		return;
 	}
 	size_t len = strlen(value.strval);
-        iam_aud = malloc(len +1);
-        if (iam_aud == NULL) {
+        char *new_iam_aud = malloc(len +1);
+        if (new_iam_aud == NULL) {
                 fprintf(stderr, "Failed to allocate memory [iamAud].\n");
                 writeLog("Failed to allocate memory [iamAud]", 2, 1);
                 config_memalloc_fails++;
                 return;
         }
+	free(iam_aud);
+	iam_aud = new_iam_aud;
         strcpy(iam_aud, value.strval);
         snprintf(infostr, infostr_size, "IAM aud set to: %s", iam_aud);
         writeLog(trim(infostr), 0, 1);
 }
 
 void process_iam_roles_accepted(ConfVal value) {
-	if (!value.strval) {
-		writeLog("IAM accepted roles is set to NULL.", 1, 1);
-		return;
-	}
-	char *copy = strdup(value.strval);
-	if (!copy) {
-		writeLog("Failed to allocate memory for IAM roles copy", 2, 1);
-		return;
-	}
-	int count = 1;
-	for (char *p = copy; *p; p++) {
-		if (*p == ',') count++;
-	}
-	iam_roles_accepted = malloc(sizeof(char*) * count);
-	if (!iam_roles_accepted) {
-		writeLog("Failed to allocate memory for IAM roles array", 2, 1);
-		free(copy);
-		return;
-	}
-	int idx = 0;
-	char *token = strtok(copy, ",");
-	while (token && idx < count) {
-		while(*token == ' ') token++;
-		iam_roles_accepted[idx] = strdup(token);
-		if (!iam_roles_accepted[idx]) {
-			writeLog("Failed to allocate memory for IAM role string.", 2, 1);
-			free(copy);
-			return;
-		}
-		idx++;
-		token = strtok(NULL, ",");
-	}
-	iam_roles_count = idx;
-	snprintf(infostr, infostr_size, "IAM accepted roles set (%d):", iam_roles_count);
-	writeLog(trim(infostr), 0, 1);
-	for (int i = 0; i < iam_roles_count; i++) {
-        	snprintf(infostr, infostr_size, "  - %s", iam_roles_accepted[i]);
-        	writeLog(trim(infostr), 0, 1);
-    	}
-	free(copy);
+    if (!value.strval) {
+        writeLog("IAM accepted roles is set to NULL.", 1, 1);
+        return;
+    }
+    char *copy = strdup(value.strval);
+    if (!copy) {
+        writeLog("Failed to allocate memory for IAM roles copy", 2, 1);
+        return;
+    }
+    size_t capacity = 1;
+    for (const char *p = copy; *p; ++p) if (*p == ',') capacity++;
+    char **roles = calloc(capacity, sizeof(*roles));
+    if (!roles) { free(copy); return; }
+    int count = 0;
+    char *saveptr = NULL;
+    char *token = strtok_r(copy, ",", &saveptr);
+    while (token && (size_t)count < capacity) {
+        while (*token == ' ') token++;
+        roles[count] = strdup(token);
+        if (!roles[count]) {
+            for (int i = 0; i < count; ++i) free(roles[i]);
+            free(roles);
+            free(copy);
+            writeLog("Failed to allocate memory for IAM role string.", 2, 1);
+            return;
+        }
+        count++;
+        token = strtok_r(NULL, ",", &saveptr);
+    }
+    free(copy);
+    for (int i = 0; i < iam_roles_count; ++i) free(iam_roles_accepted[i]);
+    free(iam_roles_accepted);
+    iam_roles_accepted = roles;
+    iam_roles_count = count;
+    snprintf(infostr, infostr_size, "IAM accepted roles set (%d):", iam_roles_count);
+    writeLog(trim(infostr), 0, 1);
+    for (int i = 0; i < iam_roles_count; i++) {
+        snprintf(infostr, infostr_size, "  - %s", iam_roles_accepted[i]);
+        writeLog(trim(infostr), 0, 1);
+    }
 }
 
 void process_iam_issuer(ConfVal value) {
@@ -232,13 +242,15 @@ void process_iam_issuer(ConfVal value) {
 		return;
 	}
 	size_t len = strlen(value.strval);
-	iam_issuer = malloc(len +1);
-	if (iam_issuer == NULL) {
+	char *new_iam_issuer = malloc(len +1);
+	if (new_iam_issuer == NULL) {
 		fprintf(stderr, "Failed to allocate memory [iamIssuer].\n");
                 writeLog("Failed to allocate memory [iamIssuer]", 2, 1);
                 config_memalloc_fails++;
                 return;
 	}
+	free(iam_issuer);
+	iam_issuer = new_iam_issuer;
 	strcpy(iam_issuer, value.strval); 
         snprintf(infostr, infostr_size, "IAM issuer set to: %s", iam_issuer);
         writeLog(trim(infostr), 0, 1);
@@ -250,13 +262,15 @@ void process_iam_public_key_file(ConfVal value) {
 		return;
 	}
 	size_t len = strlen(value.strval);
-	iam_public_key_file = malloc(len + 1);
-	if (iam_public_key_file == NULL) {
+	char *new_iam_public_key_file = malloc(len + 1);
+	if (new_iam_public_key_file == NULL) {
 		fprintf(stderr, "Failed to allocate memory [iamPublicKeyFile].\n");
                 writeLog("Failed to allocate memory [iamPublicKeyFile]", 2, 1);
                 config_memalloc_fails++;
                 return;
 	}
+	free(iam_public_key_file);
+	iam_public_key_file = new_iam_public_key_file;
 	strcpy(iam_public_key_file, value.strval);
 	snprintf(infostr, infostr_size, "IAM public key file set to: %s.", iam_public_key_file);
 	writeLog(trim(infostr), 0, 1);
@@ -300,6 +314,13 @@ void process_metrics_push(ConfVal value) {
         }
 }
 
+void process_file_push(ConfVal value) {
+	if ((strcmp(value.strval, "true") == 0) || (value.intval >= 1)) {
+		writeLog("Almond file push enabled.", 0, 1);
+		use_file_push = true;
+	}
+}
+
 void process_mail_alerts(ConfVal value) {
         if ((strcmp(value.strval, "true") == 0) || (value.intval >= 1)) {
                 writeLog("Almond mail alerts enabled.", 0, 1);
@@ -309,8 +330,8 @@ void process_mail_alerts(ConfVal value) {
 
 void process_push_url(ConfVal value) {
         size_t this_len = strlen(value.strval) + 1;
-        push_url = malloc(this_len);
-        if (push_url == NULL) {
+        char *new_push_url = malloc(this_len);
+        if (new_push_url == NULL) {
                 fprintf(stderr, "Failed to allocate memory for push url.\n");
          	writeLog("Failed to allocate memory [push_url]", 2, 1);
 		if (use_push || use_metrics_push) {
@@ -319,8 +340,10 @@ void process_push_url(ConfVal value) {
 		}
 		return;
 	}
-        else
-                memset(push_url, '\0', (size_t)(strlen(value.strval)+1) * sizeof(char));
+
+	free(push_url);
+	push_url = new_push_url;
+        memset(push_url, '\0', (size_t)(strlen(value.strval)+1) * sizeof(char));
         snprintf(push_url, this_len, "%s", value.strval);
         snprintf(infostr, infostr_size, "Almond push url is set to '%s'", push_url);
         writeLog(trim(infostr), 0, 1);

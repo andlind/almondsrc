@@ -20,8 +20,8 @@ import urllib.error
 import os, os.path
 import jwt
 import copy
+import tarfile
 import requests
-import matplotlib.pyplot as plt
 from email.mime.text import MIMEText
 from urllib.parse import urlparse
 from venv import logger
@@ -39,6 +39,10 @@ from api.login_handler import (
     create_session,
     set_custom_role_mapping,
 )
+
+MAX_ARCHIVE_SIZE = 100 * 1024 * 1024
+MAX_EXTRACTED_SIZE = 500 * 1024 * 1024
+MAX_ARCHIVE_FILES = 1000
 
 app = flask.Flask(__name__)
 app.config["DEBUG"] = True
@@ -230,7 +234,7 @@ crit_quotes = ["I'm not fine", "I feel sick, please call the doctor", "Not good,
 
 MAX_META_READ = 64 * 1024  # read first 64 KB for metadata
 
-current_version = '26.2.1'
+current_version = '26.3.0'
 __STARTED__ = datetime.datetime.now()
 
 app.secret_key = 'BAD_SECRET_KEY'
@@ -1689,6 +1693,113 @@ def api_search_labels(key, value, server, verbose=False):
                 "results": results
             }
         return response
+
+def receive_archive():
+    global metrics_dir
+
+    hostname = request.headers.get("X-Hostname", "")
+
+    if not hostname:
+        abort(400, description="Missing X-Hostname header")
+
+    # Sanitize hostname for filesystem use
+    safe_hostname = re.sub(r"[^a-zA-Z0-9_.-]", "_", hostname)
+
+    if safe_hostname in ("", ".", ".."):
+        abort(400, description="Invalid hostname")
+
+    # Change this to your preferred destination
+    #archive_dir = os.path.join(data_dir, "store")
+    archive_dir = metrics_dir
+    os.makedirs(archive_dir, exist_ok=True)
+
+    target_dir = os.path.join(archive_dir, safe_hostname)
+
+    logger.info(f"Receiving archive from '{safe_hostname}'")
+
+    temp_path = None
+
+    try:
+        # Save incoming archive to a temporary file
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            suffix=".tar.gz",
+            delete=False
+        ) as tmp:
+            temp_path = tmp.name
+            total_received = 0
+
+            while True:
+                chunk = request.stream.read(65536)
+
+                if not chunk:
+                    break
+
+                total_received += len(chunk)
+
+                if total_received > MAX_ARCHIVE_SIZE:
+                    abort(413, description="Archive too large")
+
+                tmp.write(chunk)
+
+        # Extract to temporary directory first
+        with tempfile.TemporaryDirectory(dir=archive_dir) as temp_dir:
+            with tarfile.open(temp_path, "r:gz") as tar:
+                members = tar.getmembers()
+
+                if len(members) > MAX_ARCHIVE_FILES:
+                    abort(413, description="Too many archive entries")
+
+                total_size = 0
+
+                for member in members:
+                    # Reject links and special files
+                    if not (member.isfile() or member.isdir()):
+                        abort(400, description="Unsupported archive entry")
+
+                    total_size += member.size
+
+                    if total_size > MAX_EXTRACTED_SIZE:
+                        abort(413, description="Extracted data too large")
+
+                # Requires Python 3.12+ with extraction
+                # filter support
+                tar.extractall(
+                    path=temp_dir,
+                    filter="data"
+                )
+
+            # Replace existing host directory contents
+            # only after successful extraction.
+            #
+            # Note: this is not an atomic replacement.
+            if os.path.exists(target_dir):
+                shutil.rmtree(target_dir)
+
+            shutil.move(temp_dir, target_dir)
+
+        logger.info(
+            f"Archive from '{safe_hostname}' "
+            f"extracted to '{target_dir}'"
+        )
+
+        return jsonify({
+            "status": "ok",
+            "hostname": safe_hostname,
+            "extracted_to": target_dir
+        }), 201
+
+    except tarfile.TarError as e:
+        logger.warning(f"Invalid archive: {e}")
+        abort(400, description="Invalid tar.gz archive")
+
+    except OSError as e:
+        logger.error(f"Archive extraction failed: {e}")
+        abort(500, description="Failed to extract archive")
+
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
 
 @app.before_request
 def limit_remote_addr():
@@ -3613,21 +3724,21 @@ def api_show_tags():
         }
         return jsonify(response)
 
-@app.route('/monitoring/graph', methods=['GET', 'POST'])
-@app.route('/howru/monitoring/graph', methods=['GET', 'POST'])
-def api_show_graph():
-    global logger
-    logger.info("Running api_show_graph")
-    full_filename = '/static/howru.png'
-    current_plot = "check_memory"
-    x_axis =[10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    data = [22.35, 21.15, 35.42, 88.12, 27.95, 28.35, 42, 75.33, 93.12, 25.87]
-    plt.plot(x_axis, data)
-    plt.title('Memory usage')
-    plt.xlabel('Memory percentage')
-    plt.ylabel('Memory used')
-    plt.savefig('static/charts/chart.png')
-    return render_template("graph.html", user_image = full_filename, name="Memory usage", url="/static/charts/chart.png")
+#@app.route('/monitoring/graph', methods=['GET', 'POST'])
+#@app.route('/howru/monitoring/graph', methods=['GET', 'POST'])
+#def api_show_graph():
+#    global logger
+#    logger.info("Running api_show_graph")
+#    full_filename = '/static/howru.png'
+#    current_plot = "check_memory"
+#    x_axis =[10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+#    data = [22.35, 21.15, 35.42, 88.12, 27.95, 28.35, 42, 75.33, 93.12, 25.87]
+#    plt.plot(x_axis, data)
+#    plt.title('Memory usage')
+#    plt.xlabel('Memory percentage')
+#    plt.ylabel('Memory used')
+#    plt.savefig('static/charts/chart.png')
+#    return render_template("graph.html", user_image = full_filename, name="Memory usage", url="/static/charts/chart.png")
 
 #@app.route('/howru/dashboard', methods=['GET'])
 #@app.route('/howru/monitoring/dashboard', methods=['GET'])
@@ -3773,6 +3884,12 @@ def receive():
     
     if not (multi_server or multi_metrics):
         abort(404, description="Service is not a proxy")
+
+    ctype = request.mimetype
+
+    if ctype in ("application/gzip", "application/x-gzip"):
+        return receive_archive()
+
     # Optional: require JSON content-type
     ctype = request.headers.get("Content-Type", "")
     if "application/json" not in ctype:

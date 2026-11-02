@@ -99,7 +99,10 @@ static PluginItem *parse_declaration_line(const char *line) {
     item->active      = atoi(active_str);
     item->interval    = atoi(interval_str);
     item->touched     = false;
-
+    if (!item->name || !item->description || !item->command) {
+        free_plugin_item(item, 1);
+        return NULL;
+    }
     return item;
 }
 
@@ -123,7 +126,8 @@ static PluginItem **load_declarations(const char *path, int *out_count) {
             PluginItem **tmp = realloc(list, cap * sizeof *list);
             if (!tmp) {
                 perror("realloc in load_declarations");
-                // cleanup partial list
+                // cleanup partial list, including the item not yet added
+                free_plugin_item(item, 1);
                 for (size_t i = 0; i < n; ++i) free_plugin_item(list[i], 1);
                 free(list);
                 fclose(f);
@@ -233,6 +237,7 @@ void update_plugins(void) {
     if (!new_array) {
         perror("calloc new g_plugins");
         // roll back; g_plugins was untouched
+        for (int i = 0; i < newCount; ++i) free_plugin_item(decls[i], 1);
         free(decls);
         heal_set_reload_in_progress(false);
         return;
