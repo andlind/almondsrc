@@ -2,7 +2,7 @@
 #define _XOPEN_SOURCE 700
 #define _DEFAULT_SOURCE
 #ifndef VERSION
-#define VERSION "26.3.0"
+#define VERSION "26.3.1"
 #endif
 #include "config.h"
 #include <stdio.h>
@@ -135,6 +135,9 @@ int push_interval_cnt = 0;
 int hosts_allowed_count = 0;
 int iam_roles_count = 0;
 bool allowAllHosts = true;
+bool autoDetectPlugins = false;
+bool autoMemoryOptimization = false;
+bool passiveMemoryOptimization = false;
 bool confDirSet = false;
 bool dataDirSet = false;
 bool storeDirSet = false;
@@ -162,7 +165,7 @@ bool external_scheduler = false;
 bool use_ssl = false;
 bool truncateLog = false;
 bool timeScheduler = false;
-bool collector_metrics = true;
+bool collector_metrics = false;
 bool collector_server = true;
 bool collector_metadata = false;
 bool collector_verbose = false;
@@ -268,6 +271,8 @@ void executeGardener();
 int createSocket(int);
 int initTimeScheduler(bool);
 void sig_handler(int);
+void process_autodetect_plugins(ConfVal);
+void process_automemory_optimization(ConfVal);
 void process_iam_aud(ConfVal);
 void process_iam_issuer(ConfVal);
 void process_iam_public_key_file(ConfVal);
@@ -308,6 +313,8 @@ ConfigEntry config_entries[] = {
     {"almond.alertsToMail", process_mail_alerts},
     {"almond.alertsToSlack", process_slack_alerts},
     {"almond.api", process_almond_api},
+    {"almond.autodetectPlugins", process_autodetect_plugins},
+    {"almond.autoMemoryOptimization", process_automemory_optimization},
     {"almond.certificate", process_almond_certificate},
     {"almond.enableCollector", process_enable_collector},
     {"almond.enableIamAud", process_enable_iam_aud},
@@ -331,7 +338,7 @@ ConfigEntry config_entries[] = {
     {"almond.usePush", process_almond_push},
     {"almond.useSSL", process_almond_api_tls},
     {"collector.getPluginMetrics", process_collector_metrics},
-    {"collector.getPluginMetaData", process_collector_metadata},
+    {"collector.getPluginMetadata", process_collector_metadata},
     {"collector.getServerData", process_collector_server},
     {"collector.isVerbose", process_collector_verbose},
     {"data.jsonFile", process_json_file},
@@ -465,6 +472,115 @@ char *load_file_to_string(const char *path) {
 
         fclose(f);
         return buf;
+}
+
+int autodetect_plugins() {
+        FILE *cmd_fp;
+        char buffer[1024];
+
+        cmd_fp = popen("python3 /opt/almond/scripts/almond_autodiscovery_agent.py --apply --force", "r");
+   
+        if (cmd_fp == NULL) {
+                perror("Failed to execute autodetectionscript");
+                return 1;
+        } else {
+                printf("Running plugin autodetection script:\n");
+                while (fgets(buffer, sizeof(buffer), cmd_fp) != NULL) {
+                         printf("%s", buffer);
+                }
+                pclose(cmd_fp);
+        }
+
+        const char *conf_path = "/etc/almond/almond.conf";
+        const char *temp_path = "/etc/almond/almond.conf.tmp";
+   
+        FILE *conf_file = fopen(conf_path, "r");
+        FILE *temp_file = fopen(temp_path, "w");
+
+        if (conf_file == NULL || temp_file == NULL) {
+                perror("Failed to open configuration files");
+                if (conf_file) fclose(conf_file);
+                if (temp_file) fclose(temp_file);
+                return 1;
+        } else {
+                char line[1024];
+		char value[16];
+                while (fgets(line, sizeof(line), conf_file) != NULL) {
+                        //if (strstr(line, "almond.autodetectPlugins = true") != NULL) {
+			if (sscanf(line, " almond.autodetectPlugins = %15s", value) == 1 && strcmp(value, "true") == 0) {
+                                fprintf(temp_file, "almond.autodetectPlugins=false\n");
+                        } else {
+                                fprintf(temp_file, "%s", line);
+                        }
+                }
+    
+                fclose(conf_file);
+                fclose(temp_file);
+
+                if (rename(temp_path, conf_path) != 0) {
+                        perror("Failed to update the config file");
+                        return 1;
+                }
+
+        }
+        return 0;
+}
+
+int auto_memory_optimization(bool passive) {
+        FILE *cmd_fp;
+        char buffer[1024];
+
+        if (passive)
+                cmd_fp = popen("python3 /opt/almond/scripts/almond_memalloc_autosize.py", "r");
+        else
+                cmd_fp = popen("python3 /opt/almond/scripts/almond_memalloc_autosize.py --apply --force", "r");
+
+        if (cmd_fp == NULL) {
+                perror("Failed to execute memory autosize script");
+                return 1;
+        } else {
+                printf("Running plugin memory autosize script:\n");
+                while (fgets(buffer, sizeof(buffer), cmd_fp) != NULL) {
+                         printf("%s", buffer);
+                }
+                pclose(cmd_fp);
+        }
+
+        const char *conf_path = "/etc/almond/almond.conf";
+        const char *temp_path = "/etc/almond/almond.conf.tmp";
+
+        FILE *conf_file = fopen(conf_path, "r");
+        FILE *temp_file = fopen(temp_path, "w");
+
+        if (conf_file == NULL || temp_file == NULL) {
+                perror("Failed to open configuration files");
+                if (conf_file) fclose(conf_file);
+                if (temp_file) fclose(temp_file);
+                return 1;
+        } else {
+                char line[1024];
+		char value[16];
+                while (fgets(line, sizeof(line), conf_file) != NULL) {
+                        /*if ((strstr(line, "almond.autoMemoryOptimization = true") != NULL) ||
+                           (strstr(line, "almond.autoMemoryOptimization = passive") != NULL)) {*/
+			if ((sscanf(line, " almond.autoMemoryOptimization = %15s", value) == 1 && strcmp(value, "true") == 0) ||
+                            (sscanf(line, " almond.autodetectPlugins = %15s", value) == 1 && strcmp(value, "passive") == 0)) {
+                                fprintf(temp_file, "almond.autoMemoryOptimization=false\n");
+                        } else {
+                                fprintf(temp_file, "%s", line);
+                        }
+                }
+
+                fclose(conf_file);
+                fclose(temp_file);
+
+                if (rename(temp_path, conf_path) != 0) {
+                        perror("Failed to update the config file");
+                        return 1;
+                }
+
+        }
+        return 0;
 }
 
 int create_tar_archive(const char *tar_path,
@@ -2538,6 +2654,368 @@ int toggleQuickStart(int on) {
 }
 
 void send_socket_message(int socket, SSL* ssl,  int id, int aflags) {
+        const char *content_type =
+                (api_action == API_ALMOND_METRICS)
+                ? "text/plain; version=0.0.4; charset=utf-8"
+                : "application/json";
+
+        const char *fmt =
+                "HTTP/1.1 200 OK\r\n"
+                "Content-Type:%s\r\n"
+                "Content-Length: %zu\r\n"
+                "Connection: close\r\n"
+                "\r\n";
+        char * send_message = NULL;
+        size_t content_length = 0;
+        size_t total = 0;
+        //char lenbuf[21];
+
+        if (args_set == 0) {
+                switch (api_action) {
+                        case API_READ:
+                                apiReadData(id, aflags);
+                                break;
+                        case API_MONITOR:
+                                apiMonitorItem(id, aflags);
+                                break;
+                        case API_RUN:
+                                apiRunPlugin(id, aflags);
+                                break;
+                        case API_DRY_RUN:
+                                apiDryRun(id);
+                                break;
+                        case API_EXECUTE_AND_READ:
+                                apiRunAndRead(id, aflags);
+                                break;
+                        case API_GET_METRICS:
+                                apiGetMetrics();
+                                break;
+                        case API_READ_ALL:
+                                apiReadAll();
+                                break;
+                        case API_EXECUTE_GARDENER:
+                                executeGardener();
+                                constructSocketMessage("execute", "Almond gardener script executed.");
+                                break;
+                        case API_ENABLE_TIMETUNER:
+                                enableTimeTuner = true;
+                                writeLog("Time tuner enabled through API call.", 0, 0);
+                                constructSocketMessage("enable", "Time tuner is now enabled.");
+                                break;
+                        case API_DISABLE_TIMETUNER:
+                                enableTimeTuner = false;
+                                writeLog("Time tuner disabled through API call.", 0, 0);
+                                constructSocketMessage("disable", "Time tuner is now disabled.");
+                                break;
+                        case API_ENABLE_GARDENER:
+                                enableGardener = true;
+                                writeLog("Gardener enabled through API call.", 0, 0);
+                                constructSocketMessage("enable", "Gardener is now enabled.");
+                                break;
+                        case API_DISABLE_GARDENER:
+                                enableGardener = false;
+                                writeLog("Gardener disabled through API call.", 0, 0);
+                                constructSocketMessage("disable", "Gardener is now disabled.");
+                                break;
+                        case API_ENABLE_CLEARCACHE:
+                                enableClearDataCache = true;
+                                writeLog("ClearDataCache enabled through API call.", 0, 0);
+                                constructSocketMessage("enable", "ClearDataCache is now enabled.");
+                                break;
+                        case API_DISABLE_CLEARCACHE:
+                                enableClearDataCache = false;
+                                writeLog("ClearDataCache disabled through API call.", 0, 0);
+                                constructSocketMessage("disable", "ClearDataCache is now disabled.");
+                                break;
+                        case API_ENABLE_QUICKSTART:
+                                quick_start = true;
+                                toggleQuickStart(1);
+                                writeLog("Quick start enabled through API call.", 0, 0);
+                                constructSocketMessage("enable", "Quick start is now enabled.");
+                                break;
+                        case API_DISABLE_QUICKSTART:
+                                quick_start = false;
+                                toggleQuickStart(0);
+                                writeLog("Quick start disabled through API call.", 0, 0);
+                                constructSocketMessage("disable", "Quick start is now disabled");
+                                break;
+                        case API_ENABLE_STANDALONE:
+                                standalone = true;
+                                writeLog("Standalone mode enabled through API call.", 0, 0);
+                                constructSocketMessage("enable", "Standalone mode is now enabled");
+                                break;
+                        case API_DISABLE_STANDALONE:
+                                standalone = false;
+                                writeLog("Standalone mode disabled through API call.", 0, 0);
+                                constructSocketMessage("disable", "Standalone mode is now disabled.");
+                                break;
+                        case API_ENABLE_PUSH:
+                                use_push = true;
+                                writeLog("Almond push enabled through API call.", 0, 0);
+                                constructSocketMessage("enable", "Almond push is now enabled.");
+                                break;
+                        case API_DISABLE_PUSH:
+                                use_push = false;
+                                writeLog("Almond push disabled through API call.", 0, 0);
+                                constructSocketMessage("disable", "Almond push is now disabled.");
+                                break;
+                        case API_ENABLE_METRICS_PUSH:
+                                use_metrics_push = true;
+                                writeLog("Almond metrics push enabled through API call.", 0, 0);
+                                constructSocketMessage("enable", "Almond metrics push is now enabled.");
+                                break;
+                        case API_DISABLE_METRICS_PUSH:
+                                use_metrics_push = false;
+                                writeLog("Almond metrics push disabled through API call.", 0, 0);
+                                constructSocketMessage("disable", "Almond metrics push is now disabled.");
+                                break;
+                        case API_ENABLE_COLLECTOR:
+                                enableCollector = true;
+                                writeLog("Collector module enabled through API call.", 0, 0);
+                                constructSocketMessage("enable", "Collector module is now enabled.");
+                                break;
+                        case API_DISABLE_COLLECTOR:
+                                enableCollector = false;
+                                writeLog("Collector module disabled through API call.", 0, 0);
+                                constructSocketMessage("disable", "Collector module is now disabled.");
+                                break;
+                        case API_SET_PLUGINOUTPUT:
+                                writeLog("Log plugin output toggled through API call.", 0, 0);
+                                constructSocketMessage("set", "Log plugin output toggled.");
+                                break;
+                        case API_SET_SAVEONEXIT:
+                                writeLog("Save on exit is toggled through API call.", 0, 0);
+                                constructSocketMessage("set", "Save on exit output toggled.");
+                                break;
+                        case API_SET_SLEEP:
+                                writeLog("Scheduler sleep toggled through API call.", 1, 0);
+                                constructSocketMessage("set", "Scheduler sleep toggled");
+                                break;
+                        case API_SET_HOSTNAME:
+                                writeLog("The virtual hostname of the unit has been changed through API call.", 1, 0);
+                                constructSocketMessage("set", "Virtual hostname has been toggled.");
+                                break;
+                        case API_SET_METRICSPREFIX:
+                                writeLog("Metrics prefix is toggled through API call.", 0, 0);
+                                constructSocketMessage("set", "Metrics prefix will be changed.");
+                                break;
+                        case API_SET_JSONFILENAME:
+                                writeLog("Json file name is toggled through API call.", 1, 0);
+                                constructSocketMessage("set", "Json export file name toggled.");
+                                break;
+                        case API_SET_METRICSFILENAME:
+                                writeLog("Metrics file name is toggled through API call.", 1, 0);
+                                constructSocketMessage("set", "Metrics file name toggled.");
+                                break;
+                        case API_SET_MAINTENANCE_STATUS:
+                                writeLog("Maintenance has been toggled through API call.", 1, 0);
+                                constructSocketMessage("maintenance", "Maintenance status has been updated.");
+                                break;
+                        case API_SET_SCHEDULER_TYPE:
+                                writeLog("Scheduler type changed through API call.", 1, 0);
+                                constructSocketMessage("scheduler", "Scheduler type changed");
+                                break;
+                        case API_SET_PUSH_URL:
+                                writeLog("Push url changed through API call.", 1, 0);
+                                constructSocketMessage("pushurl", "Push url changed");
+                                break;
+                        case API_SET_PUSH_PORT:
+                                writeLog("Push port changed through API call.", 1, 0);
+                                constructSocketMessage("pushport", "Push port changed");
+                                break;
+                        case API_SET_PUSH_INTERVAL:
+                                writeLog("Push interval changed through API call.", 1, 0);
+                                constructSocketMessage("pushinterval", "Push interval changed");
+                                break;
+                        case API_COLLECTOR_INVALID:
+                                writeLog("Collector module changes did not update from API call. Wrong or missing params sent.", 1, 0);
+                                constructSocketMessage("collector", "Error: Wrong or invalid parameters");
+                                break;
+                        case API_COLLECTOR_STATE:
+                                writeLog("Collector module enabled or disabled from APU call.", 0, 0);
+                                constructSocketMessage("collector", "Collector state has been updated");
+                                break;
+                        case API_COLLECTOR_METADATA:
+                                writeLog("Collector metadata toggled from API call.", 0, 0);
+                                constructSocketMessage("collector", "getPluginMetadata:enabled/disabled");
+                                break;
+                        case API_COLLECTOR_METRICS:
+                                writeLog("Collector metrics toggled from API call.", 0, 0);
+                                constructSocketMessage("collector", "getPluginMetrics:enabled/disabled");
+                                break;
+                        case API_COLLECTOR_SYSTEM:
+                                writeLog("Collector module 'system info' toggled from API call.", 0, 0);
+                                constructSocketMessage("collector", "getSystemData:enabled/disabled");
+                                break;
+                        case API_COLLECTOR_VERBOSE:
+                                writeLog("Collector verbose flag toggled from API call.", 0, 0);
+                                constructSocketMessage("collector", "isVerbose:true/false");
+                                break;
+                        case API_GET_HOSTNAME:
+                                apiGetHostName();
+                                break;
+                        case API_GET_METRICSPREFIX:
+                                apiGetVars(2);
+                                break;
+                        case API_GET_JSONFILENAME:
+                                apiGetVars(3);
+                                break;
+                        case API_GET_METRICSFILENAME:
+                                apiGetVars(4);
+                                break;
+                        case API_GET_SLEEP:
+                                apiGetVars(6);
+                                break;
+                        case API_GET_SAVEONEXIT:
+                                apiGetVars(7);
+                                break;
+                        case API_GET_PLUGINOUTPUT:
+                                apiGetVars(8);
+                                break;
+                        case API_GET_PLUGIN_RELOAD_TS:
+                                apiGetVars(10);
+                                break;
+                        case API_GET_SCHEDULER:
+                                apiGetVars(11);
+                                break;
+                        case API_GET_PUSH_URL:
+                                apiGetVars(12);
+                                break;
+                        case API_GET_PUSH_PORT:
+                                apiGetVars(13);
+                                break;
+                        case API_GET_PUSH_INTERVAL:
+                                apiGetVars(14);
+                                break;
+                        case API_CHECK_PLUGIN_CONFIG:
+                                apiCheckPluginConf();
+                                break;
+                        case API_RELOAD_CONFIG_HARD:
+                                apiReloadConfigHard();
+                                break;
+                        case API_RELOAD_CONFIG_SOFT:
+                                apiReloadConfigSoft();
+                                break;
+                        case API_RELOAD_ALMOND:
+                                apiReload();
+                                break;
+                        case API_ALMOND_VERSION:
+                                apiShowVersion();
+                                break;
+                        case API_ALMOND_STATUS:
+                                apiShowStatus(false);
+                                break;
+                        case API_ALMOND_METRICS:
+                                apiShowStatus(true);
+                                break;
+                        case API_ALMOND_PLUGINSTATUS:
+                                apiShowPluginStatus();
+                                break;
+                        case API_GET_INVENTORY:
+                                apiGetInventory(2);
+                                break;
+                        case API_GET_INVENTORY_FULL:
+                                apiGetInventory(0);
+                                break;
+                        case API_GET_INVENTORY_CHANGES:
+                                apiGetInventory(1);
+                                break;
+                        case API_DENIED:
+                                constructSocketMessage("return", "Access denied: You need a valid token.");
+                                break;
+                        case API_ERROR:
+                                constructSocketMessage("return", "Error: Could not parse API call parameters.");
+                                break;
+                        default:
+                                //printf("The request did not trigger any action.\n");
+                                constructSocketMessage("return", "The request id did not trigger any action.");
+                }
+        }
+        else {
+                if (api_action == API_MONITOR) {
+                        apiMonitorItem(id, aflags);
+                }
+                args_set = 0;
+        }
+        content_length = (size_t)strlen(socket_message);
+        int hdr_len = snprintf(NULL, 0, fmt, content_type, content_length);
+        if (hdr_len < 0) {
+                writeLog("[send_socket_message] snprintf size calculation failed.", 2, 0);
+                return;
+        }
+        char *header = malloc((size_t)hdr_len +1);
+        if (!header) {
+                writeLog("[send_socket_message] Out of memory allocating header.", 2, 0);
+                return;
+        }
+        snprintf(header, (size_t)hdr_len + 1, fmt, content_type, content_length);
+        total = (size_t)hdr_len + content_length;
+        send_message = malloc(total +1);
+        if (send_message == NULL) {
+                perror("Failed to allocate memory for send_message");
+                writeLog("Could not allocate memory [send_socket_message:send_message]", 2, 0);
+                free(header);
+                return;
+        }
+        memcpy(send_message, header, hdr_len);
+        memcpy(send_message + hdr_len, socket_message, content_length);
+        send_message[total] = '\0';
+        if (use_ssl) {
+                /*if (SSL_write(ssl, send_message, total) <= 0) {
+                        writeLog("Could not send ssl message to client", 1, 0);
+                }*/
+                size_t sent = 0;
+                while (sent < total) {
+                        size_t remaining = total - sent;
+                        int chunk = (remaining > INT_MAX)
+                                ? INT_MAX : (int)remaining;
+
+                        int n = SSL_write(ssl, send_message + sent, chunk);
+
+                        if (n > 0) {
+                                sent += (size_t)n;
+                                continue;
+                        }
+
+                        int ssl_error = SSL_get_error(ssl, n);
+
+                        if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE) {
+                                /* Retry only when the socket becomes ready. */
+                                writeLog("SSL write requires retry.", 1, 0);
+                                break;
+                        }
+                        writeLog("Could not send complete SSL message to client.", 1, 0);
+                        break;
+                }
+        }
+        else {
+                size_t sent = 0;
+                while (sent < total) {
+                        ssize_t n = send(socket, send_message + sent, total - sent, 0);
+                        if (n < 0 && errno == EINTR)
+                                continue;
+                        if (n <= 0) {
+                                writeLog("Could not send complete message to client.", 1, 0);
+                                break;
+                        }
+                        sent += (size_t)n;
+                }
+                /*if (send(socket, send_message, total, 0) < 0) {
+                        writeLog("Could not send message to client.", 1, 0);
+                }*/
+        }
+        writeLog("Message sent on socket. Closing connection.", 0, 0);
+        close(socket);
+        free(send_message);
+        free(header);
+        send_message = NULL;
+        if (socket_message != NULL) {
+                free(socket_message);
+                socket_message = NULL;
+        }
+}
+
+/*void send_socket_message(int socket, SSL* ssl,  int id, int aflags) {
         //char header[100] = "HTTP/1.1 200 OK\nContent-Type:application/txt\nContent-Length: ";
 	const char *fmt = 
 		"HTTP/1.1 200 OK\n"
@@ -2807,16 +3285,6 @@ void send_socket_message(int socket, SSL* ssl,  int id, int aflags) {
 		return;
 	}
 	//sprintf(len, "%li", content_length);
-	/*int written = snprintf(lenbuf, sizeof(lenbuf), "%zu", content_length);
-	if (written < 0) {
-		writeLog("[send_socket_message] snprintf error.", 2, 0);
-		return;
-	}
-	if (written >= sizeof(lenbuf)) {
-		writeLog("[send_socket_message] snprintf truncated output", 1, 0);
-	}
-        strcat(header, trim(lenbuf));
-        strcat(header, "\n\n");*/
 	char *header = malloc((size_t)hdr_len +1);
 	if (!header) {
 		writeLog("[send_socket_message] Out of memory allocating header.", 2, 0);
@@ -2832,11 +3300,7 @@ void send_socket_message(int socket, SSL* ssl,  int id, int aflags) {
 		free(header);
 		return;
 	}
-	//else
-	//	memset(send_message, '\0', (content_length+1) * sizeof(char));
 	memcpy(send_message, header, hdr_len);
-        //strncpy(send_message, header, (size_t)(sizeof(header)));
-	//strcat(send_message, socket_message);
 	memcpy(send_message + hdr_len, socket_message, content_length);
 	send_message[total] = '\0';
 	if (use_ssl) {
@@ -2858,7 +3322,7 @@ void send_socket_message(int socket, SSL* ssl,  int id, int aflags) {
 		free(socket_message);
 		socket_message = NULL;
 	}
-}
+}*/
 
 struct json_object* getJsonValue(struct json_object *jobj, const char* key) {
         struct json_object *tmp;
@@ -4609,6 +5073,22 @@ void process_plugin_declaration(ConfVal v) {
 	writeLog(trim(infostr), 0, 1);
 }
 
+void process_autodetect_plugins(ConfVal value) {
+	 if ((strcmp(value.strval, "true") == 0) || (value.intval > 0)) {
+                autoDetectPlugins = true;
+        }
+
+}
+
+void process_automemory_optimization(ConfVal value) {
+        if ((strcmp(value.strval, "true") == 0) || (strcmp(value.strval, "passive") == 0)) {
+                autoMemoryOptimization = true;
+                if (strcmp(value.strval, "passive") == 0) {
+                        passiveMemoryOptimization = true;
+                }
+        }
+}
+
 void process_enable_gardener(ConfVal value) { 
         if ((strcmp(value.strval, "true") == 0) || (value.intval > 0)) {
                 writeLog("Gardener script is enabled.", 0, 1);
@@ -5393,6 +5873,7 @@ void collectJsonData(int decLen){
         }
     }
     json_object_object_add(root, "host", host_obj);
+    json_object_object_add(root, "monitoring", monitoring_array);
 
     // Monitoring array
     for (int i = 0; i < decLen; i++) {
@@ -5452,8 +5933,6 @@ void collectJsonData(int decLen){
         }
         json_object_array_add(monitoring_array, plugin_obj);
     }
-
-    json_object_object_add(root, "monitoring", monitoring_array);
 
     // Write JSON to temp file
     bool json_ok = true;
@@ -7636,7 +8115,7 @@ void initialLogging() {
         printf("Starting almond version %s.\n", VERSION);
         initConstants();
         writeLog("Almond constants initialized.", 0, 1);
-        writeLog("Starting almond (26.3.0)...", 0, 1);
+        writeLog("Starting almond (26.3.1)...", 0, 1);
 }
 
 int closeFileHandler() {
@@ -7821,6 +8300,24 @@ static int init_system(void) {
         }
         writeLog("Initiate logger thread.", 0, 1);
         initLoggerThread();
+	if (autoDetectPlugins) {
+                writeLog("Running plugin autodetection script.", 0, 0);
+                if (autodetect_plugins() > 0) {
+                        writeLog("Autodetect plugins failed.", 1, 0);
+                }
+                else {
+                        writeLog("Autodetect plugins script ran successfully,", 0, 0);
+                }
+        }
+	if (autoMemoryOptimization) {
+                writeLog("Running memory optimization script.", 0, 0);
+                if (auto_memory_optimization(passiveMemoryOptimization) > 0) {
+                        writeLog("Auto memory optimization script failed.", 1, 0);
+                }
+                else {
+                        writeLog("Auto memory optimization script ran successfully.", 0, 0);
+                }
+        }
         if (check_plugin_conf_file(pluginDeclarationFile) != 0) {
                 logError("plugins.conf file seems to be corrupt. Program will shut down.", 2, 0);
                 return 2;

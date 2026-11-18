@@ -2,7 +2,7 @@
 #define _XOPEN_SOURCE 700
 #define _DEFAULT_SOURCE
 #ifndef VERSION
-#define VERSION "26.3.0"
+#define VERSION "26.3.1"
 #endif
 #include "config.h"
 #include <stdio.h>
@@ -150,6 +150,9 @@ int push_interval_cnt = 0;
 int hosts_allowed_count = 0;
 int iam_roles_count = 0;
 bool allowAllHosts = true;
+bool autoDetectPlugins = false;
+bool autoMemoryOptimization = false;
+bool passiveMemoryOptimization = false;
 bool confDirSet = false;
 bool dataDirSet = false;
 bool storeDirSet = false;
@@ -300,6 +303,8 @@ void sig_handler(int);
 void process_almond_api(ConfVal);
 void process_almond_port(ConfVal);
 void process_almond_standalone(ConfVal);
+void process_autodetect_plugins(ConfVal);
+void process_automemory_optimization(ConfVal);
 void process_iam_issuer(ConfVal);
 void process_iam_public_key_file(ConfVal);
 void process_iam_aud(ConfVal);
@@ -360,6 +365,8 @@ ConfigEntry config_entries[] = {
     {"almond.alertsToMail", process_mail_alerts},
     {"almond.alertsToSlack", process_slack_alerts},
     {"almond.api", process_almond_api},
+    {"almond.autodetectPlugins", process_autodetect_plugins},
+    {"almond.autoMemoryOptimization", process_automemory_optimization},
     {"almond.certificate", process_almond_certificate},
     {"almond.enableCollector", process_enable_collector},
     {"almond.enableIamAud", process_enable_iam_aud},
@@ -527,6 +534,113 @@ char *load_file_to_string(const char *path) {
 
     	fclose(f);
     	return buf;
+}
+
+int autodetect_plugins() {
+	FILE *cmd_fp;
+    	char buffer[1024];
+
+    	cmd_fp = popen("python3 /opt/almond/scripts/almond_autodiscovery_agent.py --apply --force", "r");
+    
+    	if (cmd_fp == NULL) {
+        	perror("Failed to execute autodetection script");
+		return 1;
+    	} else {
+        	printf("Running plugin autodetection script:\n");
+        	while (fgets(buffer, sizeof(buffer), cmd_fp) != NULL) {
+           		 printf("%s", buffer);
+        	}
+        	pclose(cmd_fp);
+    	}
+
+	const char *conf_path = "/etc/almond/almond.conf";
+    	const char *temp_path = "/etc/almond/almond.conf.tmp";
+    
+    	FILE *conf_file = fopen(conf_path, "r");
+    	FILE *temp_file = fopen(temp_path, "w");
+
+    	if (conf_file == NULL || temp_file == NULL) {
+        	perror("Failed to open configuration files");
+        	if (conf_file) fclose(conf_file);
+        	if (temp_file) fclose(temp_file);
+		return 1;
+    	} else {
+        	char line[1024];
+		char value[16];
+        	while (fgets(line, sizeof(line), conf_file) != NULL) {
+            		//if (strstr(line, "almond.autodetectPlugins = true") != NULL) {
+			if (sscanf(line, " almond.autodetectPlugins = %15s", value) == 1 && strcmp(value, "true") == 0) {
+                		fprintf(temp_file, "almond.autodetectPlugins=false\n");
+            		} else {
+                		fprintf(temp_file, "%s", line);
+            		}
+        	}
+        
+        	fclose(conf_file);
+        	fclose(temp_file);
+        
+        	if (rename(temp_path, conf_path) != 0) {
+            		perror("Failed to update the config file");
+			return 1;
+        	}
+	
+    	}
+	return 0;
+}
+
+int auto_memory_optimization(bool passive) {
+        FILE *cmd_fp;
+        char buffer[1024];
+
+	if (passive)
+        	cmd_fp = popen("python3 /opt/almond/scripts/almond_memalloc_autosize.py", "r");
+	else
+		cmd_fp = popen("python3 /opt/almond/scripts/almond_memalloc_autosize.py --apply --force", "r");
+   
+        if (cmd_fp == NULL) {
+                perror("Failed to execute memory autosize script");
+                return 1;
+        } else {
+                printf("Running plugin memory autosize script:\n");
+                while (fgets(buffer, sizeof(buffer), cmd_fp) != NULL) {
+                         printf("%s", buffer);
+                }
+                pclose(cmd_fp);
+        }
+
+        const char *conf_path = "/etc/almond/almond.conf";
+        const char *temp_path = "/etc/almond/almond.conf.tmp";
+
+        FILE *conf_file = fopen(conf_path, "r");
+        FILE *temp_file = fopen(temp_path, "w");
+
+        if (conf_file == NULL || temp_file == NULL) {
+                perror("Failed to open configuration files");
+                if (conf_file) fclose(conf_file);
+                if (temp_file) fclose(temp_file);
+                return 1;
+        } else {
+                char line[1024];
+		char value[16];
+                while (fgets(line, sizeof(line), conf_file) != NULL) {
+			if ((sscanf(line, " almond.autoMemoryOptimization = %15s", value) == 1 && strcmp(value, "true") == 0) ||
+			     (sscanf(line, " almond.autoMemoryOptimization = %15s", value) == 1 && strcmp(value, "passive")) == 0) {
+                                fprintf(temp_file, "almond.autoMemoryOptimization=false\n");
+                        } else {
+                                fprintf(temp_file, "%s", line);
+                        }
+                }
+
+                fclose(conf_file);
+                fclose(temp_file);
+
+                if (rename(temp_path, conf_path) != 0) {
+                        perror("Failed to update the config file");
+                        return 1;
+                }
+
+        }
+        return 0;
 }
 
 int create_tar_archive(const char *tar_path,
@@ -2361,14 +2475,14 @@ void initConstants() {
                 strncpy(logmessage, "", logmessage_size+1);
 		logmessage[logmessage_size] = '\0';
 	}
-        logfile = malloc(logfile_size);
-        if (logfile == NULL) {
-                 fprintf(stderr, "Failed to allocate memory [logFile].\n");
-        }
-        else
-                memset(logfile, '\0', logfile_size);
 	if (isConstantsEnabled() > 0) {
 		getConstants();
+        }
+        /* Allocate this after overrides; bootstrap logging only needs fptr
+         * and logmessage, whose capacity getConstants() replaces atomically. */
+        logfile = calloc(logfile_size, sizeof(char));
+        if (logfile == NULL) {
+                fprintf(stderr, "Failed to allocate memory [logFile].\n");
         }
 	confDir = malloc(confdir_size);
 	if (confDir != NULL) {
@@ -2388,27 +2502,28 @@ void initConstants() {
                 fprintf(stderr, "Failed to allocate memory [jsonFileName].\n");
         }
 	else
-		strncpy(jsonFileName, "monitor_data.json", 18);
+		snprintf(jsonFileName, jsonfilename_size+1, "%s", "monitor_data.json");
 	metricsFileName = calloc(metricsfilename_size+1, sizeof(char));
 	if (metricsFileName == NULL) {
 		fprintf(stderr, "Failed to allocate memory [metricsFileName].\n");
 	}
 	else
-		strncpy(metricsFileName, "monitor.metrics", 16);
-	if (save_inventory) {
-		inventoryFileName = calloc(metricsfilename_size+1, sizeof(char));
+		snprintf(metricsFileName, metricsfilename_size+1, "%s", "monitor.metrics");
+	/* Configuration can enable inventory after initialization. */
+	{
+		inventoryFileName = calloc(inventoryfilename_size+1, sizeof(char));
 		if (inventoryFileName == NULL) {
 			fprintf(stderr, "Failed to allocate memory [inventoryFileName].\n");
 		}
 		else
-			strncpy(inventoryFileName, "/opt/almond/data/inventory.json", 32);
+			snprintf(inventoryFileName, inventoryfilename_size+1, "%s", "/opt/almond/data/inventory.json");
 	}
 	gardenerScript = calloc(gardenerscript_size+1, sizeof(char));
 	if (gardenerScript == NULL) {
                 fprintf(stderr, "Failed to allocate memory [gardenerScript].\n");
         }
         else
-		strncpy(gardenerScript, "/opt/almond/gardener.py", 24);
+		snprintf(gardenerScript, gardenerscript_size+1, "%s", "/opt/almond/gardener.py");
 	storeDir = malloc(storedir_size);
 	if (storeDir == NULL) {
 		fprintf(stderr, "Failed to allocate memory [storeDir].\n");
@@ -2429,7 +2544,7 @@ void initConstants() {
 		fprintf(stderr, "Failed to allocate memory [hostName].\n");
 	}
 	else
-		strncpy(hostName, "None", 5);
+		snprintf(hostName, hostname_size+1, "%s", "None");
 	fileName = malloc((size_t)filename_size * sizeof(char));
 	if (fileName == NULL) {
 		fprintf(stderr, "Failed to allocate memory [fileName].\n");
@@ -2441,17 +2556,17 @@ void initConstants() {
 		fprintf(stderr, "Failed to allocate memory [metricsOutputPrefix].\n");
 	}
 	else
-		strncpy(metricsOutputPrefix, "almond", 7);
+		snprintf(metricsOutputPrefix, metricsoutputprefix_size+1, "%s", "almond");
 	dataFileName = malloc(datafilename_size);
 	memset(dataFileName, '\0', datafilename_size);
 	backupDirectory = malloc(backupdirectory_size);
 	memset(backupDirectory, '\0', backupdirectory_size);
 	newFileName = malloc(newfilename_size);
-	memset(newFileName, '\0', (size_t)(150 * sizeof(char)));
+	memset(newFileName, '\0', newfilename_size);
 	gardenerRetString = malloc((size_t)gardenermessage_size * sizeof(char));
 	memset(gardenerRetString, '\0', (size_t)(sizeof(char) * gardenermessage_size));
-	pluginCommand = malloc((size_t)100 * sizeof(char));
-	memset(pluginCommand, '\0', sizeof(char) * 100);
+	pluginCommand = malloc(plugincommand_size);
+	memset(pluginCommand, '\0', plugincommand_size);
 	pluginReturnString = malloc((size_t)pluginmessage_size * sizeof(char));
 	memset(pluginReturnString, '\0', (size_t)(pluginmessage_size * sizeof(char)));
 	storeName = malloc((size_t)storename_size * sizeof(char));
@@ -2461,160 +2576,105 @@ void initConstants() {
 }
 
 int getConstants() {
-	int count = 0;
+    struct SizeSetting { const char *name; size_t *value; };
+    const struct SizeSetting settings[] = {
+        {"CONFDIR_SIZE", &confdir_size},
+        {"DATADIR_SIZE", &datadir_size},
+        {"PLUGINDECLARATIONFILE_SIZE", &plugindeclarationfile_size},
+        {"JSONFILENAME_SIZE", &jsonfilename_size},
+        {"METRICSFILENAME_SIZE", &metricsfilename_size},
+        {"INVENTORYFILENAME_SIZE", &inventoryfilename_size},
+        {"GARDENERSCRIPT_SIZE", &gardenerscript_size},
+        {"HOSTNAME_SIZE", &hostname_size},
+        {"METRICSOUTPUTPREFIX_SIZE", &metricsoutputprefix_size},
+        {"STOREDIR_SIZE", &storedir_size},
+        {"LOGDIR_SIZE", &logdir_size},
+        {"INFOSTR_SIZE", &infostr_size},
+        {"PLUGINDIR_SIZE", &plugindir_size},
+        {"FILENAME_SIZE", &filename_size},
+        {"LOGMESSAGE_SIZE", &logmessage_size},
+        {"LOGFILE_SIZE", &logfile_size},
+        {"DATAFILENAME_SIZE", &datafilename_size},
+        {"BACKUPDIRECTORY_SIZE", &backupdirectory_size},
+        {"NEWFILENAME_SIZE", &newfilename_size},
+        {"GARDENERMESSAGE_SIZE", &gardenermessage_size},
+        {"PLUGINCOMMAND_SIZE", &plugincommand_size},
+        {"PLUGINMESSAGE_SIZE", &pluginmessage_size},
+        {"STORENAME_SIZE", &storename_size},
+        {"APIMESSAGE_SIZE", &apimessage_size},
+        {"SOCKETSERVERMESSAGE_SIZE", &socketservermessage_size},
+        {"SOCKETCLIENTMESSAGE_SIZE", &socketclientmessage_size},
+        {"PLUGINITEMNAME_SIZE", &pluginitemname_size},
+        {"PLUGINITEMDESC_SIZE", &pluginitemdesc_size},
+        {"PLUGINITEMCMD_SIZE", &pluginitemcmd_size},
+        {"PLUGINOUTPUT_SIZE", &pluginoutput_size},
+    };
+    const size_t setting_count = sizeof(settings) / sizeof(settings[0]);
+    size_t pending[sizeof(settings) / sizeof(settings[0])];
+    for (size_t i = 0; i < setting_count; ++i) pending[i] = *settings[i].value;
 
-	if (logmessage == NULL) {
-		logmessage = malloc(logmessage_size);
-		if (logmessage == NULL) {
-			printf("Could not allocate memory for logmessage!\n");
-			return -1;
-		}
-		else {
-			memset(logmessage, 0, logmessage_size);
-                	logmessage[0] = '\0';
-		}
-	}
-
-	writeLog("Reading memory variable constants.", 0, 1);
-
-        FILE *file = fopen(constantsFile, "r");
-        if (file == NULL) {
-		printf("Could not read constants file. Not found.");
-                return 1;
+    FILE *file = fopen(constantsFile, "r");
+    if (!file) {
+        writeLog("Could not open memory constants file; keeping defaults.", 1, 1);
+        return 1;
+    }
+    writeLog("Reading memory variable constants.", 0, 1);
+    char *line = NULL;
+    size_t capacity = 0;
+    int count = 0;
+    for (;;) {
+        errno = 0;
+        if (getline(&line, &capacity, file) < 0) {
+            if (ferror(file) || errno != 0) goto invalid;
+            break;
         }
-
-        while (fscanf(file, "%s %d", constants[count], &values[count]) == 2) {
-                count++;
-		if (count == MAX_CONSTANTS) break;
+        char *text = line;
+        while (isspace((unsigned char)*text)) ++text;
+        if (!*text) continue;
+        char key[50], extra;
+        unsigned long long raw;
+        if (++count > MAX_CONSTANTS || sscanf(text, "%49s %llu %c", key, &raw, &extra) != 2 ||
+            raw == 0 || raw > INT_MAX - 1ULL || raw > SIZE_MAX - 2ULL) goto invalid;
+        bool found = false;
+        for (size_t i = 0; i < setting_count; ++i) {
+            if (strcmp(key, settings[i].name) == 0) {
+                pending[i] = (size_t)raw + 1;
+                found = true;
+                break;
+            }
         }
-        for (int i = 0; i < count; i++) {
-                if (strcmp(constants[i], "CONFDIR_SIZE") == 0) {
-                        writeLog("Memory for variable 'confDir' will be allocated by constants file.", 0, 1);
-			confdir_size = (size_t)(values[i] * sizeof(char)+1);
-                }
-		else if (strcmp(constants[i], "DATADIR_SIZE") == 0) {
-			writeLog("Memory for variable 'dataDir' will be allocated by constants file.", 0, 1);
-			datadir_size = (size_t)(values[i] * sizeof(char) + 1);
-		}
-		else if (strcmp(constants[i], "PLUGINDECLARATIONFILE_SIZE") == 0) {
-			writeLog("Memory for variable 'pluginDeclarationSize' will be allocated by constants file.", 0, 1);
-			plugindeclarationfile_size = (size_t)(values[i] * sizeof(char)+1);
-		}
-		else if (strcmp(constants[i], "JSONFILENAME_SIZE") == 0) {
-			writeLog("Memory for variable 'jsonFileName' will be allocated by constants file.", 0, 1);
-			jsonfilename_size = (size_t)(values[i] * sizeof(char)+1);
-		}
-		else if (strcmp(constants[i], "METRICSFILENAME_SIZE") == 0) {
-                        writeLog("Memory for variable 'metricsFileName' will be allocated by constants file.", 0, 1);
-			metricsfilename_size = (size_t)(values[i] * sizeof(char)+1);
-                }
-		else if (strcmp(constants[i], "INVENTORYFILENAME_SIZE") == 0) {
-			writeLog("Memory for variable 'inventoryFileName' will be allocated by constants file.", 0, 1);
-                        inventoryfilename_size = (size_t)(values[i] * sizeof(char)+1);
-		}
-		else if (strcmp(constants[i], "GARDENERSCRIPT_SIZE") == 0) {
-                        writeLog("Memory for variable 'gardenerScript' will be allocated by constants file.", 0, 1);
-			gardenerscript_size = (size_t)(values[i] * sizeof(char)+1);
-		} 
-		else if (strcmp(constants[i], "HOSTNAME_SIZE") == 0) {
-			writeLog("Memory for variable 'hostName' will be allocated by constants file.", 0, 1);
-			hostname_size = (size_t)(values[i] * sizeof(char)+1);
-		}
-		else if (strcmp(constants[i], "METRICSOUTPUTPREFIX_SIZE") == 0) {
-                        writeLog("Memory for variable 'metricsOutputPrefix' will be allocated by constants file.", 0, 1);
-			metricsoutputprefix_size = (size_t)(values[i] * sizeof(char)+1);
-                }
-		else if (strcmp(constants[i], "STOREDIR_SIZE") == 0) {
-                        writeLog("Memory for variable 'storeDir' will be allocated by constants file.", 0, 1);
-			storedir_size = (size_t)(values[i] * sizeof(char)+1);
-                }
-		else if (strcmp(constants[i], "LOGDIR_SIZE") == 0) {
-                        writeLog("Memory for variable 'logDir' will be allocated by constants file.", 0, 1);
-			logdir_size = (size_t)(values[i] * sizeof(char)+1);
-                }
-		else if (strcmp(constants[i], "INFOSTR_SIZE") == 0) {
-			writeLog("Memory for 'infostr' will be allocated by constants file.", 0, 1);
-			infostr_size = (size_t)(values[i] * sizeof(char)+1);
-		}
-		else if (strcmp(constants[i], "PLUGINDIR_SIZE") == 0) {
-                        writeLog("Memory for variable 'pluginDir' will be allocated by constants file.", 0, 1);
-			plugindir_size =  (size_t)(values[i] * sizeof(char)+1);
-                }
-		else if (strcmp(constants[i], "FILENAME_SIZE") == 0) {
-                        writeLog("Memory for variable 'fileName' will be allocated by constants file.", 0, 1);
-			filename_size = (size_t)(values[i] * sizeof(char)+1);
-                }
-		else if (strcmp(constants[i], "LOGMESSAGE_SIZE") == 0) {
-			writeLog("Memory for variable 'logmessage' will be allocated by constants file.", 0, 1);
-			logmessage_size = (size_t)(values[i] * sizeof(char)+1);
-		}
-		else if (strcmp(constants[i], "LOGFILE_SIZE") == 0) {
-			writeLog("Memory for variable 'logfile' will be allocated by constants file.", 0, 1);
-			logfile_size = (size_t)(values[i] * sizeof(char)+1);
-		}
-		else if (strcmp(constants[i], "DATAFILENAME_SIZE") == 0) {
-                        writeLog("Memory for variable 'dataFileName' will be allocated by constants file.", 0, 1);
-			datafilename_size = (size_t)(values[i] * sizeof(char)+1);
-                }
-		else if (strcmp(constants[i], "BACKUPDIRECTORY_SIZE") == 0) {
-                        writeLog("Memory for variable 'backupDirectory' will be allocated by constants file.", 0, 1);
-			backupdirectory_size = (size_t)(values[i] * sizeof(char)+1);
-                }
-		else if (strcmp(constants[i], "NEWFILENAME_SIZE") == 0) {
-                        writeLog("Memory for variable 'newFileName' will be allocated by constants file.", 0, 1);
-			newfilename_size = (size_t)(values[i] * sizeof(char)+1);
-                }
-		else if (strcmp(constants[i], "GARDENERMESSAGE_SIZE") == 0) {
-			writeLog("Memory for gardener return message will be allocated by constants file.", 0, 1);
-			gardenermessage_size = (size_t)(values[i] * sizeof(char)+1);
-		}
-		else if (strcmp(constants[i], "PLUGINCOMMAND_SIZE") == 0) {
-			writeLog("Memory for plugin command size will be allocated by constants file.", 0, 1);
-			plugincommand_size = (size_t)(values[i] * sizeof(char)+1);
-		}
-		else if (strcmp(constants[i], "PLUGINMESSAGE_SIZE") == 0) {
-                        writeLog("Memory for plugin message size will be allocated by constants file.", 0, 1);
-			pluginmessage_size = (size_t)(values[i] * sizeof(char)+1);
-                }
-		else if (strcmp(constants[i], "STORENAME_SIZE") == 0) {
-                        writeLog("Memory for variable 'storeName' will be allocated by constants file.", 0, 1);
-                        storename_size = (size_t)(values[i] * sizeof(char)+1);
-                }
-		else if (strcmp(constants[i], "APIMESSAGE_SIZE") == 0) {
-                        writeLog("Memory for API messages will dynamically be allocated by size inconstants file.", 0, 1);
-                        apimessage_size = (size_t)(values[i] * sizeof(char)+1);
-                }
-		else if (strcmp(constants[i], "SOCKETSERVERMESSAGE_SIZE") == 0) {
-			writeLog("Memory for socket server messages will dynamically be allocated by size in constants file.", 0, 1);
-			socketservermessage_size = (size_t)(values[i] * sizeof(char)+1);
-		}
-		else if (strcmp(constants[i], "SOCKETCLIENTMESSAGE_SIZE") == 0) {
-			writeLog("Memory for socket client messages will dynamically be allocated by size in constants file.", 0, 1);
-			socketclientmessage_size = (size_t)(values[i] * sizeof(char)+1);
-		}
-		else if (strcmp(constants[i], "PLUGINITEMNAME_SIZE") == 0) {
-			writeLog("Memory for pluginitem name size will dynamically be allocated by size in constants file.", 0, 1);
-                        pluginitemname_size = (size_t)(values[i] * sizeof(char)+1);
-                }
- 		else if (strcmp(constants[i], "PLUGINITEMDESC_SIZE") == 0) {
-                        writeLog("Memory for pluginitem description size will dynamically be allocated by size in constants file.", 0, 1);
-                        pluginitemdesc_size = (size_t)(values[i] * sizeof(char)+1);
-                }
- 		else if (strcmp(constants[i], "PLUGINITEMCMD_SIZE") == 0) {
-                        writeLog("Memory for pluginitem command size will dynamically be allocated by size in constants file.", 0, 1);
-                        pluginitemcmd_size = (size_t)(values[i] * sizeof(char)+1);
-                }
-		else if (strcmp(constants[i], "PLUGINOUTPUT_SIZE") == 0) {
-                        writeLog("Memory for plugin output will dynamically be allocated by size in constants file.", 0, 1);
-                        pluginoutput_size = (size_t)(values[i] * sizeof(char)+1);
-                }
-		else {
-			snprintf(infostr, infostr_size, "Constant '%s' not implemented by Almond %s", constants[i], VERSION);
-			writeLog(trim(infostr), 1, 1);
-		}
-	}
-        fclose(file);
-        return 0;
+        if (!found) {
+            char warning[160];
+            snprintf(warning, sizeof(warning), "Memory constant '%s' is not implemented; ignored.", key);
+            writeLog(warning, 1, 1);
+        }
+    }
+    free(line);
+    fclose(file);
+
+    /* The logger is already in use during bootstrap. Replace its allocation
+     * BEFORE publishing a larger size; leave all settings unchanged on failure. */
+    size_t new_log_size = logmessage_size;
+    for (size_t i = 0; i < setting_count; ++i) {
+        if (settings[i].value == &logmessage_size) new_log_size = pending[i];
+    }
+    char *new_logmessage = calloc(new_log_size + 1, sizeof(char));
+    if (!new_logmessage) {
+        writeLog("Could not allocate resized logging buffer; keeping defaults.", 2, 1);
+        return -1;
+    }
+    char *previous_logmessage = logmessage;
+    logmessage = new_logmessage;
+    for (size_t i = 0; i < setting_count; ++i) *settings[i].value = pending[i];
+    free(previous_logmessage);
+    writeLog("Memory variable constants loaded.", 0, 1);
+    return 0;
+
+invalid:
+    free(line);
+    fclose(file);
+    writeLog("Invalid memory constants file; all default sizes retained.", 2, 1);
+    return 1;
 }
 
 void constructSocketMessage(const char* action, const char* message) {
@@ -2858,10 +2918,14 @@ int toggleQuickStart(int on) {
 }
 
 void send_socket_message(int socket, SSL* ssl,  int id, int aflags) {
-        //char header[100] = "HTTP/1.1 200 OK\nContent-Type:application/txt\nContent-Length: ";
+	const char *content_type =
+        	(api_action == API_ALMOND_METRICS)
+        	? "text/plain; version=0.0.4; charset=utf-8"
+        	: "application/json";
+
 	const char *fmt = 
 		"HTTP/1.1 200 OK\r\n"
-  		"Content-Type:application/json\r\n"
+  		"Content-Type:%s\r\n"
   		"Content-Length: %zu\r\n"
 		"Connection: close\r\n"
 		"\r\n";
@@ -3159,29 +3223,17 @@ void send_socket_message(int socket, SSL* ssl,  int id, int aflags) {
 		args_set = 0;
 	}
 	content_length = (size_t)strlen(socket_message); 
-	int hdr_len = snprintf(NULL, 0, fmt, content_length);
+	int hdr_len = snprintf(NULL, 0, fmt, content_type, content_length);
 	if (hdr_len < 0) {
 		writeLog("[send_socket_message] snprintf size calculation failed.", 2, 0);
 		return;
 	}
-	//sprintf(len, "%li", content_length);
-	/*int written = snprintf(lenbuf, sizeof(lenbuf), "%zu", content_length);
-	if (written < 0) {
-		writeLog("[send_socket_message] snprintf error.", 2, 0);
-		return;
-	}
-	if (written >= sizeof(lenbuf)) {
-		writeLog("[send_socket_message] snprintf truncated output", 1, 0);
-	}
-        strcat(header, trim(lenbuf));
-        strcat(header, "\n\n");*/
 	char *header = malloc((size_t)hdr_len +1);
 	if (!header) {
 		writeLog("[send_socket_message] Out of memory allocating header.", 2, 0);
 		return;
 	}
-	snprintf(header, (size_t)hdr_len + 1, fmt, content_length);
-	//content_length += (size_t)strlen(header);
+	snprintf(header, (size_t)hdr_len + 1, fmt, content_type, content_length);
 	total = (size_t)hdr_len + content_length;
 	send_message = malloc(total +1);
 	if (send_message == NULL) {
@@ -3190,22 +3242,52 @@ void send_socket_message(int socket, SSL* ssl,  int id, int aflags) {
 		free(header);
 		return;
 	}
-	//else
-	//	memset(send_message, '\0', (content_length+1) * sizeof(char));
 	memcpy(send_message, header, hdr_len);
-        //strncpy(send_message, header, (size_t)(sizeof(header)));
-	//strcat(send_message, socket_message);
 	memcpy(send_message + hdr_len, socket_message, content_length);
 	send_message[total] = '\0';
 	if (use_ssl) {
-		if (SSL_write(ssl, send_message, strlen(send_message)) <= 0) {
+		/*if (SSL_write(ssl, send_message, total) <= 0) {
 			writeLog("Could not send ssl message to client", 1, 0);
-		}
+		}*/
+		size_t sent = 0;
+		while (sent < total) {
+                	size_t remaining = total - sent;
+                	int chunk = (remaining > INT_MAX)
+                        	? INT_MAX : (int)remaining;
+
+                	int n = SSL_write(ssl, send_message + sent, chunk);
+
+                	if (n > 0) {
+                        	sent += (size_t)n;
+                        	continue;
+                	}
+
+                	int ssl_error = SSL_get_error(ssl, n);
+
+                	if (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE) {
+                        	/* Retry only when the socket becomes ready. */
+                        	writeLog("SSL write requires retry.", 1, 0);
+                        	break;
+                	}
+			writeLog("Could not send complete SSL message to client.", 1, 0);
+                	break;
+        	}
 	}
 	else {
-        	if (send(socket, send_message, strlen(send_message), 0) < 0) {
+		size_t sent = 0;
+		while (sent < total) {
+			ssize_t n = send(socket, send_message + sent, total - sent, 0);
+			if (n < 0 && errno == EINTR)
+                        	continue;
+			if (n <= 0) {
+                        	writeLog("Could not send complete message to client.", 1, 0);
+                        	break;
+                	}
+			sent += (size_t)n;
+		}
+        	/*if (send(socket, send_message, total, 0) < 0) {
                 	writeLog("Could not send message to client.", 1, 0);
-        	}
+        	}*/
 	}
 	writeLog("Message sent on socket. Closing connection.", 0, 0);
         close(socket);
@@ -4517,7 +4599,8 @@ static void *wait_for_shutdown_signal(void *unused) {
 	if (during_initialization) {
 		static const char notice[] =
 			"\nSignal caught. Waiting for initialization to finish before shutting down.\n";
-		(void)write(STDERR_FILENO, notice, sizeof(notice) - 1);
+		ssize_t written = write(STDERR_FILENO, notice, sizeof(notice) - 1);
+		(void)written;
 	}
 	return NULL;
 }
@@ -4679,18 +4762,18 @@ void process_almond_format(ConfVal value) {
 
 void process_conf_dir(ConfVal value) {
 	if (confDir == NULL) {
-		confDir = malloc((size_t)50 * sizeof(char));
+		confDir = malloc(confdir_size);
 		if (!confDir) {
 			writeLog("Failed to allocate memory.", 1, 1);
 			return;
 		}
 	}
 	if (confDir != NULL)
-        	memset(confDir, '\0', 50 * sizeof(char));
+        	memset(confDir, '\0', confdir_size);
 	if (directoryExists(value.strval, 255) == 0) {
         	//strncpy(confDir, value.strval, strlen(value.strval));
 		//confDir[strlen(value.strval)] = '\0';
-		snprintf(confDir, 50, "%s", value.strval);
+		snprintf(confDir, confdir_size, "%s", value.strval);
         	confDirSet = true;
 	}
         else {
@@ -4702,7 +4785,7 @@ void process_conf_dir(ConfVal value) {
         	else {
         		//strncpy(confDir, value.strval, strlen(value.strval));
 			//confDir[strlen(value.strval)] = '\0';
-			snprintf(confDir, 50, "%s", value.strval);
+			snprintf(confDir, confdir_size, "%s", value.strval);
         		confDirSet = true;
         	}
         }
@@ -4962,6 +5045,21 @@ void process_plugin_declaration(ConfVal v) {
 	writeLog(trim(infostr), 0, 1);
 }
 
+void process_autodetect_plugins(ConfVal value) {
+	if ((strcmp(value.strval, "true") == 0) || (value.intval > 0)) {
+		autoDetectPlugins = true;
+        }
+}
+
+void process_automemory_optimization(ConfVal value) {
+	if ((strcmp(value.strval, "true") == 0) || (strcmp(value.strval, "passive") == 0)) {
+		autoMemoryOptimization = true;
+		if (strcmp(value.strval, "passive") == 0) {
+			passiveMemoryOptimization = true;
+		}
+	}
+}
+ 
 void process_enable_gardener(ConfVal value) {
 	if ((strcmp(value.strval, "true") == 0) || (value.intval > 0)) {
 		writeLog("Gardener script is enabled.", 0, 1);
@@ -5272,17 +5370,9 @@ void process_metrics_file(ConfVal val) {
 #endif
 
 void process_metrics_output_prefix(ConfVal value) {
-	if ((int)strlen(value.strval) <= 30) {
-		//size_t len = strlen(value.strval);
-		//strncpy(metricsOutputPrefix, value.strval, len);
-		//metricsOutputPrefix[len] = '\0';
-		snprintf(metricsOutputPrefix, 31, "%s", value.strval);
-		snprintf(infostr, infostr_size, "Metrics output prefix is set to '%s'", metricsOutputPrefix);
-		writeLog(trim(infostr), 0, 1);
-	}
-	else {
-		writeLog("Could not change metricsOutputPrefix. Prefix too long.", 1, 1);
-	}
+    snprintf(metricsOutputPrefix, metricsoutputprefix_size+1, "%s", value.strval);
+    snprintf(infostr, infostr_size, "Metrics output prefix is set to '%s'", metricsOutputPrefix);
+    writeLog(trim(infostr), 0, 1);
 }
 
 void process_save_on_exit(ConfVal value) {
@@ -5296,53 +5386,43 @@ void process_save_on_exit(ConfVal value) {
 }
 
 int getConfigurationValues() {
-	char* file_name = NULL;
-        char* line = NULL;
-        size_t len = 0;
-        ssize_t read;
-        FILE *fp = NULL;
-        int index = 0;
-        file_name = "/etc/almond/almond.conf";
-        fp = fopen(file_name, "r");
-        char confName[MAX_STRING_SIZE] = "";
-        char confValue[MAX_STRING_SIZE] = "";
-	
-	if (fp == NULL)
-        {
-                perror("Error while opening the configuration file.\n");
-                writeLog("Error opening configuration file", 2, 1);
-                exit(EXIT_FAILURE);
+    char *line = NULL;
+    size_t capacity = 0;
+    FILE *fp = fopen("/etc/almond/almond.conf", "r");
+    if (!fp) {
+        perror("Error opening configuration file");
+        writeLog("Error opening configuration file", 2, 1);
+        return 1;
+    }
+    /* getline owns the complete value. Handlers copy strings they retain;
+     * avoid the old 49-byte value truncation and split only at the first '='. */
+    for (;;) {
+        errno = 0;
+        if (getline(&line, &capacity, fp) < 0) {
+            if (ferror(fp) || errno != 0) {
+                free(line);
+                fclose(fp);
+                writeLog("Error reading configuration file", 2, 1);
+                return 1;
+            }
+            break;
         }
-
-	while ((read = getline(&line, &len, fp)) != -1) {
-		char *trimmed = trim(line);
-		if (trimmed[0] == '#' || trimmed[0] == '\0') {
-			continue;
-		}
-		char * token = strtok(trimmed, "=");
-		while (token != NULL) {
-			if (index == 0) {
-				//strncpy(confName, token, sizeof(confName));
-				snprintf(confName, sizeof(confName), "%s", token);
-                   	}
-                   	else {
-				//strncpy(confValue, token, sizeof(confValue));
-				snprintf(confValue, sizeof(confValue), "%s", token);
-                   	}
-                   	token = strtok(NULL, "=");
-                   	index++;
-                   	if (index == 2) index = 0;
-           	}
-		ConfVal cvu;
-		cvu.intval = strtol(trim(confValue), NULL, 0);
-		cvu.strval = trim(confValue);
-		for (int i = 0; i < sizeof(config_entries)/sizeof(ConfigEntry);i++) {
-			if (strcmp(confName, config_entries[i].name) == 0) {
-				config_entries[i].process(cvu);
-				break;
-			}
-		}
-	}
+        char *name = trim(line);
+        if (!*name || *name == '#') continue;
+        char *separator = strchr(name, '=');
+        if (!separator) continue;
+        *separator = '\0';
+        name = trim(name);
+        ConfVal cvu;
+        cvu.strval = trim(separator + 1);
+        cvu.intval = strtol(cvu.strval, NULL, 0);
+        for (size_t i = 0; i < sizeof(config_entries) / sizeof(config_entries[0]); ++i) {
+            if (strcmp(name, config_entries[i].name) == 0) {
+                config_entries[i].process(cvu);
+                break;
+            }
+        }
+    }
 	updateInterval = 60;
 	if (enableKafkaExport) {
        		if (kafkaexportreqs < 2 && !useKafkaConfigFile) {
@@ -8182,7 +8262,7 @@ void scheduleChecks(){
 							writeLog("Push metrics file name truncated. Name is too long.", 1, 0);
 						}
 						if (post_metrics_file_stream(url, metrics_path) == 0) {
-							writeLog("Merics pushed successfully.", 0, 0);
+							writeLog("Metrics pushed successfully.", 0, 0);
 						}
 						else {
 							writeLog("Failed to push metrics.", 2, 0);
@@ -8295,7 +8375,7 @@ void initialLogging() {
         printf("Starting almond version %s.\n", VERSION);
         initConstants();
         writeLog("Almond constants initialized.", 0, 1);
-        writeLog("Starting almond (26.3.0)...", 0, 1);
+        writeLog("Starting almond (26.3.1)...", 0, 1);
 }
 
 int closeFileHandler() {
@@ -8500,11 +8580,29 @@ static int init_system(void) {
 
         if (strcmp(hostName, "None") == 0) {
                 char *tempHost = getHostName();
-                snprintf(hostName, 255, "%s", tempHost);
+                snprintf(hostName, hostname_size+1, "%s", tempHost);
                 free(tempHost);
         }
         writeLog("Initiate logger thread.", 0, 1);
         initLoggerThread();
+	if (autoDetectPlugins) {
+		writeLog("Running plugin autodetection script.", 0, 0);
+		if (autodetect_plugins() > 0) {
+			writeLog("Autodetect plugins failed.", 1, 0);
+		}
+		else {
+			writeLog("Autodetect plugins script ran successfully.", 0, 0);
+		}	
+	}
+	if (autoMemoryOptimization) {
+		writeLog("Running memory optimization script.", 0, 0);
+		if (auto_memory_optimization(passiveMemoryOptimization) > 0) {
+			writeLog("Auto memory optimization script failed.", 1, 0);
+		}
+		else {
+			writeLog("Auto memory optimization script ran successfully.", 0, 0);
+		}
+	}
         if (check_plugin_conf_file(pluginDeclarationFile) != 0) {
                 logError("plugins.conf file seems to be corrupt. Program will shut down.", 2, 0);
                 return 2;
@@ -8648,9 +8746,12 @@ int main(int argc, char* argv[]) {
 	 * the handoff race if SIGINT arrives at exactly this point. */
 	__atomic_store_n(&initialization_complete, 1, __ATOMIC_RELEASE);
 	if (__atomic_load_n(&shutdown_requested, __ATOMIC_ACQUIRE)) {
-		write(STDERR_FILENO,
+		static const char notice[] = "Initialization complete; processing pending shutdown.\n";
+		/*write(STDERR_FILENO,
 		      "Initialization complete; processing pending shutdown.\n",
-		      sizeof("Initialization complete; processing pending shutdown.\n") - 1);
+		      sizeof("Initialization complete; processing pending shutdown.\n") - 1);*/
+		ssize_t written = write(STDERR_FILENO, notice, sizeof(notice) - 1);
+		(void) written;
 		is_stopping = 1;
 	}
 	run_check_loop();

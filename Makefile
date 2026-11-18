@@ -87,13 +87,13 @@ NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
 bin_PROGRAMS = almond$(EXEEXT)
-#am__append_1 = main_s.c api_s.c $(COMMON_SOURCES)
+am__append_1 = main_s.c api_s.c $(COMMON_SOURCES)
 #am__append_2 = main.c api.c $(COMMON_SOURCES) mod_kafka.c
 #am__append_3 = -I/usr/include/librdkafka
 #am__append_4 = -lrdkafka
-am__append_5 = main.c api.c  $(COMMON_SOURCES) mod_avro.c
-am__append_6 = -I/usr/include/librdkafka -I/usr/include/avro -I/usr/include/libserdes
-am__append_7 = -lrdkafka -lserdes -lavro
+#am__append_5 = main.c api.c  $(COMMON_SOURCES) mod_avro.c
+#am__append_6 = -I/usr/include/librdkafka -I/usr/include/avro -I/usr/include/libserdes
+#am__append_7 = -lrdkafka -lserdes -lavro
 subdir = .
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/configure.ac
@@ -116,14 +116,14 @@ am__objects_1 = almond-plugins.$(OBJEXT) almond-logger.$(OBJEXT) \
 	almond-config.$(OBJEXT) almond-collect.$(OBJEXT) \
 	almond-jwt_validate.$(OBJEXT) almond-alerting.$(OBJEXT) \
 	almond-heal.$(OBJEXT) almond-prometheus_metrics.$(OBJEXT)
-#am__objects_2 = almond-main_s.$(OBJEXT) \
-#	almond-api_s.$(OBJEXT) $(am__objects_1)
+am__objects_2 = almond-main_s.$(OBJEXT) \
+	almond-api_s.$(OBJEXT) $(am__objects_1)
 #am__objects_3 = almond-main.$(OBJEXT) \
 #	almond-api.$(OBJEXT) $(am__objects_1) \
 #	almond-mod_kafka.$(OBJEXT)
-am__objects_4 = almond-main.$(OBJEXT) \
-	almond-api.$(OBJEXT) $(am__objects_1) \
-	almond-mod_avro.$(OBJEXT)
+#am__objects_4 = almond-main.$(OBJEXT) \
+#	almond-api.$(OBJEXT) $(am__objects_1) \
+#	almond-mod_avro.$(OBJEXT)
 am_almond_OBJECTS = $(am__objects_2) $(am__objects_3) $(am__objects_4)
 almond_OBJECTS = $(am_almond_OBJECTS)
 am__DEPENDENCIES_1 =
@@ -219,18 +219,18 @@ distuninstallcheck_listfiles = find . -type f -print
 am__distuninstallcheck_listfiles = $(distuninstallcheck_listfiles) \
   | sed 's|^\./|$(prefix)/|' | grep -v '$(infodir)/dir$$'
 distcleancheck_listfiles = find . -type f -print
-ACLOCAL = ${SHELL} /workspace/almond-26.2.1/missing aclocal-1.16
+ACLOCAL = ${SHELL} /workspace/almond-26.3.1/missing aclocal-1.16
 AMTAR = $${TAR-tar}
 AM_DEFAULT_VERBOSITY = 1
-AUTOCONF = ${SHELL} /workspace/almond-26.2.1/missing autoconf
-AUTOHEADER = ${SHELL} /workspace/almond-26.2.1/missing autoheader
-AUTOMAKE = ${SHELL} /workspace/almond-26.2.1/missing automake-1.16
+AUTOCONF = ${SHELL} /workspace/almond-26.3.1/missing autoconf
+AUTOHEADER = ${SHELL} /workspace/almond-26.3.1/missing autoheader
+AUTOMAKE = ${SHELL} /workspace/almond-26.3.1/missing automake-1.16
 AWK = gawk
 CC = gcc
 CCDEPMODE = depmode=gcc3
 CFLAGS = -g -O2
 CPP = gcc -E
-CPPFLAGS =  -I/usr/include -I/usr/local/include -I/usr/include/libserdes
+CPPFLAGS =  -I/usr/include -I/usr/local/include
 CYGPATH_W = echo
 DEFS = -DHAVE_CONFIG_H
 DEPDIR = .deps
@@ -248,27 +248,27 @@ INSTALL_STRIP_PROGRAM = $(install_sh) -c -s
 JWT_LIBS = -ljwt
 LDFLAGS =  -L/usr/lib64 -L/usr/local/lib -L/usr/lib
 LIBOBJS = 
-LIBS = -lavro -lrdkafka  -lserdes -lavro
+LIBS = 
 LTLIBOBJS = 
-MAKEINFO = ${SHELL} /workspace/almond-26.2.1/missing makeinfo
+MAKEINFO = ${SHELL} /workspace/almond-26.3.1/missing makeinfo
 MKDIR_P = /usr/bin/mkdir -p
 OBJEXT = o
 PACKAGE = almond
 PACKAGE_BUGREPORT = andreas.lindell@almondmonitor.com
 PACKAGE_NAME = almond
-PACKAGE_STRING = almond 26.2.1
+PACKAGE_STRING = almond 26.3.1
 PACKAGE_TARNAME = almond
 PACKAGE_URL = 
-PACKAGE_VERSION = 26.2.1
+PACKAGE_VERSION = 26.3.1
 PATH_SEPARATOR = :
 SET_MAKE = 
 SHELL = /bin/sh
 STRIP = 
-VERSION = 26.2.1
-abs_builddir = /workspace/almond-26.2.1
-abs_srcdir = /workspace/almond-26.2.1
-abs_top_builddir = /workspace/almond-26.2.1
-abs_top_srcdir = /workspace/almond-26.2.1
+VERSION = 26.3.1
+abs_builddir = /workspace/almond-26.3.1
+abs_srcdir = /workspace/almond-26.3.1
+abs_top_builddir = /workspace/almond-26.3.1
+abs_top_srcdir = /workspace/almond-26.3.1
 ac_ct_CC = gcc
 am__include = include
 am__leading_dot = .
@@ -287,7 +287,7 @@ host_alias =
 htmldir = ${docdir}
 includedir = ${prefix}/include
 infodir = ${datarootdir}/info
-install_sh = ${SHELL} /workspace/almond-26.2.1/install-sh
+install_sh = ${SHELL} /workspace/almond-26.3.1/install-sh
 libdir = ${exec_prefix}/lib
 libexecdir = ${exec_prefix}/libexec
 localedir = ${datarootdir}/locale

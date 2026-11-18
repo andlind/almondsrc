@@ -1,9 +1,15 @@
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <errno.h>
+#include <limits.h>
+#include <stdint.h>
 #ifdef __linux__
 #include <malloc.h>
 #endif
@@ -16,7 +22,6 @@
 #include "main.h"
 
 #define STATUS_SIZE 2
-#define PLUGIN_LINE_MAX 1024
 
 /* Helper utilities */
 static char *safe_strdup(const char *s) {
@@ -25,6 +30,7 @@ static char *safe_strdup(const char *s) {
     char *d = malloc(n);
     if (!d) {
         perror("safe_strdup");
+        errno = ENOMEM;
         return NULL;
     }
     memcpy(d, s, n);
@@ -55,11 +61,10 @@ static char *extract_base_command(const char *cmd) {
     return base;
 }
 
-static PluginItem *parse_declaration_line(const char *line) {
-    if (!line) return NULL;
-    char buf[PLUGIN_LINE_MAX];
-    strncpy(buf, line, sizeof(buf));
-    buf[sizeof(buf)-1] = '\0';
+/* Parse in place. The caller owns the getline() buffer; all retained fields
+ * are copied before that buffer is reused or freed. */
+static PluginItem *parse_declaration_line(char *buf) {
+    if (!buf) return NULL;
 
     // Skip comments and short lines
     if (buf[0] == '#' || strlen(buf) < 5) return NULL;
@@ -90,6 +95,7 @@ static PluginItem *parse_declaration_line(const char *line) {
     PluginItem *item = calloc(1, sizeof *item);
     if (!item) {
         perror("calloc PluginItem");
+        errno = ENOMEM;
         return NULL;
     }
 
@@ -101,6 +107,7 @@ static PluginItem *parse_declaration_line(const char *line) {
     item->touched     = false;
     if (!item->name || !item->description || !item->command) {
         free_plugin_item(item, 1);
+        errno = ENOMEM;
         return NULL;
     }
     return item;
@@ -115,55 +122,73 @@ static PluginItem **load_declarations(const char *path, int *out_count) {
 
     PluginItem **list = NULL;
     size_t cap = 0, n = 0;
-    char line[PLUGIN_LINE_MAX];
+    char *line = NULL;
+    size_t line_capacity = 0;
 
-    while (fgets(line, sizeof line, f)) {
+    for (;;) {
+        errno = 0;
+        if (getline(&line, &line_capacity, f) < 0) {
+            if (ferror(f) || errno != 0) {
+                perror("getline in load_declarations");
+                goto fail;
+            }
+            break;
+        }
+        errno = 0;
         PluginItem *item = parse_declaration_line(line);
-        if (!item) continue;
+        if (!item) {
+            if (errno == ENOMEM) goto fail;
+            continue;
+        }
+
+        if (n >= INT_MAX) {
+            free_plugin_item(item, 1);
+            errno = EOVERFLOW;
+            perror("Too many plugin declarations");
+            goto fail;
+        }
 
         if (n + 1 > cap) {
-            cap = cap ? cap * 2 : 16;
-            PluginItem **tmp = realloc(list, cap * sizeof *list);
+            size_t new_cap = cap ? cap * 2 : 16;
+            if (new_cap < cap || new_cap > SIZE_MAX / sizeof *list) {
+                free_plugin_item(item, 1);
+                errno = EOVERFLOW;
+                perror("Plugin list allocation overflow");
+                goto fail;
+            }
+            PluginItem **tmp = realloc(list, new_cap * sizeof *list);
             if (!tmp) {
                 perror("realloc in load_declarations");
-                // cleanup partial list, including the item not yet added
                 free_plugin_item(item, 1);
-                for (size_t i = 0; i < n; ++i) free_plugin_item(list[i], 1);
-                free(list);
-                fclose(f);
-                return NULL;
+                goto fail;
             }
             list = tmp;
+            cap = new_cap;
         }
         list[n++] = item;
     }
 
+    free(line);
     fclose(f);
     *out_count = (int)n;
     return list;
+
+fail:
+    free(line);
+    for (size_t i = 0; i < n; ++i) free_plugin_item(list[i], 1);
+    free(list);
+    fclose(f);
+    return NULL;
 }
 
 void load_plugins() {
-    FILE *fp = fopen(pluginDeclarationFile, "r");
-    if (!fp) {
-        perror("Failed to open config file");
-        return;
-    }
+    int new_count = 0;
+    PluginItem **new_list = load_declarations(pluginDeclarationFile, &new_count);
+    if (!new_list) return;
 
-    PluginItem **new_list = calloc(decCount ? decCount : 16, sizeof *new_list);
-    if (!new_list) {
-        perror("Memory allocation failed for plugin list");
-        fclose(fp);
-        return;
-    }
-
-    char line[PLUGIN_LINE_MAX];
-    int index = 0;
-
-    while (fgets(line, sizeof(line), fp)) {
-        if (index >= decCount) break;
-        PluginItem *item = parse_declaration_line(line);
-        if (!item) continue;
+    /* Initialize before publishing anything to the hash or replacing globals. */
+    for (int index = 0; index < new_count; ++index) {
+        PluginItem *item = new_list[index];
 
         item->id = index;
 
@@ -176,18 +201,24 @@ void load_plugins() {
         item->output.retCode     = 0;
         item->output.prevRetCode = 0;
         item->output.retString   = safe_strdup("");
+        if (!item->output.retString) {
+            for (int j = 0; j < new_count; ++j) free_plugin_item(new_list[j], 1);
+            free(new_list);
+            return;
+        }
 
         item->touched = true;
-        HASH_ADD_KEYPTR(hh, g_plugin_map, item->name, strlen(item->name), item);
-
-        new_list[index++] = item;
     }
 
-    fclose(fp);
+    for (int index = 0; index < new_count; ++index) {
+        PluginItem *item = new_list[index];
+        HASH_ADD_KEYPTR(hh, g_plugin_map, item->name, strlen(item->name), item);
+    }
 
     free(g_plugins);
     g_plugins      = new_list;
-    g_plugin_count = index;
+    g_plugin_count = new_count;
+    decCount       = new_count;
     if (enableCollector) {
 	 plugin_labels = read_labels(pluginDeclarationFile);
 	 //struct json_object *json = read_labels("/etc/almond/plugins.conf");

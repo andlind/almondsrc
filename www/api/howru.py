@@ -234,7 +234,7 @@ crit_quotes = ["I'm not fine", "I feel sick, please call the doctor", "Not good,
 
 MAX_META_READ = 64 * 1024  # read first 64 KB for metadata
 
-current_version = '26.3.0'
+current_version = '26.3.1'
 __STARTED__ = datetime.datetime.now()
 
 app.secret_key = 'BAD_SECRET_KEY'
@@ -1708,12 +1708,8 @@ def receive_archive():
     if safe_hostname in ("", ".", ".."):
         abort(400, description="Invalid hostname")
 
-    # Change this to your preferred destination
-    #archive_dir = os.path.join(data_dir, "store")
     archive_dir = metrics_dir
     os.makedirs(archive_dir, exist_ok=True)
-
-    target_dir = os.path.join(archive_dir, safe_hostname)
 
     logger.info(f"Receiving archive from '{safe_hostname}'")
 
@@ -1769,24 +1765,31 @@ def receive_archive():
                     filter="data"
                 )
 
-            # Replace existing host directory contents
-            # only after successful extraction.
-            #
-            # Note: this is not an atomic replacement.
-            if os.path.exists(target_dir):
-                shutil.rmtree(target_dir)
+            # Flatten extracted files into the metrics directory so templates
+            # can read them without traversing host-specific subdirectories.
+            files_to_move = []
+            filenames = set()
+            for root, _, files in os.walk(temp_dir):
+                for filename in files:
+                    if filename in filenames:
+                        abort(400, description="Archive contains duplicate filenames")
+                    filenames.add(filename)
+                    files_to_move.append(
+                        (os.path.join(root, filename), os.path.join(archive_dir, filename))
+                    )
 
-            shutil.move(temp_dir, target_dir)
+            for source, destination in files_to_move:
+                os.replace(source, destination)
 
         logger.info(
             f"Archive from '{safe_hostname}' "
-            f"extracted to '{target_dir}'"
+            f"extracted to '{archive_dir}'"
         )
 
         return jsonify({
             "status": "ok",
             "hostname": safe_hostname,
-            "extracted_to": target_dir
+            "extracted_to": archive_dir
         }), 201
 
     except tarfile.TarError as e:

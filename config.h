@@ -5,7 +5,7 @@
 #define HAVE_ARPA_INET_H 1
 
 /* Define to 1 if you have the <avro.h> header file. */
-#define HAVE_AVRO_H 1
+/* #undef HAVE_AVRO_H */
 
 /* Define to 1 if you have the <ctype.h> header file. */
 #define HAVE_CTYPE_H 1
@@ -29,16 +29,16 @@
 #define HAVE_JWT_H 1
 
 /* Define to 1 if you have the `avro' library (-lavro). */
-#define HAVE_LIBAVRO 1
+/* #undef HAVE_LIBAVRO */
 
 /* Define to 1 if you have the `rdkafka' library (-lrdkafka). */
-#define HAVE_LIBRDKAFKA 1
+/* #undef HAVE_LIBRDKAFKA */
 
 /* Define to 1 if you have the <librdkafka/rdkafka.h> header file. */
-#define HAVE_LIBRDKAFKA_RDKAFKA_H 1
+/* #undef HAVE_LIBRDKAFKA_RDKAFKA_H */
 
 /* Define to 1 if you have the <libserdes/serdes-avro.h> header file. */
-#define HAVE_LIBSERDES_SERDES_AVRO_H 1
+/* #undef HAVE_LIBSERDES_SERDES_AVRO_H */
 
 /* Define to 1 if your system has a GNU libc compatible `malloc' function, and
    to 0 otherwise. */
@@ -73,7 +73,7 @@
 #define HAVE_REALLOC 1
 
 /* Define if Serdes is available */
-#define HAVE_SERDES 1
+/* #undef HAVE_SERDES */
 
 /* Define to 1 if you have the <signal.h> header file. */
 #define HAVE_SIGNAL_H 1
@@ -146,7 +146,7 @@
 #define PACKAGE_NAME "almond"
 
 /* Define to the full name and version of this package. */
-#define PACKAGE_STRING "almond 26.3.0"
+#define PACKAGE_STRING "almond 26.3.1"
 
 /* Define to the one symbol short name of this package. */
 #define PACKAGE_TARNAME "almond"
@@ -155,19 +155,19 @@
 #define PACKAGE_URL ""
 
 /* Define to the version of this package. */
-#define PACKAGE_VERSION "26.3.0"
+#define PACKAGE_VERSION "26.3.1"
 
 /* Define to 1 if you have the ANSI C header files. */
 #define STDC_HEADERS 1
 
 /* Enable AVRO support */
-#define USE_AVRO 1
+/* #undef USE_AVRO */
 
 /* Disable KAFKA support */
-/* #undef USE_MINIMAL */
+#define USE_MINIMAL 1
 
 /* Version number of package */
-#define VERSION "26.3.0"
+#define VERSION "26.3.1"
 
 /* Define for Solaris 2.5.1 so the uint32_t typedef from <sys/synch.h>,
    <pthread.h>, or <semaphore.h> is not used. If the typedef were allowed, the
