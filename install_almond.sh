@@ -75,6 +75,9 @@ fi
 echo "Copying howru files"
 sudo cp -rp www/* /opt/almond/
 
+echo "Copying script files"
+sudo cp -rp scripts /opt/almond/
+
 echo "Setting up runtime dirs"
 sudo mkdir -p /var/log/almond /opt/almond/api_cmd
 

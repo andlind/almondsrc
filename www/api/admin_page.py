@@ -61,12 +61,12 @@ scheduler_conf = []
 extra_conf = []
 api_available_conf = ['api.activeMods', 'api.adminUser', 'api.adminPassword', 'api.authProvider', 'api.authType', 'api.bindPort', 'api.dataDir','api.enableAliases', 'api.enableFile', 'api.enableGUI','api.enableLoginRedirect', 'api.enableMods', 'api.enableOauth','api.enableOtelExporter', 'api.enableOtelFileWatcher', 'api.enablePeriodicOtelExport', 'api.enableProxyCleaner','api.enableScraper', 'api.enableSSL','api.isContainer', 'api.isMetricsProxy', 'api.isProxy', 'api.localMetrics','api.metricsDir', 'api.multiMetrics', 'api.multiServer', 'api.otelExportInterval', 'api.otlpEndpoint', 'api.persistant2fa', 'api.proxyCleanerSeconds', 'api.showDashboard', 'api.sslCertificate', 'api.sslKey', 'api.startPage', 'api.stateType', 'api.useGUI', 'api.useProxyAlerting', 'api.userFile', 'api.useSSL', 'api.wsgi', 'data.jsonFile', 'data.metricsFile', 'scheduler.storeDir', 'scheduler.configFile', 'scheduler.dataDir', 'plugins.directory', 'plugins.declaration']
 
-scheduler_available_conf = ['almond.api', 'almond.enableCollector', 'almond.enableIamAud', 'almond.enforeIAMRoles', 'almond.iamAud', 'almond.iamIssuer', 'almond.iamPublicKey', 'almond.iamRolesAccepted', 'almond.inventoryFileName', 'almond.port', 'almond.pushInterval', 'almond.pushPort', 'almond.pushUrl', 'almond.saveInventory', 'almond.standalone', 'almond.tryToHeal', 'almond.useMetricsPush', 'almond.usePush', 'almond.useSSL', 'almond.certificate', 'almond.key', 'collector.getPluginMetadata', 'collector.getPluginMetrics', 'collector.getServerData', 'collector.isVerbose', 'data.jsonFile', 'data.saveOnExit', 'data.metricsFile', 'data.metricsOutputPrefix', 'plugins.directory', 'plugins.declaration', 'scheduler.allowAllHosts', 'scheduler.useTLS', 'scheduler.certificate', 'scheduler.key','scheduler.confDir', 'scheduler.kafkaConfigFile', 'scheduler.logDir', 'scheduler.logToStdout', 'scheduler.logPluginOutput', 'scheduler.runGardenerAtStart','scheduler.storeResults', 'scheduler.format', 'scheduler.initSleepMs', 'scheduler.sleepMs', 'scheduler.kafkaAvro', 'scheduler.schemaName', 'scheduler.schemaRegistryUrl', 'scheduler.useExternal','scheduler.truncateLog', 'scheduler.truncateLogInterval', 'scheduler.tuneTimer', 'scheduler.tunerCycle', 'scheduler.tuneMaster', 'scheduler.dataDir', 'scheduler.storeDir', 'scheduler.hostName', 'scheduler.enableGardener', 'scheduler.gardenerScript', 'scheduler.gardenerRunInterval', 'scheduler.quickStart', 'scheduler.metricsOutputPrefix', 'scheduler.enableClearDataCache', 'scheduler.enableKafkaExport', 'scheduler.enableKafkaTag', 'scheduler.enableKafkaId', 'scheduler.kafkaStartId', 'scheduler.kafkaBrokers', 'scheduler.kafkaTopic', 'scheduler.kafkaTag', 'scheduler.enableKafkaSSL', 'scheduler.kafkaCACertificate', 'scheduler.kafkaProducerCertificate', 'scheduler.kafkaSSLKey', 'scheduler.useKafkaConfigFile','scheduler.clearDataCacheInterval', 'scheduler.dataCacheTimeFrame', 'scheduler.type', 'gardener.CleanUpTime']
+scheduler_available_conf = ['almond.alertsToMail', 'almond.alertsToSlack', 'almond.api', 'almond.autodetectPlugins', 'almond.autoMemoryOptimization', 'almond.enableCollector', 'almond.enableIamAud', 'almond.enforeIAMRoles', 'almond.iamAud', 'almond.iamIssuer', 'almond.iamPublicKey', 'almond.iamRolesAccepted', 'almond.inventoryFileName', 'almond.logHealCommand', 'almond.port', 'almond.pushInterval', 'almond.pushPort', 'almond.pushUrl', 'almond.saveInventory', 'almond.standalone', 'almond.tryToHeal', 'almond.useMetricsPush', 'almond.usePush', 'almond.useSSL', 'almond.certificate', 'almond.key', 'collector.getPluginMetadata', 'collector.getPluginMetrics', 'collector.getServerData', 'collector.isVerbose', 'data.jsonFile', 'data.saveOnExit', 'data.metricsFile', 'data.metricsOutputPrefix', 'plugins.directory', 'plugins.declaration', 'scheduler.allowAllHosts', 'scheduler.useTLS', 'scheduler.certificate', 'scheduler.key','scheduler.confDir', 'scheduler.kafkaConfigFile', 'scheduler.logDir', 'scheduler.logToStdout', 'scheduler.logPluginOutput', 'scheduler.runGardenerAtStart','scheduler.storeResults', 'scheduler.format', 'scheduler.initSleepMs', 'scheduler.sleepMs', 'scheduler.kafkaAvro', 'scheduler.schemaName', 'scheduler.schemaRegistryUrl', 'scheduler.useExternal','scheduler.truncateLog', 'scheduler.truncateLogInterval', 'scheduler.tuneTimer', 'scheduler.tunerCycle', 'scheduler.tuneMaster', 'scheduler.dataDir', 'scheduler.storeDir', 'scheduler.hostName', 'scheduler.enableGardener', 'scheduler.gardenerScript', 'scheduler.gardenerRunInterval', 'scheduler.quickStart', 'scheduler.metricsOutputPrefix', 'scheduler.enableClearDataCache', 'scheduler.enableKafkaExport', 'scheduler.enableKafkaTag', 'scheduler.enableKafkaId', 'scheduler.kafkaStartId', 'scheduler.kafkaBrokers', 'scheduler.kafkaTopic', 'scheduler.kafkaTag', 'scheduler.enableKafkaSSL', 'scheduler.kafkaCACertificate', 'scheduler.kafkaProducerCertificate', 'scheduler.kafkaSSLKey', 'scheduler.useKafkaConfigFile','scheduler.clearDataCacheInterval', 'scheduler.dataCacheTimeFrame', 'scheduler.type', 'gardener.CleanUpTime']
 
 users = {}
 hasToken=False
 usertoken = "None"
-current_version = '26.3.0'
+current_version = '26.3.1'
 
 auth_provider_name = "local"
 auth_init = False
@@ -125,15 +125,20 @@ def load_plugins():
     global plugins
     global declaration_file
 
-    f = open(declaration_file)
-    read_data = f.read()
-    plugins = read_data.split("\n")
-    plugins.pop()
-    header = plugins[0][1:]
-    pos = header.find('<')
-    header = plugins[0][1:pos]
-    plugins[0] = header
-    f.close()
+    with open(declaration_file, 'r') as f:
+        all_lines = f.read().splitlines()
+
+    if not all_lines:
+        plugins = []
+        return
+
+    header_line = all_lines[0]
+    other_lines = all_lines[1:]
+
+    filtered_lines = [line for line in other_lines if line.strip() and not line.startswith('#')]
+    cleaned_header = header_line[1:].split('<')[0]
+
+    plugins = [cleaned_header] + filtered_lines
 
 def load_executable_roles():
     """Load executable_roles from API config file."""
@@ -1395,225 +1400,1101 @@ def get_metrics_api(file_name):
         return jsonify({'error': err_msg}), status_code
     return jsonify(data)
 
-#@admin_page.route('/almond/admin/metrics/get_old/<file_name>')
-#def get_api_metrics(file_name, return_list=None, user_image=None):
-#    actual_file_path = None
-#
-#    if return_list is None:
-#        if file_name == metrics_file_name or file_name == 'Current metrics':
-#             actual_file_path = f"{store_dir}/{metrics_file_name}"
-#        else:
-#             target_host = request.args.get('host')
-#             if target_host:
-#                 hostname = target_host.split('.')[0]
-#             else:
-#                 this_data = load_status_data()
-#                 hostname = this_data['host']['name'].split('.')[0]
-#             if file_name.startswith(f"{hostname}_"):
-#                 exact_file_name = file_name
-#             else:
-#                 exact_file_name = f"{hostname}_{file_name}"
-#
-#             actual_file_path = f"{store_dir}/{exact_file_name}"
-#
-#        # Now just open the file directly!
-#        if not os.path.exists(actual_file_path):
-#            return f"Error: Could not find log file {actual_file_path}", 404
-#
-#        try:
-#            with open(actual_file_path, 'r') as f:
-#                return_list = f.readlines()
-#
-#            if not actual_file_path.endswith(metrics_file_name):
-#                return_list.reverse()
-#        except Exception as e:
-#            return f"Error opening file: {str(e)}", 500
-#
-#    if user_image is None:
-#        if target_host:
-#            user_image = '/static/howru.png'
-#        else:
-#            user_image = '/static/almond_small.png'
-#    else:
-#        user_image = '/static/almond_small.png'
-#
-#    # Check if this is the current metrics file
-#    is_monitor = (actual_file_path or file_name).endswith(metrics_file_name)
-#    parsed_logs = []
-#
-#    # --- HANDLING FOR CURRENT METRICS (PROMETHEUS FORMAT) ---
-#    if is_monitor:
-#        # Regex to capture: metric_name{labels} value
-#        promo_pattern = re.compile(r"^(.*?)\{(.*?)\}\s+(.*)$")
-#
-#        for line in return_list:
-#            line = line.strip()
-#            if not line:
-#                continue
-#
-#            match = promo_pattern.search(line)
-#            if match:
-#                parsed_logs.append({
-#                    'metric': match.group(1),
-#                    'labels': match.group(2),
-#                    'value': match.group(3)
-#                })
-#            else:
-#                # Fallback if line doesn't match expected pattern
-#                parsed_logs.append({'raw': line})
-#
-#        return render_template(
-#            'metrics_an.html',
-#            file=file_name,
-#            user_image=user_image,
-#            is_monitor=True, # Pass flag to frontend
-#            logs=parsed_logs
-#        )
-#
-#    # --- HANDLING FOR HISTORICAL LOGS (NAGIOS FORMAT) ---
-#    timestamps = []
-#    history = [] 
-#    num_pattern = re.compile(r"([-+]?\d*\.\d+|\d+)")
-#    status_codes = {'OK': 0, 'WARNING': 1, 'CRITICAL': 2, 'UNKNOWN': 3}
-#
-#    for line in return_list:
-#        line = line.replace('\n', '').strip()
-#        if not line:
-#            continue
-#
-#        parts = line.split('|')
-#        main_part = parts[0].strip()
-#        perf_part = parts[1].strip() if len(parts) > 1 else ""
-#
-#        try:
-#            main_split = [x.strip() for x in main_part.split(',', 2)]
-#            if len(main_split) >= 3:
-#                date_str, plugin, message = main_split[0], main_split[1], main_split[2]
-#            else:
-#                date_str, plugin, message = main_split[0], "Unknown", main_part
-#            #status = message.split(' ')[0]
-#            known_statuses = ['OK', 'WARNING', 'CRITICAL', 'UNKNOWN']
-#            status = "UNKNOWN" # Default fallback
-#            clean_message = message.replace(':', ' ').replace('-', ' ').replace('.', ' ').replace(',', ' ')
-#            for word in clean_message.split():
-#                if word.upper() in known_statuses:
-#                    status = word.upper()
-#                    break
-#        except Exception:
-#            continue
-#
-#        current_metrics = {}
-#        if perf_part:
-#            metrics = perf_part.split()
-#            for metric_str in metrics:
-#                if '=' in metric_str:
-#                    label, val_data = metric_str.split('=', 1)
-#                    label = label.replace("'", "").replace('"', "")
-#                    raw_val = val_data.split(';')[0]
-#                    match = num_pattern.search(raw_val)
-#                    if match:
-#                        current_metrics[label] = float(match.group(1))
-#
-#        if not current_metrics:
-#            current_metrics['return_code'] = status_codes.get(status, 3)
-#
-#        parsed_logs.append({
-#            'date': date_str,
-#            'plugin': plugin,
-#            'status': status,
-#            'message': message,
-#            'perf': perf_part
-#        })
-#
-#        if current_metrics:
-#            date_parts = date_str.split(' ')
-#            time_label = date_parts[3] if len(date_parts) > 3 else date_str
-#            timestamps.append(time_label)
-#            history.append(current_metrics)
-#
-#    timestamps.reverse()
-#    history.reverse()
-#
-#    all_metric_names = set()
-#    for h in history:
-#        all_metric_names.update(h.keys())
-#
-#    colors = ['#007bff', '#28a745', '#dc3545', '#ffc107', '#17a2b8', '#6610f2', '#e83e8c', '#fd7e14']
-#    charts_data = []
-#    # Build a separate chart config for each metric
-#    for idx, metric_name in enumerate(sorted(all_metric_names)):
-#        data = []
-#        for h in history:
-#            data.append(h.get(metric_name, None))
-#
-#        # Create a safe HTML ID for the canvas element (no spaces or special chars)
-#        safe_id = re.sub(r'\W+', '_', metric_name)
-#
-#        charts_data.append({
-#            'id': f"chart_{safe_id}",
-#            'title': metric_name,
-#            'data': data,
-#            'color': colors[idx % len(colors)]
-#        })
-#
-#    return jsonify({
-#        'is_monitor': is_monitor,
-#        'logs': parsed_logs,
-#        'chart_labels': timestamps,
-#        'charts_data': charts_data
-#    })
+# Shared admin assets; pages and form actions use the same templates and URL.
+ADMIN_IMAGE = '/static/almond_small.png'
+LOGIN_IMAGE = '/static/almond.png'
+ADMIN_AVATAR = '/static/almond_avatar.png'
+ADMIN_LOGO = '/static/oig7.jpg'
+
+
+def _create_admin_session():
+    """Authenticate a submitted login and retain its home-template values."""
+    username = request.form['uname'].strip()
+    password = request.form['psw'].strip()
+
+    provider = ProviderFactory.create(auth_provider_name, enable_login_redirect, config)
+    token_data = provider.authenticate(username=username, password=password)
+
+    if token_data:
+        user_session = handle_oauth_login(provider, token_data, auth_provider_name)
+        if user_session:
+            create_session(user_session)
+            logger.info(f"User {username} logged in. Roles: {user_session.get('roles', [])}")
+        else:
+            session['login'] = 'false'
+            session.pop('login', None)
+            session.pop('user', None)
+            logger.warning(f"Failed to process login for user {username}")
+    else:
+        roles = verify_password(username, password)
+        if roles is not None:
+            user_session = handle_local_login(username, roles)
+            create_session(user_session)
+            logger.info(f"User {username} logged in locally")
+        else:
+            session['login'] = 'false'
+            session.pop('login', None)
+            session.pop('user', None)
+            logger.warning(f"Failed login attempt for user {username}")
+    return username, password
+
+
+def _handle_change_credentials():
+    info = ''
+    username = request.form['username']
+    password = request.form['password']
+    roles = request.form.get('roles', '')
+    set_new_password(username.strip(), password.strip(), roles)
+    howru_state = check_service_state("howru")
+    almond_state = check_service_state("almond")
+    data = load_status_data()
+    info_data = get_status(data)
+    if "No data file" in info_data:
+        return 403, "No data file"
+    status = get_infostr(info_data)
+    env_status = get_sys_info()
+    current_user_roles = get_session_user_roles()
+    logger.info("Rendering admin.html")
+    return render_template('admin.html', info = info, sys_info=env_status,version=current_version, username=username, passwd=password, roles=current_user_roles, logo_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR, logo=ADMIN_LOGO, almond_state=almond_state, howru_state=howru_state, status=status)
+
+
+def _handle_plugins():
+    if 'delete_line' in request.form:
+        line_id = request.form['delete_line']
+        logger.info("Rendering deleteplugin.html")
+        return render_template('deleteplugin.html', user_image=ADMIN_IMAGE, line=line_id, avatar=ADMIN_AVATAR)
+    elif 'edit_line' in request.form:
+        line_id = request.form['edit_line']
+        plugin_text = request.form['edit_text']
+        logger.info("Rendering editplugin.html")
+        return render_template('editplugin.html', user_image=ADMIN_IMAGE, line=line_id, text=plugin_text.strip(), avatar=ADMIN_AVATAR)
+    elif 'add_line' in request.form:
+        plugin_name = request.form['installed_plugins']
+        logger.info("Rendering addplugin.html")
+        return render_template('addplugin.html', user_image=ADMIN_IMAGE, plugin=plugin_name, avatar=ADMIN_AVATAR)
+    elif 'execute' in request.form:
+        plugin_id = request.form['plugin_id']
+        command = request.form['execute']
+        logger.info("Rendering execute.html")
+        return render_template('execute.html', user_image=ADMIN_IMAGE, plugin_id=plugin_id, execute=command, avatar=ADMIN_AVATAR)
+    else:
+        print ("None")
+        logger.warning("Not having any plugin action type to take care of")
+    return 'plugins'
+
+
+def _handle_scheduler():
+    delete_name = request.form.get('delete_config')
+    if delete_name:
+        delete_config_entry(almond_conf_file, delete_name)
+        return redirect("/almond/admin?page=almond&info=" + quote(delete_name + " was deleted"))
+    update_lines = [
+        key + "=" + value
+        for key, value in request.form.items()
+        if key != "action_type"
+    ]
+    if update_lines:
+        rewrite_config(almond_conf_file, update_lines)
+    logger.info("Scheduler configuration was rewritten")
+    return redirect("/almond/admin?page=almond&info=Config+was+rewritten")
+
+
+def _handle_restart_almond():
+    logger.info("Received action type 'restart almond'")
+    if state_type == "systemctl":
+        return_code = subprocess.call(["/bin/systemctl", "restart", "almond.service"])
+    elif state_type == "supervisorctl":
+        return_code = subprocess.call(["/usr/bin/supervisorctl", "restart", "almond"])
+    else:
+        return_code = 3
+    info = ""
+    if (return_code == 0):
+        info = "Process Almond restarted"
+        logger.info(info)
+    else:
+        info = "Could not start Almond. Wrong config?"
+        logger.warning(info)
+    howru_state = check_service_state("howru")
+    almond_state = check_service_state("almond")
+    data = load_status_data()
+    info_data = get_status(data)
+    status = get_infostr(info_data)
+    env_status = get_sys_info()
+    logger.info("Rendering template admin.html")
+    current_user_roles = get_session_user_roles()
+    return render_template('admin.html', version=current_version, info=info, sys_info=env_status, roles=current_user_roles, logo_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR, logo=ADMIN_LOGO, almond_state=almond_state, howru_state=howru_state, status=status)
+
+
+def _handle_restart_scheduler():
+    logger.info("Received action type 'restart scheduler'")
+    if state_type == "systemctl":
+        return_code = subprocess.call(["/bin/systemctl", "restart", "almond.service"])
+    elif state_type == "supervisorctl":
+        return_code = subprocess.call(["/usr/bin/supervisorctl", "restart", "almond"])
+    else:
+        return_code = 3
+    info = ""
+    if (return_code == 0):
+        info = "Process Almond restarted"
+        logger.info(info)
+    else:
+        info = "Could not start Almond. Wrong config?"
+        logger.warning(info)
+    logger.info("Rendering template conf.html")
+    return render_template('conf.html', conf = scheduler_conf, info=info, user_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR)
+
+
+def _handle_execute_plugin():
+    logger.info("Received action type 'execute plugin'")
+    info = ""
+    pid = request.form['plugin_id']
+    exr = execute_plugin_object(pid)
+    if (exr == 0):
+        info = "Plugin execution sent to Almond."
+        logger.info(info)
+    elif (exr == 1):
+        info = "Could not execute. Configuration is not correct."
+        logger.warning(info)
+    elif (exr == 2):
+        info = "Could not execute. Socket error."
+        logger.warning(info)
+    else:
+        info = "Something went wrong?"
+        logger.warning(info)
+    logger.info("Rendering template plugins.html")
+    this_data = load_status_data()
+    hostname = this_data['host']['name']
+    user_roles = get_user_roles()
+    load_executable_roles()
+    can_use_plugins = user_has_executable_role(user_roles)
+    return render_template('plugins.html', server=hostname, plugins_loaded = plugins, plugins_available = list_available_plugins(), user_roles=user_roles, can_use_plugins=can_use_plugins, user_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR, info=info)
+
+
+def _handle_api():
+    logger.info("Received action type 'api'")
+    delete_name = request.form.get('delete_config')
+    if delete_name:
+        delete_config_entry(api_conf_file, delete_name)
+        return redirect("/almond/admin?page=howru&info=" + quote(delete_name + " was deleted"))
+    update_lines = [
+        key + "=" + value
+        for key, value in request.form.items()
+        if key != "action_type"
+    ]
+    if standalone:
+        info = "Config was rewritten"
+        logger.info(info)
+    else:
+        info = "Config rewritten. Note! API is running in multimode, but this config will only apply to the local server."
+        logger.info(info)
+    if update_lines:
+        rewrite_config(api_conf_file, update_lines)
+    logger.info("API configuration was rewritten")
+    return redirect("/almond/admin?page=howru&info=" + quote(info))
+
+
+def _handle_restart_api():
+    logger.info("Received action_type 'restart_api'")
+    restart_api() 
+    logger.info("Rendering template restart.html")
+    return render_template('restart.html', user_image=ADMIN_IMAGE)
+
+
+def _handle_deleteplugin():
+    logger.info("Received action type 'deleteplugin'")
+    line_id = request.form['line']
+    delete_plugin_object(line_id)
+    info = "Object deleted. Almond process reloads."
+    logger.info(info)
+    load_plugins()
+    logger.info("Rendering template plugins.html")
+    user_roles = get_user_roles()
+    load_executable_roles()
+    can_use_plugins = user_has_executable_role(user_roles)
+    return render_template('plugins.html', plugins_loaded = plugins, plugins_available = list_available_plugins(), user_roles=user_roles, can_use_plugins=can_use_plugins, user_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR, info=info)
+
+
+def _handle_updateplugin():
+    logger.info("Received action type 'update plugin'")
+    line_id = request.form['line']
+    plugin_text = request.form['plugin']
+    update_plugin_object(line_id, plugin_text)
+    load_plugins()
+    logger.info("Rendering template plugins.html")
+    user_roles = get_user_roles()
+    load_executable_roles()
+    can_use_plugins = user_has_executable_role(user_roles)
+    return render_template('plugins.html', plugins_loaded = plugins, plugins_available = list_available_plugins(), user_roles=user_roles, can_use_plugins=can_use_plugins, user_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR, info="Object updated")
+
+
+def _handle_addplugin():
+    logger.info("Received action type 'add plugin'")
+    plugin_active = True
+    description = request.form["description"]
+    plugin = request.form["plugin_name"]
+    test_this = request.form["test_plugin"]
+    arguments = request.form["arguments"]
+    interval = request.form["intervall"]
+
+    if 'active' in request.form:
+        plugin_active = True
+    else:
+        plugin_active = False
+
+    label_keys = request.form.getlist("label_key[]")
+    label_values = request.form.getlist("label_value[]")
+    labels = {}
+
+    for key, value in zip(label_keys, label_values):
+        key = key.strip()
+        value = value.strip()
+        if key and value:
+            labels[key] = value
+    if (test_this == 'True'):
+        plugin_cmd = plugins_directory + '/' + plugin
+        plugin_args = arguments.strip()
+        runcmd = plugin_cmd + " " + plugin_args
+        try:
+            out = subprocess.check_output(
+              [runcmd],
+              shell=True,
+              stderr=subprocess.STDOUT
+            )
+        except subprocess.CalledProcessError as e:
+            out = e.output
+            logger.warning("CalledProcessError: " + out.decode('utf-8'))
+
+        logger.info("Rendering template testplugin.html")
+
+        return render_template(
+            'testplugin.html',
+            description=description.strip(),
+            output=out.decode('UTF-8').strip(),
+            plugin=plugin.strip(),
+            args=plugin_args.strip(),
+            active=plugin_active,
+            interval=interval,
+            labels=labels,
+            user_image=ADMIN_IMAGE,
+            avatar=ADMIN_AVATAR
+        )
+    else:
+        add_plugin_object(
+        description.strip(),
+        plugin.strip(),
+        arguments.strip(),
+        interval,
+        plugin_active,
+        labels
+    )
+
+    logger.info("Rendering template pluginadded.html")
+
+    return render_template(
+        'pluginadded.html',
+        description=description,
+        user_image=ADMIN_IMAGE,
+        avatar=ADMIN_AVATAR
+    )
+
+
+def _handle_install():
+    logger.info("Received action type 'install'")
+    logger.info("Rendering template installplugin.html")
+    return render_template('installplugin.html', user_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR) 
+
+
+def _handle_add_conf():
+    logger.info("Received action type 'add conf'")
+    config_name = request.form['add_conf_value']
+    config_type = request.form['config_type']
+    if 'add_value' in request.form:
+        config_value = request.form['add_value']
+        if config_value == '':
+            config_value = 'None'
+    else:
+        config_value = 'None'
+    if config_value == 'None':
+        logger.info("Rendering template add_conf.html")
+        return render_template('add_conf.html', item=config_name,config=config_type, user_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR)
+    else:
+        config_file = api_conf_file if config_type == 'api' else almond_conf_file
+        rewrite_config(config_file, [config_name.strip() + "=" + config_value.strip()])
+        page = 'howru' if config_type == 'api' else 'almond'
+        return redirect("/almond/admin?page=" + page + "&info=Config+was+rewritten")
+
+
+def _handle_addconf():
+    logger.info("Received action type 'addconf'")
+    config_type = request.form['config_type']
+    config_name = request.form['conf_item']
+    config_value = request.form['conf_value']
+    config_file = ""
+    if config_type == "api":
+        config_file = api_conf_file
+    elif config_type == "almond":
+        config_file = almod_conf_file
+    if not config_file == "":
+        if not (len(config_value) == 0):
+            line = config_name.strip() + "=" + config_value.strip()
+            write_conf = rewrite_config(config_file, line)
+            info = "Line added to configuration"
+            logger.info(info)
+        else:
+            info = "Missing config value. Did not write to file."
+            logger.warning(info)
+    else:
+        info = "Error writing to file. Missing information."
+        logger.warning(info)
+    logger.info("Rendering template howruconf.html")
+    return render_template('howruconf.html', conf=write_conf, user_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR, info=info)
+
+
+def _handle_upload_plugin():
+    logger.info("Received action type 'upload_plugin'")
+    white_list = ['sh', 'csh', 'ksh', 'py', 'pl', 'rb']
+    f = request.files['filename']
+    upload_name = f.filename.split('.')
+    if upload_name[1] in white_list:
+        f.save(f.filename)
+        dest = "/opt/almond/plugins/" + f.filename
+        shutil.move(f.filename, dest)
+        os.chmod(dest, 0o750)
+        logger.info(f.filename + " uploaded successfully")
+        return render_template('upload.html', user_image=ADMIN_IMAGE, info=f.filename + ' uploaded successfully', avatar=ADMIN_AVATAR)
+    else:
+        logger.info(f.filename + " was not recognized as a valid script file")
+        return render_template('upload.html', user_image=ADMIN_IMAGE, info=f.filename + ' was not recognized as a valid script file.', avatar=ADMIN_AVATAR)
+
+
+def _handle_show_metrics():
+    logger.info("Received action_type 'show metrics'")
+    is_metrics = False
+    metric_selection = ''
+    file_name = ''
+    return_list = []
+    if not enable_gui:
+        return render_template("403.html")
+    metric_selection = request.form['metric']
+    if not metric_selection == '-1':
+        is_metrics = True
+        file_name = store_dir + '/' +  metric_selection
+        if metric_selection == 'Current metrics':
+            file_name = store_dir + '/' + metrics_file_name
+        with open(file_name) as f:
+            return_list = f.readlines()
+            if not metric_selection == 'Current metrics':
+                return_list.reverse()
+            f.close()
+    if is_metrics:
+        logger.info("Rendering template metrics_an.html")
+        return view_metrics(file_name, user_image=ADMIN_IMAGE)
+    else:
+        logger.info("Rendering template show_metrics.html")
+        return render_template("show_metrics.html", user_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR)
+
+
+def _handle_show_log():
+    logger.info("Received action_type 'show_log'")
+    if not enable_gui:
+        return render_template("403.html")
+    log_selection = request.form['logfile']
+    if not log_selection == -1:
+        file_name = '/var/log/almond/' + log_selection
+        try:
+            limit = int(request.form['limit'])
+        except ValueError:
+            limit = 100
+        except KeyError:
+            limit = 100
+        with open(file_name, 'r') as file:
+            lines = deque(file, maxlen=limit)
+            file.close()
+        log = list(lines)
+        log.reverse()
+        logger.info("Rendering template show_log_a.html")
+        return render_template("show_log_a.html", log_name=log_selection, log=log, logo_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR)
+    else:
+        return render_template("show_log_a.html", log_name="None", log="No file selected", logo_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR)
+
+
+def _handle_actionapi():
+    """Build the selected Almond action, then send it to the API."""
+    logger.info("Received action_type 'actionapi'")
+    action_id = int(request.form["action_id"])
+    session_token = ""
+    if "tokens" in session:
+        session_token = session.get("tokens", {}).get("access_token", "")
+
+    token_required_actions = [2, 3, 6, 7, 8, 11]
+    if action_id in token_required_actions:
+        form_token = request.form.get("token", "").strip()
+        if not form_token and not session_token:
+            logger.warning("Token required for action %d but none provided", action_id)
+            return render_template('actionapi.html', user_image=ADMIN_IMAGE, data="Error: Token is required for this action. Please provide a token or log in with OAuth.", errors=1, avatar=ADMIN_AVATAR)
+
+    action_str = "{\"action\":"
+    flags_str = "\"flags\":\""
+    if (action_id == 1 or action_id == 2 or action_id == 3):
+        name = request.form["name"]
+        flags = request.form["flags"]
+        if (flags == "1"):
+            flags_str += "verbose\""
+        elif (flags == "3"):
+            flags_str += "all\""
+        else:
+            flags_str += "none\""
+        if (action_id == 1):
+            action_str += "\"read\""
+        elif (action_id == 2):
+            action_str += "\"run\""
+        else:
+            action_str += "\"runread\""
+        action_str += ", \"id\":\"" + name + "\", " + flags_str
+        if (action_id > 1 and not "tokens" in session):
+            print("Form token exists")
+            print(form_token)
+            token = request.form.get("token", "").strip() #or session_token
+            action_str += ", \"token\":\"" + token + "\"}"
+        else:
+            action_str += "}"
+    elif (action_id == 4):
+        action_str = "{\"action\":\"metrics\", \"name\":\"get_metrics\"}"
+    elif (action_id == 5):
+        variable = request.form["variable"]
+        action_str += "\"getvar\", \"name\":\"" + variable + "\"}"
+    elif (action_id == 6 or action_id == 7):
+        if (action_id == 6):
+            action_str += "\"enable\""
+        else:
+            action_str += "\"disable\""
+        feature = request.form["function"]
+        token = request.form.get("token", "").strip() #or session_token
+        if (token):
+            action_str += ", \"name\":\"" + feature + "\", \"token\":\"" + token + "\"}"
+        else:
+            action_str += ", \"name\":\"" + feature + "\"}"
+    elif (action_id == 8):
+        variable = request.form["variable"]
+        value = request.form["value"]
+        token = request.form.get("token", "").strip() #or session_token
+        if (token):
+            action_str += "\"setvar\", \"name\":\"" + variable + "\", \"value\":\"" + value + "\", \"token\":\"" + token + "\"}"
+        else:
+            action_str += "\"setvar\", \"name\":\"" + variable + "\", \"value\":\"" + value + "\"}"
+    elif (action_id == 10):
+        flags = "all"
+        action_str += "\"read\", \"name\":\"check_all\", \"flags\":\"" + flags + "\"}"
+    elif (action_id == 11):
+        id = request.form["id"]
+        value = request.form["value"]
+        token = request.form.get("token", "").strip() #or session_token
+        if (token):
+            action_str += "\"maintenance\", \"id\":\"" + id + "\", \"value\":\"" + value + "\", \"token\":\"" + token + "\"}"
+        else:
+            action_str += "\"maintenance\", \"id\":\"" + id + "\", \"value\":\"" + value + "\"}"
+    elif (action_id == 12):
+        value = request.form["name"]
+        action_str += "\"almond\", \"name\":\"" + value + "\"}"
+    elif (action_id == 13):
+        value = request.form["name"]
+        action_str += "\"check\", \"name\":\"" + value + "\"}"
+    elif (action_id == 15):
+        name = request.form.get("name", "")
+        flags = request.form["flags"]
+        options = request.form.get("options", "")
+        if not options:
+            return "Options cannot be blank", 400
+        warning = request.form.get("warning", "")
+        critical = request.form.get("critical", "")
+        arguments = "-w " + warning + " -c " + critical
+
+        action_obj = {
+            "action": "monitor",
+            "id": name,
+            "flags": flags,
+            "option": options,
+            "args": arguments
+        }
+
+        action_str = json.dumps(action_obj)
+    elif (action_id == 16):
+        name = request.form.get("flags", "")
+        action_str += "\"inventory\", \"name\":\"" + name + "\"}"
+    else:
+        print ("Action id error")
+    return _send_admin_api_request(action_str, session_token)
+
+
+def _send_admin_api_request(action_str, session_token):
+    """Send an API payload and render its HTTP response or connection error."""
+    if almond_api:
+        logger.info("Almond API enabled, preparing request.")
+
+        read_conf()
+
+        if is_container:
+            almond_host = socket.gethostbyname(socket.gethostname())
+        else:
+            almond_host = "127.0.0.1"
+
+        connection = None
+
+        try:
+            request_body = action_str.encode("utf-8")
+
+            request_headers = [
+                "POST /endpoint HTTP/1.1",
+                f"Host: {almond_host}:{almond_port}",
+                "Content-Type: application/json",
+                f"Content-Length: {len(request_body)}",
+                "Connection: close"
+            ]
+
+            if session_token:
+                request_headers.append(
+                    f"Authorization: Bearer {session_token}"
+                )
+
+            request_data = (
+                "\r\n".join(request_headers) + "\r\n\r\n"
+            ).encode("utf-8") + request_body
+
+            logger.info(
+                "Connecting to Almond API at %s:%s",
+                almond_host,
+                almond_port
+            )
+
+            connection = socket.create_connection(
+                (almond_host, almond_port),
+                timeout=30
+            )
+
+            connection.settimeout(30)
+
+            connection.sendall(request_data)
+
+            logger.info(
+                "Sent %d bytes to Almond API",
+                len(request_data)
+            )
+
+            response = http.client.HTTPResponse(connection)
+            response.begin()
+
+            logger.info(
+                "Almond API HTTP status: %d",
+                response.status
+            )
+
+            response_data = response.read()
+            logger.info(
+                "Almond API received %d bytes, Content-Length: %s",
+                len(response_data),
+                response.getheader("Content-Length")
+            )
+
+            retVal = response_data.decode("utf-8")
+
+            if response.status < 200 or response.status >= 300:
+                logger.error(
+                    "Almond API returned HTTP status %d",
+                    response.status
+                )
+
+                return render_template(
+                    "actionapi.html",
+                    user_image=ADMIN_IMAGE,
+                    data=retVal,
+                    errors=1,
+                    avatar=ADMIN_AVATAR
+                )
+            content_type = response.getheader("Content-Type", "").lower()
+            if "application/json" in content_type:
+                json_data = json.loads(retVal)
+
+                formatted_data = json.dumps(
+                    json_data,
+                    indent=2,
+                    ensure_ascii=False
+                )
+            elif "text/plain" in content_type:
+                formatted_data = retVal
+            else:
+                logger.warning("Unexpected Almond API Content-Type: %s",content_type)
+                formatted_data = retVal     
+
+            logger.info("Almond API response received successfully.")
+
+            return render_template(
+                "actionapi.html",
+                user_image=ADMIN_IMAGE,
+                data=formatted_data,
+                errors=0,
+                avatar=ADMIN_AVATAR
+            )
+
+        except (OSError, http.client.HTTPException) as e:
+            logger.exception(
+                "Almond API connection error: %s",
+                e
+            )
+
+            retVal = json.dumps({
+                "connection_error": str(e)
+            })
+
+            return render_template(
+                "actionapi.html",
+                user_image=ADMIN_IMAGE,
+                data=retVal,
+                errors=1,
+                avatar=ADMIN_AVATAR
+            )
+
+        except (UnicodeDecodeError, json.JSONDecodeError) as e:
+            logger.exception(
+                "Invalid Almond API response: %s",
+                e
+            )
+
+            retVal = json.dumps({
+                "connection_error": "Invalid JSON response from Almond."
+            })
+
+            return render_template(
+                "actionapi.html",
+                user_image=ADMIN_IMAGE,
+                data=retVal,
+                errors=1,
+                avatar=ADMIN_AVATAR
+            )
+
+        finally:
+            if connection is not None:
+                connection.close()
+
+    else:
+        logger.warning("Almond API is not enabled.")
+
+        retVal = json.dumps({
+            "almond_message": "Almond API is not enabled."
+        })
+
+        return render_template(
+            "actionapi.html",
+            user_image=ADMIN_IMAGE,
+            data=retVal,
+            errors=1,
+            avatar=ADMIN_AVATAR
+        )
+
+
+def _render_admin_home(username, password):
+    global is_container
+    logger.info("Checking session page")
+    if 'login' in session:
+        if enable_login_redirect and enable_oauth:
+            tokens = session.get("tokens")
+            if tokens:
+                updated = ensure_fresh_tokens(get_provider(), tokens)
+                if updated is None:
+                    session.pop("login", None)
+                    session.pop("user", None)
+                    session.pop("tokens", None)
+                    session.clear()
+                    return redirect("/login")
+                session["tokens"] = updated
+        session['login'] = 'true'
+        session['user'] = session['user']
+        howru_state = check_service_state("howru")
+        almond_state = check_service_state("almond")
+        data = load_status_data()
+        info_data = get_status(data)
+        info = get_infostr(info_data)
+        container = current_app.config['IS_CONTAINER']
+        if (container == 'true'):
+            is_container = True
+        else:
+            is_container = False
+        env_status = get_sys_info()
+        logger.info("Rendering template admin.html")
+        current_user_roles = get_session_user_roles()
+        return render_template('admin.html', version=current_version, sys_info = env_status, logo_image=ADMIN_IMAGE, username=username, password=password, roles=current_user_roles, avatar=ADMIN_AVATAR, logo=ADMIN_LOGO, almond_state=almond_state, howru_state=howru_state, status=info)
+    else:
+        a_auth_type = current_app.config['AUTH_TYPE']
+        if enable_login_redirect and enable_oauth:
+            return redirect("/login")
+        if (a_auth_type == "2fa"):
+            return redirect('/almond/admin/login')
+        elif (a_auth_type == "basic"):
+            logger.info("Rendering template login_a.html")
+            return render_template('login_a.html', logon_image=LOGIN_IMAGE)
+        else:
+            logger.warning("Could not get auth_type. Returning to basic")
+            return render_template('login_a.html', logon_image=LOGIN_IMAGE)
+
+
+def _render_admin_login():
+    almond_img = '/static/almond.png'
+    if enable_login_redirect and enable_oauth:
+        return redirect("/login")
+    logger.info("Rendering template login_a.html")
+    return render_template('login_a.html', logon_image=almond_img)
+
+
+def _render_admin_plugins():
+    available_plugins = list_available_plugins()
+    load_plugins()
+    if standalone:
+        info = ""
+    else:
+        info = "The API is running in multimode, but Plugins is only shown for the server where the API is running."
+        logger.info(info)
+    logger.info("Rendering template plugins.html")
+    this_data = load_status_data()
+    hostname = this_data['host']['name']
+    user_roles = get_user_roles()
+    load_executable_roles()
+    can_use_plugins = user_has_executable_role(user_roles)
+    return render_template('plugins.html', plugins_loaded = plugins, plugins_available = available_plugins, user_roles=user_roles, can_use_plugins=can_use_plugins, user_image=ADMIN_IMAGE, server=hostname, avatar=ADMIN_AVATAR, info=info)
+
+
+def _render_admin_almond():
+    load_scheduler_conf()
+    info = request.args.get('info', '')
+    if not standalone:
+        info = info or "Note! API is in multimode, but this configuration is for the local server only."
+        logger.info(info)
+    config_items = sorted(
+        (
+            (name.strip(), value.strip())
+            for item in scheduler_conf
+            if '=' in item
+            for name, value in [item.split('=', 1)]
+        ),
+        key=lambda item: item[0].lower(),
+    )
+    item_names = [item[0] for item in config_items]
+    item_values = [item[1] for item in config_items]
+    available_conf = sorted(compare_lists(scheduler_available_conf, item_names), key=str.lower)
+    logger.info("Rendering template conf_a.html")
+    return render_template('conf_a.html', item_names=item_names, item_values=item_values,conf=scheduler_conf, aconf=available_conf, avatar=ADMIN_AVATAR, info=info, user_image=ADMIN_IMAGE)   
+
+
+def _render_admin_howru():
+    load_api_conf()
+    info = request.args.get('info', '')
+    if not standalone:
+        info = info or "Note! API is in multimode, but this configuration is only applied to the local server."
+        logger.info(info)
+    config_items = sorted(
+        (item.split('=', 1) for item in api_conf if '=' in item),
+        key=lambda item: item[0].strip().lower(),
+    )
+    item_names = [item[0] for item in config_items]
+    item_values = [item[1] for item in config_items]
+    available_conf = compare_lists(api_available_conf, item_names)
+    api_owned_prefixes = ('scheduler.', 'collector.', 'kafka.')
+    available_conf = sorted(
+        (item for item in available_conf if not item.startswith(api_owned_prefixes)),
+        key=str.lower,
+    )
+    add_names = []
+    add_values = []
+    if extra_conf:
+        for item in extra_conf:
+            if '=' in item:
+                name, value = item.split('=', 1)
+                add_names.append(name)
+                add_values.append(value)
+    sorted_additions = sorted(
+        zip(add_names, add_values),
+        key=lambda item: item[0].lower(),
+    )
+    add_names, add_values = zip(*sorted_additions) if sorted_additions else ([], [])
+    add_names = list(add_names)
+    add_values = list(add_values)
+    available_conf = sorted(compare_lists(available_conf, add_names), key=str.lower)
+    logger.info("Rendering template howruconf_a.html")
+    return render_template('howruconf_a.html', item_names=item_names, item_values=item_values, add_names=add_names, add_values=add_values, conf = api_conf, aconf=available_conf, user_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR, info=info)
+
+
+def _render_admin_status():
+    this_data = load_status_data()
+    image_name = '/static/almond_small.png'
+    hostname = this_data['host']['name']
+    monitoring = this_data['monitoring']
+    info = ''
+    if not standalone:
+        info = "The API is running in multimode but status will only show info for single node"
+        logger.info(info)
+    env_status = get_sys_info()
+    logger.info("Rendering template status_admin.html")
+    return render_template('status_admin.html', version=current_version, user_image=ADMIN_IMAGE, server=hostname, monitoring=monitoring, avatar=ADMIN_AVATAR, info=info, sys_info = env_status)
+
+
+def _render_admin_api():
+    load_plugins()
+    item_names = []
+    for x in plugins:
+        pos = x.find(';')
+        item = x[0:pos]
+        pos = item.find(' ');
+        item_name = item[pos+1:]
+        item_names.append(item_name.strip())
+    item_names.pop(0)
+    amount = len(item_names)
+    logger.info("Rendering template api.html")
+    return render_template('api.html', logo_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR, amount=amount, plugins=item_names)
+
+
+def _render_admin_query():
+    load_plugins()
+    action = request.args.get("aid")
+    aid_int = None
+    if action:
+        try:
+            aid_int = int(action)
+        except ValueError:
+            logger.warning("[howru_api_query] Could not convert aid to integer value.")
+            return "Error: invalid parameter.", 400
+    else:
+        logger.critical("[howru_api_query] Aid parameter missing when making the call.")
+        return "Error: aid parameter missing", 400 
+    logger.info("Rendering HowRU API query")
+    if aid_int in (7, 25):
+        if (aid_int == 7):
+            p_id = None
+            if request.args.get("plugin_id") is None:
+                if request.args.get("plugin_name") is None:
+                    return "Error: Not sufficient parameters", 400
+                else:
+                    p_name = request.args.get("plugin_name")
+                    return render_template('query.html', logo_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR, aid=aid_int, plugin_name=p_name)
+            else:
+                p_id = request.args.get("plugin_id")
+                return render_template('query.html', logo_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR, aid=aid_int, plugin_id=p_id)
+        else:
+            item = request.form.get("item")
+            check = request.form.get("check")
+            option = request.form.get("option")
+            warning = request.form.get("warning")
+            critical = request.form.get("critical")
+            help = request.form.get("help")
+            if item is None:
+                load_plugins()
+                item_names = []
+                for x in plugins:
+                    pos = x.find(' ')
+                    item = x[0:pos]
+                    item_name = item.strip()
+                    item_names.append(item_name.strip("[]"))
+                item_names.pop(0)
+                return render_template('monitoring.html', action=aid_int, plugins=item_names, logo_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR) 
+            else:
+                aid = request.form.get("aid")
+                return render_template('query.html', logo_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR, aid=aid, plugin_id=item, check=check, option=option, warning=warning, critical=critical, help=help)
+    else:
+        return render_template('query.html', aid=aid_int, logo_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR)
+
+
+def _render_admin_action():
+    global usertoken
+    load_plugins()
+    item_names = []
+    for x in plugins:
+        pos = x.find(';')
+        item = x[0:pos]
+        pos = item.find(' ');
+        item_name = item[pos+1:]
+        item_names.append(item_name.strip())
+    item_names.pop(0)
+    action = request.args.get("aid")
+    get_user_token()
+    token = usertoken
+    usertoken = "None"
+
+    provider = get_session_user().get('provider', 'local')
+    user_roles = get_user_roles()
+    load_executable_roles()
+    can_execute_action = user_has_executable_role(user_roles)
+    action_requires_execute = action in ["2", "3", "6", "7", "8", "11", "15"]
+    can_submit_action = can_execute_action or not action_requires_execute
+
+    oauth_token = None
+    if token == "None" and provider != 'local' and "tokens" in session:
+        tokens = session.get("tokens")
+        if tokens and "access_token" in tokens:
+            oauth_token = tokens["access_token"]
+
+    logger.info("Rendering template action.html")
+    return render_template(
+        'action.html',
+        logo_image=ADMIN_IMAGE,
+        avatar=ADMIN_AVATAR,
+        plugins=item_names,
+        action=action,
+        token=token,
+        oauth_token=oauth_token,
+        can_execute_action=can_execute_action,
+        can_submit_action=can_submit_action,
+        provider=provider,
+    )
+
+
+def _render_admin_docs():
+    logger.info("Rendering template documentation_a.html")
+    return render_template('documentation_a.html', user_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR) 
+
+
+def _render_admin_logs():
+    logs_list = get_logs('/var/log/almond/')
+    logger.info("Rendering template logs.html")
+    return render_template('logs.html', logo_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR, logfiles=logs_list)
+
+
+def _render_admin_metrics():
+    metrics_list = []
+    prefix = None
+    this_data = load_status_data()
+    hostname = this_data['host']['name'].split('.')[0]
+    prefix = f"{hostname}_"
+    for f in os.listdir(store_dir):
+        if local_metrics_only and not f.startswith(prefix) and f != metrics_file_name:
+            continue
+        val = f
+        display = f
+        if (val == metrics_file_name):
+            val = "Current metrics"
+            display = "Current metrics"
+        elif display.startswith(prefix):
+            display = display[len(prefix):]
+        metrics_list.append({'value': val, 'display': display})
+    metrics_list.sort(key=lambda x: x['display'])
+    if not standalone:
+        info = "Note! API is running in multimode, but Metrics will only be shown for the local server."
+        logger.info(info)
+    else:
+        info = ""
+    logger.info("Rendering template metrics_a.html")
+    return render_template('metrics_a.html', user_image=ADMIN_IMAGE, avatar=ADMIN_AVATAR, metrics_list=metrics_list, info=info)
+
+
+def _render_admin_logout():
+    almond_img = '/static/almond.png'
+    a_auth_type = current_app.config['AUTH_TYPE']
+    user = get_session_user()
+    username = user.get('username', 'unknown')
+    provider = user.get('provider', 'local')
+    logger.info(f"User {username} logged out.")
+    if user.get("provider") != "local":
+        from .howru import logout as main_logout
+        return main_logout(username)
+
+
+    session.pop('login', None)
+    session.pop('user', None)
+    if enable_login_redirect and enable_oauth:
+        return redirect("/login")
+    if (a_auth_type == "2fa"):
+        session.pop('authenticated', None)
+        logger.info("Rendering template login_fa.html")
+        return render_template('login_fa.html', logon_image=almond_img)
+    else:
+        logger.info("Rendering template login_a.html")
+        return render_template('login_a.html', logon_image=almond_img)
+
+
+def _check_admin_action_session():
+    """Return a login response when an action cannot proceed, otherwise None."""
+    if session.get('login') == 'true' and isinstance(session.get('user'), dict):
+        if enable_login_redirect and enable_oauth:
+            tokens = session.get("tokens")
+            if tokens:
+                updated = ensure_fresh_tokens(get_provider(), tokens)
+                if updated is None:
+                    return redirect("/login")
+                session["tokens"] = updated
+        session['login'] = 'true'
+        session['user'] = session['user']
+    else:
+        if enable_login_redirect and enable_oauth:
+            return redirect("/login")
+        if (request.form['action_type'] == "create_session"):
+            logger.info("Creating admin login session")
+        else:
+            a_auth_type = current_app.config['AUTH_TYPE']
+            if (a_auth_type == "2fa"):
+                return render_template('login_fa.html', logon_image=LOGIN_IMAGE)
+            elif (a_auth_type == "basic"):
+                return render_template('login_a.html', logon_image=LOGIN_IMAGE)
+            else:
+                logger.warning("Could not get auth_type. Returning to basic")
+                return render_template('login_a.html', logon_image=LOGIN_IMAGE)
+
+
+ADMIN_ACTION_HANDLERS = {
+    'change_credentials': _handle_change_credentials,
+    'plugins': _handle_plugins,
+    'scheduler': _handle_scheduler,
+    'restart_almond': _handle_restart_almond,
+    'restart_scheduler': _handle_restart_scheduler,
+    'execute_plugin': _handle_execute_plugin,
+    'api': _handle_api,
+    'restart_api': _handle_restart_api,
+    'deleteplugin': _handle_deleteplugin,
+    'updateplugin': _handle_updateplugin,
+    'addplugin': _handle_addplugin,
+    'install': _handle_install,
+    'add_conf': _handle_add_conf,
+    'addconf': _handle_addconf,
+    'upload_plugin': _handle_upload_plugin,
+    'show_metrics': _handle_show_metrics,
+    'show_log': _handle_show_log,
+    'actionapi': _handle_actionapi,
+}
+
+ADMIN_PAGE_HANDLERS = {
+    'login': _render_admin_login,
+    'plugins': _render_admin_plugins,
+    'almond': _render_admin_almond,
+    'howru': _render_admin_howru,
+    'status': _render_admin_status,
+    'api': _render_admin_api,
+    'query': _render_admin_query,
+    'action': _render_admin_action,
+    'docs': _render_admin_docs,
+    'logs': _render_admin_logs,
+    'metrics': _render_admin_metrics,
+    'logout': _render_admin_logout,
+}
+
 
 @admin_page.route('/almond/admin', methods=['GET', 'POST'])
-#@auth.login_required
 def index():
+    """Initialize admin services, check the session, and dispatch the request."""
     global auth
     global auth_init
-    global plugins
-    global scheduler_conf
-    global api_conf
-    global extra_conf
-    global users
-    global enable_gui
-    global standalone
-    global almond_api
-    global almond_port
-    global admin_user_file
-    global almond_conf_file
-    global api_conf_file
-    global store_dir
-    global metrics_file_name
-    global current_version
-    global plugins_directory
-    global hasToken
-    global usertoken
-    global is_container
-    global enable_oauth
-    global enable_login_redirect
     global logger
     global logger_enabled
-    global auth_provider_name
-    global local_metrics_only
 
-    #print("SESSION AT ADMIN:", session)
     if not logger_enabled:
         logging.basicConfig(filename='/var/log/almond/howru.log', filemode='a', format='%(asctime)s | %(levelname)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
         logger = logging.getLogger()
         logger.setLevel(logging.DEBUG)
         logger.info('Logger for  admin (version:' + current_version + ') enabled')
         logger_enabled = True
-    use_port = load_conf(True)
-    
+    load_conf(True)
+
     if not enable_gui:
         return render_template("403.html")
 
     read_conf()
     username = ''
     password = ''
-    image_file = '/static/almond_small.png'
-    logon_img = '/static/almond.png'
-    almond_avatar = '/static/almond_avatar.png'
-    logo_img = '/static/oig7.jpg'
-  
+
     if not auth_init:
         provider = ProviderFactory.create(auth_provider_name, enable_login_redirect, config=config)
         set_provider(provider)
@@ -1625,1194 +2506,35 @@ def index():
         print ("Invalid userfile")
         logger.warning("Invalid userfile")
         return make_response("Invalid userfile", 404, headers);
-
-    if ('action_type' in request.form):
-        #if 'login' in session:
-        if session.get('login') == 'true' and isinstance(session.get('user'), dict):
-            if enable_login_redirect and enable_oauth:
-                tokens = session.get("tokens")
-                if tokens:
-                    updated = ensure_fresh_tokens(get_provider(), tokens)
-                    if updated is None:
-                        return redirect("/login")
-                    session["tokens"] = updated
-            session['login'] = 'true'
-            session['user'] = session['user']
-        else:
-            if enable_login_redirect and enable_oauth:
-                return redirect("/login")
-            if (request.form['action_type'] == "create_session"):
-                logger.info("Creating admin login session")
-            else:
-                a_auth_type = current_app.config['AUTH_TYPE']
-                if (a_auth_type == "2fa"):
-                    return render_template('login_fa.html', logon_image=logon_img)
-                elif (a_auth_type == "basic"):
-                    return render_template('login_a.html', logon_image=logon_img)
-                else:
-                    logger.warning("Could not get auth_type. Returning to basic")
-                    return render_template('login_a.html', logon_image=logon_img)
+    if 'action_type' in request.form:
+        response = _check_admin_action_session()
+        if response is not None:
+            return response
         action_type = request.form['action_type']
-        if action_type == "create_session":
+        if action_type == 'create_session':
             if enable_oauth and enable_login_redirect:
-                return redirect("/login")
-            
-            username = request.form['uname'].strip()
-            password = request.form['psw'].strip()
-            
-            # Attempt authentication via configured provider
-            provider = ProviderFactory.create(auth_provider_name, enable_login_redirect, config)
-            token_data = provider.authenticate(username=username, password=password)
-            
-            # Process login result
-            if token_data:
-                # External provider authentication successful
-                user_session = handle_oauth_login(provider, token_data, auth_provider_name)
-                if user_session:
-                    create_session(user_session)
-                    logger.info(f"User {username} logged in. Roles: {user_session.get('roles', [])}")
-                else:
-                    session['login'] = 'false'
-                    session.pop('login', None)
-                    session.pop('user', None)
-                    logger.warning(f"Failed to process login for user {username}")
-            else:
-                # Try local authentication as fallback (if enabled)
-                roles = verify_password(username, password)
-                if roles is not None:
-                    user_session = handle_local_login(username, roles)
-                    create_session(user_session)
-                    logger.info(f"User {username} logged in locally")
-                else:
-                    session['login'] = 'false'
-                    session.pop('login', None)
-                    session.pop('user', None)
-                    logger.warning(f"Failed login attempt for user {username}")
-        if action_type == 'change_credentials':
-            info = ''
-            username = request.form['username']
-            password = request.form['password']
-            roles = request.form.get('roles', '')
-            set_new_password(username.strip(), password.strip(), roles)
-            howru_state = check_service_state("howru")
-            almond_state = check_service_state("almond")
-            data = load_status_data()
-            info_data = get_status(data)
-            if "No data file" in info_data:
-                return 403, "No data file"
-            status = get_infostr(info_data)
-            env_status = get_sys_info()
-            #current_user_roles = ','.join(session.get('user', {}).get('roles', []))
-            current_user_roles = get_session_user_roles()
-            logger.info("Rendering admin.html")
-            return render_template('admin.html', info = info, sys_info=env_status,version=current_version, username=username, passwd=password, roles=current_user_roles, logo_image=image_file, avatar=almond_avatar, logo=logo_img, almond_state=almond_state, howru_state=howru_state, status=status)
-        if action_type == 'plugins':
-            if 'delete_line' in request.form:
-                line_id = request.form['delete_line']
-                logger.info("Rendering deleteplugin.html")
-                return render_template('deleteplugin.html', user_image=image_file, line=line_id, avatar=almond_avatar)
-            elif 'edit_line' in request.form:
-                line_id = request.form['edit_line']
-                plugin_text = request.form['edit_text']
-                logger.info("Rendering editplugin.html")
-                return render_template('editplugin.html', user_image=image_file, line=line_id, text=plugin_text.strip(), avatar=almond_avatar)
-            elif 'add_line' in request.form:
-                plugin_name = request.form['installed_plugins']
-                logger.info("Rendering addplugin.html")
-                return render_template('addplugin.html', user_image=image_file, plugin=plugin_name, avatar=almond_avatar)
-            elif 'execute' in request.form:
-                plugin_id = request.form['plugin_id']
-                command = request.form['execute']
-                logger.info("Rendering execute.html")
-                return render_template('execute.html', user_image=image_file, plugin_id=plugin_id, execute=command, avatar=almond_avatar)
-            else:
-                print ("None")
-                logger.warning("Not having any plugin action type to take care of")
-            return action_type
-        if action_type == 'scheduler':
-            delete_name = request.form.get('delete_config')
-            if delete_name:
-                delete_config_entry(almond_conf_file, delete_name)
-                return redirect("/almond/admin?page=almond&info=" + quote(delete_name + " was deleted"))
-            update_lines = [
-                key + "=" + value
-                for key, value in request.form.items()
-                if key != "action_type"
-            ]
-            if update_lines:
-                rewrite_config(almond_conf_file, update_lines)
-            logger.info("Scheduler configuration was rewritten")
-            return redirect("/almond/admin?page=almond&info=Config+was+rewritten")
-        if action_type == 'restart_almond':
-            logger.info("Received action type 'restart almond'")
-            if state_type == "systemctl":
-                return_code = subprocess.call(["/bin/systemctl", "restart", "almond.service"])
-            elif state_type == "supervisorctl":
-                return_code = subprocess.call(["/usr/bin/supervisorctl", "restart", "almond"])
-            else:
-                return_code = 3
-            info = ""
-            if (return_code == 0):
-                info = "Process Almond restarted"
-                logger.info(info)
-            else:
-                info = "Could not start Almond. Wrong config?"
-                logger.warning(info)
-            howru_state = check_service_state("howru")
-            almond_state = check_service_state("almond")
-            data = load_status_data()
-            info_data = get_status(data)
-            status = get_infostr(info_data)
-            env_status = get_sys_info()
-            logger.info("Rendering template admin.html")
-            #current_user_roles = ','.join(session.get('user', {}).get('roles', []))
-            current_user_roles = get_session_user_roles()
-            return render_template('admin.html', version=current_version, info=info, sys_info=env_status, roles=current_user_roles, logo_image=image_file, avatar=almond_avatar, logo=logo_img, almond_state=almond_state, howru_state=howru_state, status=status)
-        if action_type == 'restart_scheduler':
-            logger.info("Received action type 'restart scheduler'")
-            if state_type == "systemctl":
-                return_code = subprocess.call(["/bin/systemctl", "restart", "almond.service"])
-            elif state_type == "supervisorctl":
-                return_code = subprocess.call(["/usr/bin/supervisorctl", "restart", "almond"])
-            else:
-                return_code = 3
-            info = ""
-            if (return_code == 0):
-                info = "Process Almond restarted"
-                logger.info(info)
-            else:
-                info = "Could not start Almond. Wrong config?"
-                logger.warning(info)
-            logger.info("Rendering template conf.html")
-            return render_template('conf.html', conf = scheduler_conf, info=info, user_image=image_file, avatar=almond_avatar)
-        if action_type == "execute_plugin":
-            logger.info("Received action type 'execute plugin'")
-            info = ""
-            pid = request.form['plugin_id']
-            exr = execute_plugin_object(pid)
-            if (exr == 0):
-                info = "Plugin execution sent to Almond."
-                logger.info(info)
-            elif (exr == 1):
-                info = "Could not execute. Configuration is not correct."
-                logger.warning(info)
-            elif (exr == 2):
-                info = "Could not execute. Socket error."
-                logger.warning(info)
-            else:
-                info = "Something went wrong?"
-                logger.warning(info)
-            logger.info("Rendering template plugins.html")
-            this_data = load_status_data()
-            hostname = this_data['host']['name']
-            user_roles = get_user_roles()
-            load_executable_roles()
-            can_use_plugins = user_has_executable_role(user_roles)
-            return render_template('plugins.html', server=hostname, plugins_loaded = plugins, plugins_available = list_available_plugins(), user_roles=user_roles, can_use_plugins=can_use_plugins, user_image=image_file, avatar=almond_avatar, info=info)
-        if action_type == "api":
-            logger.info("Received action type 'api'")
-            delete_name = request.form.get('delete_config')
-            if delete_name:
-                delete_config_entry(api_conf_file, delete_name)
-                return redirect("/almond/admin?page=howru&info=" + quote(delete_name + " was deleted"))
-            update_lines = [
-                key + "=" + value
-                for key, value in request.form.items()
-                if key != "action_type"
-            ]
-            if standalone:
-                info = "Config was rewritten"
-                logger.info(info)
-            else:
-                info = "Config rewritten. Note! API is running in multimode, but this config will only apply to the local server."
-                logger.info(info)
-            if update_lines:
-                rewrite_config(api_conf_file, update_lines)
-            logger.info("API configuration was rewritten")
-            return redirect("/almond/admin?page=howru&info=" + quote(info))
-        if action_type == "restart_api":
-            logger.info("Received action_type 'restart_api'")
-            #return "You need to run systemctl restart howru-api.service"
-            restart_api() 
-            logger.info("Rendering template restart.html")
-            return render_template('restart.html', user_image=image_file)
-        if action_type == "deleteplugin":
-            logger.info("Received action type 'deleteplugin'")
-            line_id = request.form['line']
-            delete_plugin_object(line_id)
-            info = "Object deleted. Almond process reloads."
-            logger.info(info)
-            load_plugins()
-            logger.info("Rendering template plugins.html")
-            user_roles = get_user_roles()
-            load_executable_roles()
-            can_use_plugins = user_has_executable_role(user_roles)
-            return render_template('plugins.html', plugins_loaded = plugins, plugins_available = list_available_plugins(), user_roles=user_roles, can_use_plugins=can_use_plugins, user_image=image_file, avatar=almond_avatar, info=info)
-        if action_type == "updateplugin":
-            logger.info("Received action type 'update plugin'")
-            line_id = request.form['line']
-            plugin_text = request.form['plugin']
-            update_plugin_object(line_id, plugin_text)
-            load_plugins()
-            logger.info("Rendering template plugins.html")
-            user_roles = get_user_roles()
-            load_executable_roles()
-            can_use_plugins = user_has_executable_role(user_roles)
-            return render_template('plugins.html', plugins_loaded = plugins, plugins_available = list_available_plugins(), user_roles=user_roles, can_use_plugins=can_use_plugins, user_image=image_file, avatar=almond_avatar, info="Object updated")
-        if (action_type == "addplugin"):
-            logger.info("Received action type 'add plugin'")
-            plugin_active = True
-            description = request.form["description"]
-            plugin = request.form["plugin_name"]
-            test_this = request.form["test_plugin"]
-            arguments = request.form["arguments"]
-            interval = request.form["intervall"]
-
-            if 'active' in request.form:
-                plugin_active = True
-            else:
-                plugin_active = False
-
-            label_keys = request.form.getlist("label_key[]")
-            label_values = request.form.getlist("label_value[]")
-            labels = {}
-
-            for key, value in zip(label_keys, label_values):
-                key = key.strip()
-                value = value.strip()
-                if key and value:
-                    labels[key] = value
-            #print (labels)
-            if (test_this == 'True'):
-                plugin_cmd = plugins_directory + '/' + plugin
-                plugin_args = arguments.strip()
-                runcmd = plugin_cmd + " " + plugin_args
-                try:
-                    out = subprocess.check_output(
-                      [runcmd],
-                      shell=True,
-                      stderr=subprocess.STDOUT
-                    )
-                except subprocess.CalledProcessError as e:
-                    out = e.output
-                    logger.warning("CalledProcessError: " + out.decode('utf-8'))
-
-                logger.info("Rendering template testplugin.html")
-
-                return render_template(
-                    'testplugin.html',
-                    description=description.strip(),
-                    output=out.decode('UTF-8').strip(),
-                    plugin=plugin.strip(),
-                    args=plugin_args.strip(),
-                    active=plugin_active,
-                    interval=interval,
-                    labels=labels,
-                    user_image=image_file,
-                    avatar=almond_avatar
-                )
-            else:
-                add_plugin_object(
-                description.strip(),
-                plugin.strip(),
-                arguments.strip(),
-                interval,
-                plugin_active,
-                labels
-            )
-
-            logger.info("Rendering template pluginadded.html")
-
-            return render_template(
-                'pluginadded.html',
-                description=description,
-                user_image=image_file,
-                avatar=almond_avatar
-            )
-
-        if (action_type == "install"):
-            logger.info("Received action type 'install'")
-            logger.info("Rendering template installplugin.html")
-            return render_template('installplugin.html', user_image=image_file, avatar=almond_avatar) 
-        if (action_type == "add_conf"):
-            logger.info("Received action type 'add conf'")
-            config_name = request.form['add_conf_value']
-            config_type = request.form['config_type']
-            if 'add_value' in request.form:
-                config_value = request.form['add_value']
-                if config_value == '':
-                    config_value = 'None'
-            else:
-                config_value = 'None'
-            if config_value == 'None':
-                logger.info("Rendering template add_conf.html")
-                return render_template('add_conf.html', item=config_name,config=config_type, user_image=image_file, avatar=almond_avatar)
-            else:
-                config_file = api_conf_file if config_type == 'api' else almond_conf_file
-                rewrite_config(config_file, [config_name.strip() + "=" + config_value.strip()])
-                page = 'howru' if config_type == 'api' else 'almond'
-                return redirect("/almond/admin?page=" + page + "&info=Config+was+rewritten")
-        if (action_type == "addconf"):
-            logger.info("Received action type 'addconf'")
-            config_type = request.form['config_type']
-            config_name = request.form['conf_item']
-            config_value = request.form['conf_value']
-            config_file = ""
-            if config_type == "api":
-                config_file = api_conf_file
-            elif config_type == "almond":
-                config_file = almod_conf_file
-            if not config_file == "":
-                if not (len(config_value) == 0):
-                    line = config_name.strip() + "=" + config_value.strip()
-                    # You need to check if entry exists
-                    #file = open(config_file, "a")
-                    #print (line)
-                    #file.write(line)
-                    write_conf = rewrite_config(config_file, line)
-                    info = "Line added to configuration"
-                    logger.info(info)
-                else:
-                    info = "Missing config value. Did not write to file."
-                    logger.warning(info)
-            else:
-                info = "Error writing to file. Missing information."
-                logger.warning(info)
-            #return redirect("/almond/admin?page=howru")
-            logger.info("Rendering template howruconf.html")
-            return render_template('howruconf.html', conf=write_conf, user_image=image_file, avatar=almond_avatar, info=info)
-                
-        if (action_type == "upload_plugin"):
-            logger.info("Received action type 'upload_plugin'")
-            white_list = ['sh', 'csh', 'ksh', 'py', 'pl', 'rb']
-            f = request.files['filename']
-            upload_name = f.filename.split('.')
-            if upload_name[1] in white_list:
-                #print ("OK")
-                f.save(f.filename)
-                dest = "/opt/almond/plugins/" + f.filename
-                shutil.move(f.filename, dest)
-                #os.chmod(dest, stat.S_IXUSR | stat.S_I)
-                os.chmod(dest, 0o750)
-                logger.info(f.filename + " uploaded successfully")
-                return render_template('upload.html', user_image=image_file, info=f.filename + ' uploaded successfully', avatar=almond_avatar)
-            else:
-                logger.info(f.filename + " was not recognized as a valid script file")
-                return render_template('upload.html', user_image=image_file, info=f.filename + ' was not recognized as a valid script file.', avatar=almond_avatar)
-        if (action_type == "show_metrics"):
-            logger.info("Received action_type 'show metrics'")
-            is_metrics = False
-            metric_selection = ''
-            file_name = ''
-            return_list = []
-            if not enable_gui:
-                return render_template("403.html")
-            metric_selection = request.form['metric']
-            if not metric_selection == '-1':
-                is_metrics = True
-                file_name = store_dir + '/' +  metric_selection
-                if metric_selection == 'Current metrics':
-                    file_name = store_dir + '/' + metrics_file_name
-                with open(file_name) as f:
-                    return_list = f.readlines()
-                    if not metric_selection == 'Current metrics':
-                        return_list.reverse()
-                    f.close()
-            if is_metrics:
-                #logger.info("Rendering template show_metrics_a.html")
-                #return render_template("show_metrics_a.html", file=metric_selection, user_image=image_file, avatar=almond_avatar,  b_lines=return_list)
-                logger.info("Rendering template metrics_an.html")
-                return view_metrics(file_name, user_image=image_file)
-            else:
-                logger.info("Rendering template show_metrics.html")
-                return render_template("show_metrics.html", user_image=image_file, avatar=almond_avatar)
-        if (action_type == "show_log"):
-            logger.info("Received action_type 'show_log'")
-            if not enable_gui:
-                return render_template("403.html")
-            log_selection = request.form['logfile']
-            if not log_selection == -1:
-                file_name = '/var/log/almond/' + log_selection
-                try:
-                    limit = int(request.form['limit'])
-                except ValueError:
-                    limit = 100
-                except KeyError:
-                    limit = 100
-                with open(file_name, 'r') as file:
-                    lines = deque(file, maxlen=limit)
-                    file.close()
-                log = list(lines)
-                log.reverse()
-                logger.info("Rendering template show_log_a.html")
-                return render_template("show_log_a.html", log_name=log_selection, log=log, logo_image=image_file, avatar=almond_avatar)
-            else:
-                return render_template("show_log_a.html", log_name="None", log="No file selected", logo_image=image_file, avatar=almond_avatar)
-
-        if (action_type == "actionapi"):
-            logger.info("Received action_type 'actionapi'")
-            action_id = int(request.form["action_id"])
-            session_token = ""
-            if "tokens" in session:
-                session_token = session.get("tokens", {}).get("access_token", "")
-            
-            # Check if token is required for this action
-            token_required_actions = [2, 3, 6, 7, 8, 11]
-            if action_id in token_required_actions:
-                form_token = request.form.get("token", "").strip()
-                if not form_token and not session_token:
-                    logger.warning("Token required for action %d but none provided", action_id)
-                    return render_template('actionapi.html', user_image=image_file, data="Error: Token is required for this action. Please provide a token or log in with OAuth.", errors=1, avatar=almond_avatar)
-            
-            action_str = "{\"action\":"
-            flags_str = "\"flags\":\""
-            #print(action_id)
-            #print("\n")
-            if (action_id == 1 or action_id == 2 or action_id == 3):
-                name = request.form["name"]
-                flags = request.form["flags"]
-                if (flags == "1"):
-                    flags_str += "verbose\""
-                elif (flags == "3"):
-                    flags_str += "all\""
-                else:
-                    flags_str += "none\""
-                if (action_id == 1):
-                    action_str += "\"read\""
-                elif (action_id == 2):
-                    action_str += "\"run\""
-                else:
-                    action_str += "\"runread\""
-                action_str += ", \"id\":\"" + name + "\", " + flags_str
-                if (action_id > 1 and not "tokens" in session):
-                    print("Form token exists")
-                    print(form_token)
-                    token = request.form.get("token", "").strip() #or session_token
-                    action_str += ", \"token\":\"" + token + "\"}"
-                else:
-                    action_str += "}"
-            elif (action_id == 4):
-                action_str = "{\"action\":\"metrics\", \"name\":\"get_metrics\"}"
-            elif (action_id == 5):
-                variable = request.form["variable"]
-                action_str += "\"getvar\", \"name\":\"" + variable + "\"}"
-            elif (action_id == 6 or action_id == 7):
-                if (action_id == 6):
-                    action_str += "\"enable\""
-                else:
-                    action_str += "\"disable\""
-                feature = request.form["function"]
-                token = request.form.get("token", "").strip() #or session_token
-                if (token):
-                    action_str += ", \"name\":\"" + feature + "\", \"token\":\"" + token + "\"}"
-                else:
-                    action_str += ", \"name\":\"" + feature + "\"}"
-            elif (action_id == 8):
-                variable = request.form["variable"]
-                value = request.form["value"]
-                token = request.form.get("token", "").strip() #or session_token
-                if (token):
-                    action_str += "\"setvar\", \"name\":\"" + variable + "\", \"value\":\"" + value + "\", \"token\":\"" + token + "\"}"
-                else:
-                    action_str += "\"setvar\", \"name\":\"" + variable + "\", \"value\":\"" + value + "\"}"
-            elif (action_id == 10):
-                flags = "all"
-                action_str += "\"read\", \"name\":\"check_all\", \"flags\":\"" + flags + "\"}"
-            elif (action_id == 11):
-                id = request.form["id"]
-                value = request.form["value"]
-                token = request.form.get("token", "").strip() #or session_token
-                if (token):
-                    action_str += "\"maintenance\", \"id\":\"" + id + "\", \"value\":\"" + value + "\", \"token\":\"" + token + "\"}"
-                else:
-                    action_str += "\"maintenance\", \"id\":\"" + id + "\", \"value\":\"" + value + "\"}"
-            elif (action_id == 12):
-                value = request.form["name"]
-                action_str += "\"almond\", \"name\":\"" + value + "\"}"
-            elif (action_id == 13):
-                value = request.form["name"]
-                action_str += "\"check\", \"name\":\"" + value + "\"}"
-            elif (action_id == 15):
-                name = request.form.get("name", "")
-                flags = request.form["flags"]
-                options = request.form.get("options", "")
-                if not options:
-                    return "Options cannot be blank", 400
-                warning = request.form.get("warning", "")
-                critical = request.form.get("critical", "")
-                arguments = "-w " + warning + " -c " + critical
-
-                action_obj = {
-                    "action": "monitor",
-                    "id": name,
-                    "flags": flags,
-                    "option": options,
-                    "args": arguments
-                }
-
-                action_str = json.dumps(action_obj)
-                #print("DEBUG: action_str: %s" % action_str)  
-            elif (action_id == 16):
-                name = request.form.get("flags", "")
-                action_str += "\"inventory\", \"name\":\"" + name + "\"}"
-            else:
-                print ("Action id error")
-            if almond_api:
-                logger.info("Almond API enabled, preparing request.")
-
-                read_conf()
-
-                if is_container:
-                    almond_host = socket.gethostbyname(socket.gethostname())
-                else:
-                    almond_host = "127.0.0.1"
-
-                connection = None
-
-                try:
-                    # Encode JSON request
-                    request_body = action_str.encode("utf-8")
-
-                    # Build HTTP headers
-                    request_headers = [
-                        "POST /endpoint HTTP/1.1",
-                        f"Host: {almond_host}:{almond_port}",
-                        "Content-Type: application/json",
-                        f"Content-Length: {len(request_body)}",
-                        "Connection: close"
-                    ]
-
-                    # Add OAuth authorization if available
-                    if session_token:
-                        request_headers.append(
-                            f"Authorization: Bearer {session_token}"
-                        )
-
-                    # Combine headers and JSON into one buffer
-                    request_data = (
-                        "\r\n".join(request_headers) + "\r\n\r\n"
-                    ).encode("utf-8") + request_body
-
-                    logger.info(
-                        "Connecting to Almond API at %s:%s",
-                        almond_host,
-                        almond_port
-                    )
-
-                    # Open TCP connection
-                    connection = socket.create_connection(
-                        (almond_host, almond_port),
-                        timeout=30
-                    )
-
-                    connection.settimeout(30)
-
-                    # Send the complete request
-                    connection.sendall(request_data)
-
-                    logger.info(
-                        "Sent %d bytes to Almond API",
-                        len(request_data)
-                    )
-
-                    # Parse the HTTP response correctly
-                    response = http.client.HTTPResponse(connection)
-                    response.begin()
-
-                    logger.info(
-                        "Almond API HTTP status: %d",
-                        response.status
-                    )
-
-                    # Read complete HTTP response body
-                    response_data = response.read()
-                    logger.info(
-                        "Almond API received %d bytes, Content-Length: %s",
-                        len(response_data),
-                        response.getheader("Content-Length")
-                    )
-
-                    retVal = response_data.decode("utf-8")
-
-                    if response.status < 200 or response.status >= 300:
-                        logger.error(
-                            "Almond API returned HTTP status %d",
-                            response.status
-                        )
-
-                        return render_template(
-                            "actionapi.html",
-                            user_image=image_file,
-                            data=retVal,
-                            errors=1,
-                            avatar=almond_avatar
-                        )
-
-                    json_data = json.loads(retVal)
-
-                    formatted_data = json.dumps(
-                        json_data,
-                        indent=2,
-                        ensure_ascii=False
-                    )
-
-                    logger.info(
-                        "Almond API response received successfully."
-                    )
-
-                    return render_template(
-                        "actionapi.html",
-                        user_image=image_file,
-                        data=formatted_data,
-                        errors=0,
-                        avatar=almond_avatar
-                    )
-
-                except (OSError, http.client.HTTPException) as e:
-                    logger.exception(
-                        "Almond API connection error: %s",
-                        e
-                    )
-
-                    retVal = json.dumps({
-                        "connection_error": str(e)
-                    })
-
-                    return render_template(
-                        "actionapi.html",
-                        user_image=image_file,
-                        data=retVal,
-                        errors=1,
-                        avatar=almond_avatar
-                    )
-
-                except (UnicodeDecodeError, json.JSONDecodeError) as e:
-                    logger.exception(
-                        "Invalid Almond API response: %s",
-                        e
-                    )
-
-                    retVal = json.dumps({
-                        "connection_error": "Invalid JSON response from Almond."
-                    })
-
-                    return render_template(
-                        "actionapi.html",
-                        user_image=image_file,
-                        data=retVal,
-                        errors=1,
-                        avatar=almond_avatar
-                    )
-
-                finally:
-                    if connection is not None:
-                        connection.close()
-
-            else:
-                logger.warning("Almond API is not enabled.")
-
-                retVal = json.dumps({
-                    "almond_message": "Almond API is not enabled."
-                })
-
-                return render_template(
-                    "actionapi.html",
-                    user_image=image_file,
-                    data=retVal,
-                    errors=1,
-                    avatar=almond_avatar
-                )
-            #if (almond_api):
-            #    #print(f"Almond API active: {almond_api}")
-            #    read_conf()
-            #    if is_container:
-            #        container_ip = socket.gethostbyname(socket.gethostname())
-            #    clientSocket = None
-            #    try:
-            #        clientSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            #        clientSocket.settimeout(30)
-            #    except socket.error as e:
-            #        print ("Error creating socket: %s" % e)
-            #        retVal = "{\"connection_error\" : \"Error creating socket \"}"
-            #        return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
-            #    try:
-            #        if is_container:
-            #            clientSocket.connect((container_ip, almond_port))
-            #        else:
-            #            clientSocket.connect(("127.0.0.1",almond_port))
-            #    except socket.gaierror as e:
-            #        print ("Address-related error connecting to server: %s" % e)
-            #        retVal = "{\"connection_error\" : \"Address-related error connecting to server.\"}"
-            #        return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
-            #    except socket.error as e:
-            #        print ("Connection error: %s" % e)
-            #        if e.errno == errno.ENETUNREACH:
-            #            print("Network unreachable - Check Docker network configuration")
-            #        retVal = "{\"connection_error\" : \"Socket connection error.\"}"
-            #        return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
-            #    if (session_token): 
-            #        payload = ""
-            #        header = (
-            #            "POST /endpoint HTTP/1.1\r\n"
-            #            f"Authorization: Bearer {session_token}\r\n"
-            #            "Content-Type: application/json\r\n"
-            #            f"Content-Length: {len(action_str)}\r\n"
-            #            "\r\n" # The crucial empty line
-            #        )
-            #        payload = header + action_str
-            #    else:
-            #        payload = action_str
-            #    #print("DEBUG PAYLOAD")
-            #    #print(payload)
-            #    try:
-            #        clientSocket.sendall(payload.encode())
-            #    except socket.error as e:
-            #        print ("Error sending data: %s" % e)
-            #        retVal = "{\"connection_error\" : \"Error sending data.\"}"
-            #        return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
-            #    chunks = []
-            #    clientSocket.settimeout(5.0)
-            #    try:
-            #        while True:
-            #            chunk = clientSocket.recv(4096)
-            #            if not chunk:
-            #                break
-            #            chunks.append(chunk)
-            #            combined_data = b"".join(chunks).decode('utf-8', errors='ignore')
-            #            try:
-            #                json.loads(combined_data)
-            #                break
-            #            except json.JSONDecodeError:
-            #                continue
-            #        retVal = b"".join(chunks).decode('utf-8')
-            #    except socket.timeout:
-            #        print("Socket timeout waiting for complete JSON response")
-            #        retVal = "{\"connection_error\" : \"Timeout receiving complete data.\"}"
-            #        return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
-            #    except socket.error as e:
-            #        print ("Error receiving data: %s" % e)
-            #        retVal = "{\"connection_error\" : \"Error receiving data.\"}"
-            #        return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
-            #    if not len(retVal):
-            #        print ("No retVal len\n")
-            #        retVal = "{\"connection_error\" : \"Empty return on socket.\"}"
-            #        return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
-            #    #print(retVal.decode())
-            #else:
-            #    print(f"Account active: {almond_api}")
-            #    print ("Almond api is not enabled or has a different authorization provider than what was provided.")
-            #    retVal = "{\"almond_message\":\"Almond API is not enabled or has different authorization provider.\"}"
-            #    return render_template('actionapi.html', user_image=image_file, data=retVal, errors=1, avatar=almond_avatar)
-            #data = retVal.strip() if isinstance(retVal, str) else retVal.decode("utf-8").strip()
-            #pos = data.find('Content-Length:')
-            #text = data[pos+16:]
-            #newline = text.find("\n")
-            #newtext = text[newline+1:].strip()
-            #return render_template('actionapi.html', user_image=image_file, data=newtext, errors=0, avatar=almond_avatar)
-
-    if not ('page' in request.args):
-        logger.info("Checking session page")
-        #if session.get("login") == "true" and "user" in session:
-        if 'login' in session:
-            if enable_login_redirect and enable_oauth:
-                tokens = session.get("tokens")
-                if tokens:
-                    updated = ensure_fresh_tokens(get_provider(), tokens)
-                    if updated is None:
-                        session.pop("login", None)
-                        session.pop("user", None)
-                        session.pop("tokens", None)
-                        session.clear()
-                        return redirect("/login")
-                    session["tokens"] = updated
-            session['login'] = 'true'
-            session['user'] = session['user']
-            howru_state = check_service_state("howru")
-            almond_state = check_service_state("almond")
-            data = load_status_data()
-            info_data = get_status(data)
-            info = get_infostr(info_data)
-            container = current_app.config['IS_CONTAINER']
-            if (container == 'true'):
-                is_container = True
-            else:
-                is_container = False
-            env_status = get_sys_info()
-            logger.info("Rendering template admin.html")
-            #current_user_roles = ','.join(session.get('user', {}).get('roles', []))
-            current_user_roles = get_session_user_roles()
-            return render_template('admin.html', version=current_version, sys_info = env_status, logo_image=image_file, username=username, password=password, roles=current_user_roles, avatar=almond_avatar, logo=logo_img, almond_state=almond_state, howru_state=howru_state, status=info)
-            #return render_template('status_admin.html', version=current_version, user_image=image_file, server=hostname, monitoring=monitoring, avatar=almond_avatar, info=info)
+                return redirect('/login')
+            username, password = _create_admin_session()
         else:
-            a_auth_type = current_app.config['AUTH_TYPE']
-            if enable_login_redirect and enable_oauth:
-                return redirect("/login")
-            if (a_auth_type == "2fa"):
-                #logger.info("Rendering template login_fa.html")
-                #return render_template('login_fa.html', logon_image=logon_img)
-                return redirect('/almond/admin/login')
-            elif (a_auth_type == "basic"):
-                logger.info("Rendering template login_a.html")
-                return render_template('login_a.html', logon_image=logon_img)
-            else:
-                logger.warning("Could not get auth_type. Returning to basic")
-                return render_template('login_a.html', logon_image=logon_img)
+            handler = ADMIN_ACTION_HANDLERS.get(action_type)
+            if handler is not None:
+                return handler()
+
+    if 'page' not in request.args:
+        return _render_admin_home(username, password)
+
+    logger.info('Checking if session is alive')
+    page = request.args.get('page')
+    if 'login' in session:
+        session['login'] = 'true'
+        session['user'] = session['user']
     else:
-        logger.info("Checking if session is alive")
-        page = request.args.get('page')
-        if 'login' in session:
-            session['login'] = 'true'
-            session['user'] = session['user']
-        else:
-            logger.info("No login in session. Rendering template login_a.html")
-            if enable_login_redirect and enable_oauth:
-                return redirect("/login")
-            return render_template('login_a.html', logon_image=logon_img) 
-    # page = request.args.get('page')
-    if page == 'login':
-        almond_img = '/static/almond.png'
+        logger.info('No login in session. Rendering template login_a.html')
         if enable_login_redirect and enable_oauth:
-            return redirect("/login")
-        logger.info("Rendering template login_a.html")
-        return render_template('login_a.html', logon_image=almond_img)
-    if page == 'plugins':
-        available_plugins = list_available_plugins()
-        load_plugins()
-        if standalone:
-            info = ""
-        else:
-            info = "The API is running in multimode, but Plugins is only shown for the server where the API is running."
-            logger.info(info)
-        logger.info("Rendering template plugins.html")
-        this_data = load_status_data()
-        hostname = this_data['host']['name']
-        user_roles = get_user_roles()
-        load_executable_roles()
-        can_use_plugins = user_has_executable_role(user_roles)
-        return render_template('plugins.html', plugins_loaded = plugins, plugins_available = available_plugins, user_roles=user_roles, can_use_plugins=can_use_plugins, user_image=image_file, server=hostname, avatar=almond_avatar, info=info)
-    elif page == 'almond':
-        load_scheduler_conf()
-        info = request.args.get('info', '')
-        if not standalone:
-            info = info or "Note! API is in multimode, but this configuration is for the local server only."
-            logger.info(info)
-        config_items = sorted(
-            (item.split('=', 1) for item in scheduler_conf if '=' in item),
-            key=lambda item: item[0].strip().lower(),
-        )
-        item_names = [item[0] for item in config_items]
-        item_values = [item[1] for item in config_items]
-        available_conf = sorted(compare_lists(scheduler_available_conf, item_names), key=str.lower)
-        logger.info("Rendering template conf_a.html")
-        return render_template('conf_a.html', item_names=item_names, item_values=item_values,conf=scheduler_conf, aconf=available_conf, avatar=almond_avatar, info=info, user_image=image_file)   
-    elif page == 'howru':
-        load_api_conf()
-        info = request.args.get('info', '')
-        if not standalone:
-            info = info or "Note! API is in multimode, but this configuration is only applied to the local server."
-            logger.info(info)
-        config_items = sorted(
-            (item.split('=', 1) for item in api_conf if '=' in item),
-            key=lambda item: item[0].strip().lower(),
-        )
-        item_names = [item[0] for item in config_items]
-        item_values = [item[1] for item in config_items]
-        available_conf = compare_lists(api_available_conf, item_names)
-        api_owned_prefixes = ('scheduler.', 'collector.', 'kafka.')
-        available_conf = sorted(
-            (item for item in available_conf if not item.startswith(api_owned_prefixes)),
-            key=str.lower,
-        )
-        add_names = []
-        add_values = []
-        if extra_conf:
-            for item in extra_conf:
-                if '=' in item:
-                    name, value = item.split('=', 1)
-                    add_names.append(name)
-                    add_values.append(value)
-        sorted_additions = sorted(
-            zip(add_names, add_values),
-            key=lambda item: item[0].lower(),
-        )
-        add_names, add_values = zip(*sorted_additions) if sorted_additions else ([], [])
-        add_names = list(add_names)
-        add_values = list(add_values)
-        available_conf = sorted(compare_lists(available_conf, add_names), key=str.lower)
-        logger.info("Rendering template howruconf_a.html")
-        return render_template('howruconf_a.html', item_names=item_names, item_values=item_values, add_names=add_names, add_values=add_values, conf = api_conf, aconf=available_conf, user_image=image_file, avatar=almond_avatar, info=info)
-    elif page == 'status':
-        this_data = load_status_data()
-        image_name = '/static/almond_small.png'
-        hostname = this_data['host']['name']
-        monitoring = this_data['monitoring']
-        info = ''
-        if not standalone:
-            info = "The API is running in multimode but status will only show info for single node"
-            logger.info(info)
-        env_status = get_sys_info()
-        logger.info("Rendering template status_admin.html")
-        return render_template('status_admin.html', version=current_version, user_image=image_file, server=hostname, monitoring=monitoring, avatar=almond_avatar, info=info, sys_info = env_status)
-    elif page == 'api':
-        load_plugins()
-        item_names = []
-        for x in plugins:
-            pos = x.find(';')
-            item = x[0:pos]
-            pos = item.find(' ');
-            item_name = item[pos+1:]
-            item_names.append(item_name.strip())
-        item_names.pop(0)
-        amount = len(item_names)
-        logger.info("Rendering template api.html")
-        return render_template('api.html', logo_image=image_file, avatar=almond_avatar, amount=amount, plugins=item_names)
-    elif page == 'query':
-        load_plugins()
-        action = request.args.get("aid")
-        aid_int = None
-        if action:
-            try:
-                aid_int = int(action)
-            except ValueError:
-                logger.warning("[howru_api_query] Could not convert aid to integer value.")
-                return "Error: invalid parameter.", 400
-        else:
-            logger.critical("[howru_api_query] Aid parameter missing when making the call.")
-            return "Error: aid parameter missing", 400 
-        logger.info("Rendering HowRU API query")
-        if aid_int in (7, 25):
-            if (aid_int == 7):
-                p_id = None
-                if request.args.get("plugin_id") is None:
-                    if request.args.get("plugin_name") is None:
-                        return "Error: Not sufficient parameters", 400
-                    else:
-                        p_name = request.args.get("plugin_name")
-                        return render_template('query.html', logo_image=image_file, avatar=almond_avatar, aid=aid_int, plugin_name=p_name)
-                else:
-                    p_id = request.args.get("plugin_id")
-                    return render_template('query.html', logo_image=image_file, avatar=almond_avatar, aid=aid_int, plugin_id=p_id)
-            else:
-                item = request.form.get("item")
-                check = request.form.get("check")
-                option = request.form.get("option")
-                warning = request.form.get("warning")
-                critical = request.form.get("critical")
-                help = request.form.get("help")
-                if item is None:
-                    load_plugins()
-                    item_names = []
-                    for x in plugins:
-                        pos = x.find(' ')
-                        item = x[0:pos]
-                        item_name = item.strip()
-                        item_names.append(item_name.strip("[]"))
-                    item_names.pop(0)
-                    return render_template('monitoring.html', action=aid_int, plugins=item_names, logo_image=image_file, avatar=almond_avatar) 
-                else:
-                    aid = request.form.get("aid")
-                    return render_template('query.html', logo_image=image_file, avatar=almond_avatar, aid=aid, plugin_id=item, check=check, option=option, warning=warning, critical=critical, help=help)
-        else:
-            return render_template('query.html', aid=aid_int, logo_image=image_file, avatar=almond_avatar)
-    elif page == 'action':
-        load_plugins()
-        item_names = []
-        for x in plugins:
-            pos = x.find(';')
-            item = x[0:pos]
-            pos = item.find(' ');
-            item_name = item[pos+1:]
-            item_names.append(item_name.strip())
-        item_names.pop(0)
-        action = request.args.get("aid")
-        get_user_token()
-        token = usertoken
-        usertoken = "None"
+            return redirect('/login')
+        return render_template('login_a.html', logon_image=LOGIN_IMAGE)
 
-        #provider = session.get('user', {}).get('provider', 'local')
-        provider = get_session_user().get('provider', 'local')
-        user_roles = get_user_roles()
-        load_executable_roles()
-        can_execute_action = user_has_executable_role(user_roles)
-        action_requires_execute = action in ["2", "3", "6", "7", "8", "11", "15"]
-        can_submit_action = can_execute_action or not action_requires_execute
-
-        oauth_token = None
-        if token == "None" and provider != 'local' and "tokens" in session:
-            tokens = session.get("tokens")
-            if tokens and "access_token" in tokens:
-                oauth_token = tokens["access_token"]
-
-        logger.info("Rendering template action.html")
-        return render_template(
-            'action.html',
-            logo_image=image_file,
-            avatar=almond_avatar,
-            plugins=item_names,
-            action=action,
-            token=token,
-            oauth_token=oauth_token,
-            can_execute_action=can_execute_action,
-            can_submit_action=can_submit_action,
-            provider=provider,
-        )
-    elif page == 'docs':
-        logger.info("Rendering template documentation_a.html")
-        return render_template('documentation_a.html', user_image=image_file, avatar=almond_avatar) 
-    elif page == 'logs':
-        logs_list = get_logs('/var/log/almond/')
-        logger.info("Rendering template logs.html")
-        return render_template('logs.html', logo_image=image_file, avatar=almond_avatar, logfiles=logs_list)
-    elif page == 'metrics':
-        metrics_list = []
-        prefix = None
-        this_data = load_status_data()
-        hostname = this_data['host']['name'].split('.')[0]
-        prefix = f"{hostname}_"
-        for f in os.listdir(store_dir):
-            if local_metrics_only and not f.startswith(prefix) and f != metrics_file_name:
-                continue
-            val = f
-            display = f
-            if (val == metrics_file_name):
-                val = "Current metrics"
-                display = "Current metrics"
-            elif display.startswith(prefix):
-                display = display[len(prefix):]
-            metrics_list.append({'value': val, 'display': display})
-        metrics_list.sort(key=lambda x: x['display'])
-        if not standalone:
-            info = "Note! API is running in multimode, but Metrics will only be shown for the local server."
-            logger.info(info)
-        else:
-            info = ""
-        logger.info("Rendering template metrics_a.html")
-        return render_template('metrics_a.html', user_image=image_file, avatar=almond_avatar, metrics_list=metrics_list, info=info)
-    #elif page == 'graph':
-    #    logger.info("Rendering new graph")
-    #    key_list = []
-    #    key_vals = []
-    #    graph_name = request.args.get("name")
-    #    plot_dates, plot_data, uptime = get_graph_data(graph_name)
-    #    for data in plot_data:
-    #        for key, value in data.items():
-    #            key_list.append(key)
-    #            key_vals.append(float(value))
-    #    while (len(key_vals) > 40):
-    #        div_num = len(key_vals) / 40;
-    #        if (div_num <= 2):
-    #            del key_vals[::2]
-    #            del plot_dates[::2]
-    #        else:
-    #            #aggregate on div_num
-    #            key_len = len(key_vals) -1
-    #            agg_keys = []
-    #            agg_dates = []
-    #            while (key_len > 0):
-    #                x = key_len - int(div_num)
-    #                agg_part = key_vals[x:key_len]
-    #                date_part = plot_dates[x:key_len]
-    #                date_middle_index = int((len(date_part) -1)/2)
-    #                if (date_middle_index > 0):
-    #                    strip_date = date_part[date_middle_index][4:]
-    #                    strip_date = strip_date[:len(strip_date)-8]
-    #                    agg_dates.append(strip_date)
-    #                    agg_sum = sum(agg_part) / len(agg_part)
-    #                    agg_keys.append(round(agg_sum, 3))
-    #                key_len = x
-    #            agg_keys.reverse()
-    #            agg_dates.reverse()
-    #            key_vals = agg_keys
-    #            plot_dates = agg_dates
-    #    cur_dir = os.getcwd()
-    #    if not cur_dir == '/opt/almond/www/api':
-    #        os.chdir('/opt/almond/www/api')
-    #    #while graph_written < 2:
-    #        #plt.plot(plot_dates, key_vals, color="white")
-    #        #plt.rcParams['axes.facecolor'] = '#491c0f'
-    #        #plt.gcf().autofmt_xdate()
-    #        #plt.title(graph_name)
-    #        #plt.xlabel('Timestamp')
-    #        #plt.ylabel(key_list[0])
-    #        #plt.xticks(fontsize=6, rotation=90, ha='right')
-    #        #graph_file_name = graph_name
-    #        #graph_file_name.replace(" ", "")
-    #        #graph_file_name.replace("/", "_")
-    #        #save_name = 'static/charts/' + graph_file_name + '.png'
-    #        #save_name = 'static/charts/graph.png'
-    #        #plt.savefig(save_name)
-    #        #plt.clf()
-    #        #graph_written += 1
-    #    save_name = '/' + save_name
-    #    cur_dir = os.getcwd()
-    #    if not (os.getcwd() == cur_dir):
-    #        os.chdir(cur_dir)
-    #    #graph_written = 1
-    #    logger.info("Rendering graph.html")
-    #    return render_template("graph.html", user_image = image_file, name="Trend chart", url=save_name, uptime=str(uptime))
-    elif page == 'logout':
-        #print ("ALMOND LOGOUT ROUTE")
-        almond_img = '/static/almond.png'
-        a_auth_type = current_app.config['AUTH_TYPE']
-        #user = session.get('user')
-        user = get_session_user()
-        username = user.get('username', 'unknown')
-        provider = user.get('provider', 'local')
-        #if isinstance(user, dict):
-        #    username = user.get('username', 'unknown')
-        #else:
-        #    username = user or 'unknown'
-        logger.info(f"User {username} logged out.")
-        if user.get("provider") != "local":
-            from .howru import logout as main_logout
-            return main_logout(username)
-        #if user.get("provider") = "keycloak":
-        #    id_token = user.get("id_token")
-        #    logout_url = "http://localhost:8089/realms/almondmonitor/protocol/openid-connect/logout"
-        #    session.clear()
-        #    
-        #    if id_token:
-        #        return redirect(
-        #            f"{logout_url}"
-        #            f"?id_token_hint={id_token}"
-        #            f"&post_logout_redirect_uri=http://localhost:8015/almond/admin"
-        #        )
-        #    else:
-        #        # Fallback: use client_id if for some reason id_token is missing
-        #        return redirect(
-        #            f"{logout_url}"
-        #            f"?client_id=almondadmin"
-        #            f"&post_logout_redirect_uri=http://localhost:8015/almond/admin"
-        #        )
-
-            #    logout_url = (
-            #        "http://localhost:8089/realms/almondmonitor/protocol/openid-connect/logout"
-            #    )
-            #    params = {
-            #        "id_token_hint": id_token,
-            #        "post_logout_redirect_uri": "http://localhost:8015/almond/admin"
-            #    }
-            #    try:
-            #        requests.get(logout_url, params=params, timeout=3)
-            #    except Exception as e:
-            #        logger.warning(f"Keycloak logout failed: {e}")
-            #    session.clear()
-            #    return redirect(
-            #         f"http://localhost:8089/realms/almondmonitor/protocol/openid-connect/logout#"
-            #         f"?id_token_hint={id_token}"
-            #         f"&post_logout_redirect_uri=http://localhost:8015/almond/admin"
-            #    )
-
-        session.pop('login', None)
-        session.pop('user', None)
-        if enable_login_redirect and enable_oauth:
-            return redirect("/login")
-        if (a_auth_type == "2fa"):
-            session.pop('authenticated', None)
-            logger.info("Rendering template login_fa.html")
-            return render_template('login_fa.html', logon_image=almond_img)
-        else:
-            logger.info("Rendering template login_a.html")
-            return render_template('login_a.html', logon_image=almond_img)
-    else:
+    handler = ADMIN_PAGE_HANDLERS.get(page)
+    if handler is None:
         return page
+    return handler()

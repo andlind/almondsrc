@@ -23,8 +23,8 @@
 		{% for item in item_names %}
 		<tr>
 			<td>{{ item }}</td>
-                        {% set value = item_values[loop.index - 1]|lower %}
-			{% set value = "prometheus" if value == "jsonprometheus" else value %}
+                        {% set value = item_values[loop.index - 1]|trim|lower %}
+			<!--{% set value = "prometheus" if value == "jsonprometheus" else value %}-->
 			{% if item in ["kafka.compression_codec", "kafka.compression.codec"] %}
 			<td><select id="{{loop.index-1}}" name="{{item}}">
 				{% for option in ["none", "gzip", "snappy", "lz4", "zstd"] %}
@@ -44,7 +44,7 @@
 			</select></td>
 			{% elif item == "scheduler.format" %}
 			<td><select id="{{loop.index-1}}" name="{{item}}">
-				{% for option in ["json", "metrics", "jsonmetrics", "prometheus"] %}
+				{% for option in ["json", "metrics", "jsonmetrics", "prometheus", "jsonprometheus"] %}
 				<option value="{{ option }}" {% if value == option %}selected{% endif %}>{{ option }}</option>
 				{% endfor %}
 			</select></td>
